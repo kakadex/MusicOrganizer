@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand">#2F6BFF</color>
+    <color name="brand_dark">#1E4FD8</color>
+    <color name="brand_soft">#EEF3FF</color>
+    <color name="page_bg">#F4F6FA</color>
+    <color name="card_bg">#FFFFFF</color>
+    <color name="text_main">#14181F</color>
+    <color name="text_sub">#6B7484</color>
+    <color name="line">#E6EAF2</color>
+    <color name="ok">#1F9D55</color>
+    <color name="warn">#C77700</color>
+    <color name="err">#D93025</color>
+
+    <!-- 夜间模式（与 core/Theme.java 的 minimalDark 对齐）：
+         XML 主题只管对话框 / 输入框 / 复选框这些系统绘制的部分，
+         页面与卡片颜色仍由 UiKit 按主题取。 -->
+    <color name="page_bg_dark">#13151C</color>
+    <color name="card_bg_dark">#1C1E27</color>
+    <color name="text_main_dark">#E8EAF0</color>
+    <color name="text_sub_dark">#9AA1B0</color>
+    <color name="line_dark">#2A2D3A</color>
+</resources>

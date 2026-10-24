@@ -1,0 +1,2 @@
+-keep class com.dsh.musicorganizer.** { *; }
+-dontwarn org.json.**

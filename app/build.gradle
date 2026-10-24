@@ -1,0 +1,40 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.dsh.musicorganizer'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.dsh.musicorganizer"
+        minSdk 24
+        targetSdk 34
+        versionCode 89
+        versionName "0.1.79-k8xent"
+        // 纯 Java 工程，不启用任何注解处理器
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            shrinkResources false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+        encoding 'UTF-8'
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}
+
+// 依赖块保持为空：本工程零第三方依赖（仅 Android 框架 + JDK 标准库）。
+dependencies {
+}

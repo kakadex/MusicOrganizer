@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 使用系统 Material 主题，不依赖 AppCompat / Material Components -->
+    <style name="AppTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:colorPrimary">@color/brand</item>
+        <item name="android:colorPrimaryDark">@color/brand_dark</item>
+        <item name="android:colorAccent">@color/brand</item>
+        <item name="android:windowBackground">@color/page_bg</item>
+        <!-- 全面屏：系统栏透明，内容画到栏背后（实际颜色与图标明暗由 MainActivity 按主题设定） -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:textColorPrimary">@color/text_main</item>
+        <item name="android:textColorSecondary">@color/text_sub</item>
+        <item name="android:alertDialogTheme">@style/AppDialog</item>
+    </style>
+
+    <!--
+      对话框统一底板（v0.1.53）。
+
+      做法是把颜色收敛在一处，子页面（BottomSheet /
+      Dialog）只继承、不自己配色。我们原来每个二级页面各自 new AlertDialog，
+      底色由系统主题画、文字由 UiKit 画 —— 夜间就变成白底浅字。
+      现在 XML 主题 + UiKit.tintDialog() 两层兜住：系统画的按这里，
+      我们自己画的一律取 UiKit 调色板。
+    -->
+    <style name="AppDialog" parent="@android:style/Theme.Material.Light.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/dialog_panel</item>
+        <item name="android:textColorPrimary">@color/text_main</item>
+        <item name="android:textColorSecondary">@color/text_sub</item>
+        <item name="android:colorAccent">@color/brand</item>
+    </style>
+
+    <!--
+      夜间模式（v0.1.53）。
+
+      为什么要在 XML 里再定义一套：应用内的颜色是代码算的（UiKit 按主题取色），
+      但对话框底色、对话框标题、系统输入框光标柄、滚动条这些是「系统按主题画」的。
+      主题一直停在 Light，于是夜间模式下弹出来的详情 / 编辑框是白底，
+      而我们自己的文字是浅色 —— 就成了「白底浅字看不清」。
+
+      MainActivity 在 super.onCreate() 之前按 theme_dark 开关选这一套。
+    -->
+    <style name="AppThemeDark" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:colorPrimary">@color/brand</item>
+        <item name="android:colorPrimaryDark">@color/brand_dark</item>
+        <item name="android:colorAccent">@color/brand</item>
+        <item name="android:windowBackground">@color/page_bg_dark</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:textColorPrimary">@color/text_main_dark</item>
+        <item name="android:textColorSecondary">@color/text_sub_dark</item>
+        <!-- 对话框默认底色：Material 暗色自带 #424242，偏亮且与我们卡片不同色 -->
+        <item name="android:colorBackground">@color/card_bg_dark</item>
+        <item name="android:colorBackgroundFloating">@color/card_bg_dark</item>
+        <item name="android:alertDialogTheme">@style/AppDialogDark</item>
+    </style>
+
+    <style name="AppDialogDark" parent="@android:style/Theme.Material.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/dialog_panel_dark</item>
+        <item name="android:textColorPrimary">@color/text_main_dark</item>
+        <item name="android:textColorSecondary">@color/text_sub_dark</item>
+        <item name="android:colorAccent">@color/brand</item>
+    </style>
+</resources>

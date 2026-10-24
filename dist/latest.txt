@@ -1,0 +1,12 @@
+# 版本清单（App 检查更新时优先读它：国内 Gitee 优先，GitHub 兜底）
+# 格式见 AppUpdate.parseManifest：每行 key=value
+version=0.1.79-k8xent
+code=89
+tag=v0.1.79-k8xent
+apk=dist/musicorganizer-latest.apk
+size=361935
+sha256=0ae5737b9cac799cc3581e37660278e1a97a48fb97719157032feb37acbe5891
+summary=v0.1.79-k8xent — 码率显示修正（VBR 文件按文件自身信息计算）
+page=https://gitee.com/kakadex/MusicOrganizer/releases
+github=https://github.com/kakadex/MusicOrganizer/releases
+date=2026-10-24

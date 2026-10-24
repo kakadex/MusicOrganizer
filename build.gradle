@@ -1,0 +1,4 @@
+// 顶层构建脚本：只声明 Android Gradle 插件，工程不引入任何第三方运行库。
+plugins {
+    id 'com.android.application' version '8.5.2' apply false
+}

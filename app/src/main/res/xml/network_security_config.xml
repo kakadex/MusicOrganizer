@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  明文 HTTP 白名单（v0.1.44）
+
+  Android 9+ 默认禁止 cleartext HTTP。酷狗歌词的两个接口历史上用的是 http，
+  v0.1.41 因此在真机上根本发不出请求（桌面用 curl 测是通的，所以当时没发现）。
+  v0.1.44 已把默认地址改成 https，这份白名单只为「某些网络下 https 握手失败、
+  用户自己在数据源设置里改回 http」这一种情况兜底。
+
+  其余域名一律走系统默认（禁止明文），不做全局放开。
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">krcs.kugou.com</domain>
+        <domain includeSubdomains="true">lyrics.kugou.com</domain>
+    </domain-config>
+</network-security-config>

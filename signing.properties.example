@@ -1,0 +1,15 @@
+# 复制本文件为 signing.properties，填入自己的签名信息。
+#
+# 生成自签证书（JDK 自带的 keytool，口令至少 6 位）：
+#   keytool -genkeypair -v \
+#     -keystore release.keystore -alias musicorganizer \
+#     -keyalg RSA -keysize 2048 -validity 10000 \
+#     -storepass 你的口令 -keypass 你的口令 \
+#     -dname "CN=MusicOrganizer, OU=Dev, O=Personal, L=City, ST=State, C=CN"
+#
+# 也可以不改本文件，改用环境变量：
+#   SIGNING_KS / SIGNING_STORE_PASS / SIGNING_ALIAS / SIGNING_KEY_PASS
+storeFile=C:/path/to/release.keystore
+storePassword=change_me
+keyAlias=musicorganizer
+keyPassword=change_me

@@ -1,0 +1,97 @@
+name: CI
+
+# 只做「能不能编译 + 内核回归是否全绿」，不产出发布包（发布走 tag 触发的 release-apk.yml）。
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  core-test:
+    name: 内核回归（纯 JVM，无需 SDK）
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # 这两个脚本自带「便携 env/ 优先、否则退回 PATH 的 javac/java」逻辑，
+      # 所以在 runner 上直接用系统 JDK，不需要本机工具链目录。
+      - name: 跑 core 回归
+        run: bash tools/run_core_test.sh
+
+      - name: 跑标签读写回归
+        run: bash tools/run_tag_test.sh
+
+  assemble:
+    name: 编译 debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # 不用 ./gradlew：wrapper 的 distributionUrl 指向国内镜像
+      # （mirrors.cloud.tencent.com），境外 runner 拉不动。
+      # 也不用第三方 action，直接下官方包，失败了日志里一眼能看到。
+      - name: 下载 Gradle 8.9（官方源）
+        run: |
+          set -eux
+          curl -sSL --retry 3 --retry-delay 3 -o "$RUNNER_TEMP/gradle.zip" \
+            https://services.gradle.org/distributions/gradle-8.9-bin.zip
+          unzip -q "$RUNNER_TEMP/gradle.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/gradle-8.9/bin" >> "$GITHUB_PATH"
+
+      - name: 打印环境
+        run: |
+          java -version
+          gradle -v | head -8
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME/platforms" || true
+
+      # 失败时把构建日志转成 annotation，这样即使拿不到 Actions 日志
+      # （匿名不可读）也能从 check-runs annotations 里看到真实报错。
+      #
+      # 注意：不要用 `--stacktrace` + `tail -80`。v0.1.45 那次就是这样，
+      # 80 行里 70 行是 Gradle 的调用栈，真正的 `error:` 行被挤出 annotation 上限，
+      # 结果只看到一堆 DefaultBuildOperationRunner。现在改成先 grep 报错行、再补尾部。
+      - name: assembleDebug
+        run: |
+          set -o pipefail
+          if gradle --no-daemon --console=plain assembleDebug > "$RUNNER_TEMP/build.log" 2>&1; then
+            tail -15 "$RUNNER_TEMP/build.log"
+          else
+            echo "::error::==== 报错行（先看这里）===="
+            grep -nE "error:|^e: |What went wrong|FAILURE:|Execution failed|Could not (resolve|compile|find|download|create)|Caused by|Unsupported class|requires (Java|Android Gradle)" \
+              "$RUNNER_TEMP/build.log" | head -25 | sed 's/^/::error::/' || true
+            echo "::error::==== 日志最后 20 行 ===="
+            tail -20 "$RUNNER_TEMP/build.log" | sed 's/^/::error::/'
+            exit 1
+          fi
+
+      - name: 留存 APK（方便比对 CI 与本地产物）
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn
+          retention-days: 7

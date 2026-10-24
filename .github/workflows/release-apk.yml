@@ -1,0 +1,130 @@
+name: 发布 APK 到 Release
+
+# 本机到 github.com 的 HTTPS/API 不可达（只有 SSH 443 通），所以本地跑不了 gh / API 建 Release。
+# 这条路绕开限制：本地只做 git push（SSH 能通），建 Release + 挂附件交给 GitHub 自己的 runner。
+#
+# APK 不在 main 的代码树里（.gitignore 排除 release/ 与 *.apk），而是单独放在孤儿分支
+# release-assets 上，本工作流从那个分支取 APK 与发布说明。
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布的 tag（例如 v0.1.2，必须已推送到远端）'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: 创建 Release 并挂上 APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: 从 release-assets 分支取回 APK 与发布说明
+        uses: actions/checkout@v4
+        with:
+          ref: release-assets
+          path: assets
+
+      - name: 环境诊断
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh --version || true
+          gh auth status || true
+          echo "仓库 = ${{ github.repository }} / 事件 = ${{ github.event_name }} / ref = ${{ github.ref_name }}"
+
+      - name: 解析 tag 与标题
+        id: meta
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${{ github.ref_name }}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+          # notes.md 第一行形如「# v0.1.2 标签预览显示新旧对比」，去掉 # 当 Release 标题
+          TITLE=$(head -n 1 assets/notes.md | sed 's/^#\{1,\}[[:space:]]*//')
+          echo "title=$TITLE" >> "$GITHUB_OUTPUT"
+          echo "tag = $TAG"
+          echo "title = $TITLE"
+
+      - name: 创建 Release（清掉草稿与旧版后重建，确保是正式版）
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          TITLE: ${{ steps.meta.outputs.title }}
+          # 必须以 app 根目录为 cwd 以外的任何地方都能用：checkout 落在 assets/ 子目录，
+          # 工作目录下没有 .git，gh 无法推断仓库 → 必须显式 --repo（v0.1.2~v0.1.10 全挂在这）
+          REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          # 标题单独给，正文去掉第一行避免重复
+          tail -n +2 assets/notes.md > /tmp/notes.md
+
+          # 诊断：把 token 身份与失败原因写成 check-run 注解。
+          # 目的：仓库日志下载需要 admin，匿名只能读 annotations；排障必须靠它。
+          AUTH=$(gh auth status 2>&1 || true)
+          echo "$AUTH" | head -n 12
+
+          # 坑：删 tag 重推会把关联的 Release 变成「无 tag 草稿」，匿名 API 看不到，
+          # 表现就是「Release 建了又消失」。所以每次都先清掉草稿，再删同 tag 的旧正式版重建。
+          gh api "repos/$REPO/releases?per_page=100" \
+            -q '.[] | select(.draft == true) | .id' 2>/dev/null \
+            | while IFS= read -r ID; do
+                [ -n "$ID" ] || continue
+                echo "清理草稿 release id=$ID"
+                gh api -X DELETE "repos/$REPO/releases/$ID" || true
+              done
+          # --cleanup-tag=false：不要顺手删 tag，否则又触发上面那个连锁
+          gh release delete "$TAG" --repo "$REPO" --yes --cleanup-tag=false >/dev/null 2>&1 || true
+
+          if ! OUT=$(gh release create "$TAG" --repo "$REPO" --title "$TITLE" --notes-file /tmp/notes.md 2>&1); then
+            # 单行化：注解里不能有裸换行
+            echo "::error title=release-create-failed::$(printf '%s' "$OUT" | tr '\n\r' '  ' | cut -c1-900)"
+            echo "::error title=gh-auth-status::$(printf '%s' "$AUTH" | tr '\n\r' '  ' | cut -c1-400)"
+            exit 1
+          fi
+          echo "$OUT"
+
+      - name: 上传 APK 附件
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          APK=$(find assets -maxdepth 1 -name '*.apk' -print -quit)
+          if [ -z "$APK" ]; then
+            echo "::error::release-assets 分支上没找到 APK"
+            exit 1
+          fi
+          echo "APK = $APK"
+          # gh release upload 会把文件名里的非 ASCII 字符整段剥掉：
+          # 「音乐整理工具-v0.1.10.apk」→「-v0.1.10.apk」。所以上传前必须先改成纯 ASCII 名。
+          # 应用内更新只认 .apk 后缀（core/AppUpdate 取第一个 .apk 资产），不依赖中文名。
+          NAME="MusicOrganizer-${TAG}.apk"
+          cp -f "$APK" "/tmp/$NAME"
+          # 上一步是全新 Release，不带历史资产，直接传即可
+          gh release upload "$TAG" "/tmp/$NAME" --repo "$REPO" --clobber
+
+      - name: 结果汇总
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          {
+            echo "### Release 结果"
+            echo '```'
+            gh release view "$TAG" --repo "$REPO" 2>&1 | head -n 30
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY" || true
