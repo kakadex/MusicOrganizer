@@ -11,7 +11,7 @@ android {
         minSdk 24
         targetSdk 34
         versionCode 97
-        versionName "0.1.87-391525"
+        versionName "0.1.87-f467b2"
         // 纯 Java 工程，不启用任何注解处理器
     }
 
