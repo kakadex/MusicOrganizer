@@ -8,6 +8,7 @@ library;
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'big5_table.dart';
 import 'gbk_table.dart';
 
 /// 标签文本解码容错层（纯 Dart）。
@@ -96,6 +97,42 @@ abstract final class TagText {
       }
     }
     return sb.toString();
+  }
+
+  /// 按 Big5 解码（繁体中文旧工具链常用）；未映射位置给 U+FFFD。
+  static String decodeBig5(Uint8List payload) {
+    final StringBuffer sb = StringBuffer();
+    int i = 0;
+    while (i < payload.length) {
+      final int b = payload[i];
+      if (b < 0x80) {
+        sb.writeCharCode(b);
+        i++;
+      } else if (i + 1 < payload.length &&
+          b >= 0xA1 &&
+          b <= 0xF9 &&
+          ((payload[i + 1] >= 0x40 && payload[i + 1] <= 0x7E) ||
+              payload[i + 1] >= 0xA1)) {
+        final int trail = payload[i + 1];
+        final int trailOff =
+            trail <= 0x7E ? trail - 0x40 : trail - 0xA1 + 63;
+        final int idx = (b - 0xA1) * 157 + trailOff;
+        sb.writeCharCode(big5Table.codeUnitAt(idx));
+        i += 2;
+      } else {
+        sb.writeCharCode(0xFFFD);
+        i++;
+      }
+    }
+    return sb.toString();
+  }
+
+  /// 按 Big5 解码；结果没有汉字、或含替换字符时返回 null。
+  static String? tryBig5(Uint8List payload) {
+    if (payload.isEmpty) return null;
+    final String big5 = decodeBig5(payload);
+    if (containsCjk(big5) && !big5.contains('\uFFFD')) return big5;
+    return null;
   }
 
   static bool looksLikeGbk(Uint8List b) {

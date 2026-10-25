@@ -153,6 +153,20 @@ abstract final class TagIO {
         e == '.dsf';
   }
 
+  /// 该格式是否有内嵌歌词字段（WAV / DSF 只有常规标签，没有歌词）。
+  static bool canWriteLyrics(String ext) {
+    final String e = extOf(ext);
+    return e == '.mp3' ||
+        e == '.flac' ||
+        e == '.m4a' ||
+        e == '.mp4' ||
+        e == '.ogg' ||
+        e == '.opus' ||
+        e == '.ape' ||
+        e == '.wv' ||
+        e == '.mpc';
+  }
+
   static bool hasCoverLocal(Uint8List data, String ext) {
     final String e = extOf(ext);
     if (e == '.mp3') return Id3.hasCover(data);
