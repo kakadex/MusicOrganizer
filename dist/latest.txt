@@ -1,12 +1,12 @@
 # 版本清单（App 检查更新时优先读它：国内 Gitee 优先，GitHub 兜底）
 # 格式见 AppUpdate.parseManifest：每行 key=value
-version=0.1.84-8u4n4b
-code=94
-tag=v0.1.84-8u4n4b
+version=0.1.85-ec6zbz
+code=95
+tag=v0.1.85-ec6zbz
 apk=dist/musicorganizer-latest.apk
-size=382415
-sha256=32d09e69c96af956ae35a3a6d553cbe53bc65d66cf2547f40d8440aec117172b
-summary=v0.1.84-8u4n4b — 带艺人前缀的文件现在也能查出重复了
+size=386511
+sha256=5b838ad9c8c715dfc2dda61cc60299dd7fd5d7e290e2b0d38f23caa3c2e6e01d
+summary=v0.1.85-ec6zbz — 查重加时长核对：剪辑版不会被默认勾去删
 page=https://gitee.com/kakadex/MusicOrganizer/releases
 github=https://github.com/kakadex/MusicOrganizer/releases
 date=2026-10-25
