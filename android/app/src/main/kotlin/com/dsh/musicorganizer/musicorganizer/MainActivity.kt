@@ -1,8 +1,8 @@
 package com.dsh.musicorganizer.musicorganizer
 
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
-import androidx.activity.result.contract.ActivityResultContracts
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -11,26 +11,6 @@ class MainActivity : FlutterActivity() {
 
     private var pendingPickResult: MethodChannel.Result? = null
     private lateinit var safPlugin: SafPlugin
-
-    private val pickTreeLauncher = registerForActivityResult(
-        ActivityResultContracts.OpenDocumentTree()
-    ) { uri: Uri? ->
-        val result = pendingPickResult
-        pendingPickResult = null
-        if (uri == null) {
-            result?.success(null)
-            return@registerForActivityResult
-        }
-        try {
-            contentResolver.takePersistableUriPermission(
-                uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            )
-        } catch (_: Exception) {
-            // 个别 provider 不支持持久授权：继续，后续访问可能失败
-        }
-        result?.success(safPlugin.treeInfo(uri))
-    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -42,7 +22,10 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
                 "pickTree" -> {
                     pendingPickResult = result
-                    pickTreeLauncher.launch(null)
+                    startActivityForResult(
+                        Intent(Intent.ACTION_OPEN_DOCUMENT_TREE),
+                        REQUEST_CODE_OPEN_TREE
+                    )
                 }
                 "listRoots" -> {
                     try {
@@ -74,5 +57,31 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQUEST_CODE_OPEN_TREE) return
+        val result = pendingPickResult
+        pendingPickResult = null
+        if (resultCode != Activity.RESULT_OK || data?.data == null) {
+            result?.success(null)
+            return
+        }
+        val uri: Uri = data.data!!
+        try {
+            contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+        } catch (_: Exception) {
+            // 个别 provider 不支持持久授权：继续，后续访问可能失败
+        }
+        result?.success(safPlugin.treeInfo(uri))
+    }
+
+    companion object {
+        private const val REQUEST_CODE_OPEN_TREE = 4401
     }
 }
