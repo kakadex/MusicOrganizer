@@ -165,6 +165,9 @@ public final class TagTransaction {
                         "success");
             }
             Scanner.invalidate(f);
+            // 文件标签已经落盘，但系统媒体库还是旧的 —— 通知它重扫这一首，
+            // 否则用户回播放器看到的是老标题/老封面（v0.1.80）。
+            MediaRefresh.scan(ctx, f);
             return "";
         } catch (Exception e) {
             return "写入失败（原文件未修改）：" + TextUtil.shortError(e);

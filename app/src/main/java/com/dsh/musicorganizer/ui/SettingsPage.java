@@ -61,6 +61,10 @@ public final class SettingsPage extends ScrollView {
         android.util.Log.e("MusicOrganizer", "SettingsPage build failed", t);
     }
 
+    /** 扫描过滤的两个偏好键（与 MainActivity.applyScanFilters 对应）。 */
+    public static final String KEY_SCAN_SKIP = "scan_skip";
+    public static final String KEY_SCAN_IGNORE_VIDEO = "scan_ignore_video";
+
     private void build() {
         Context ctx = getContext();
         LinearLayout root = UiKit.vertical(ctx);
@@ -84,6 +88,40 @@ public final class SettingsPage extends ScrollView {
         cardDir.addView(UiKit.caption(ctx,
                 "列出已授权的音乐文件夹，可添加 / 更换 / 移除；选好后自动扫描并显示列表。"));
         root.addView(cardDir);
+
+        // ---- 扫描过滤（v0.1.80）----
+        LinearLayout cardFilter = UiKit.card(ctx);
+        cardFilter.addView(UiKit.text(ctx, "扫描过滤", 16, UiKit.textColor(), true));
+        cardFilter.addView(UiKit.caption(ctx,
+                "填写路径关键字后，路径里含这些词的文件夹/文件会被跳过（用空格或逗号隔开多个）。"
+                        + "适合排除「伴奏」「试听」「Sample」这类目录。"));
+
+        final android.widget.EditText skipInput = UiKit.input(ctx, "例如：伴奏 试听 sample");
+        skipInput.setSingleLine(true);
+        skipInput.setText(host.repo.str(KEY_SCAN_SKIP, ""));
+        UiKit.margin(skipInput, 0, 8, 0, 0);
+        cardFilter.addView(skipInput);
+
+        final android.widget.CheckBox ignoreVideo = UiKit.checkbox(ctx,
+                "忽略视频文件（mp4 / m4v / mov …）", host.repo.bool(KEY_SCAN_IGNORE_VIDEO, true));
+        UiKit.margin(ignoreVideo, 0, 8, 0, 0);
+        cardFilter.addView(ignoreVideo);
+
+        Button saveFilter = UiKit.button(ctx, "保存并重新扫描", true);
+        UiKit.margin(saveFilter, 0, 10, 0, 0);
+        cardFilter.addView(saveFilter);
+        saveFilter.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                host.repo.setStr(KEY_SCAN_SKIP, skipInput.getText().toString().trim());
+                host.repo.setBool(KEY_SCAN_IGNORE_VIDEO, ignoreVideo.isChecked());
+                host.toast("已保存，正在重新扫描…");
+                host.scanGroups(false);
+            }
+        });
+        cardFilter.addView(UiKit.caption(ctx,
+                "只影响之后的扫描结果，不会改动任何文件。"));
+        root.addView(cardFilter);
 
         // ---- 主题 ----
         LinearLayout cardTheme = UiKit.card(ctx);

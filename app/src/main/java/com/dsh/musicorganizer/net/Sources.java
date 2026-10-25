@@ -33,6 +33,9 @@ public final class Sources {
     private static final int TIMEOUT_CN = 5000;
     public static final double DURATION_TOLERANCE = 3.0;
 
+    /** 一次聚合最多返回多少条候选（去重后截断）。 */
+    public static final int MAX_CANDIDATES = 10;
+
     public static class Candidate {
         public String title = "";
         public String artist = "";
@@ -46,6 +49,10 @@ public final class Sources {
         public String coverUrl = "";
         public double confidence = 0;
         public double filenameScore = 0;
+        /** 合并后命中几源（1 = 只有一家给出这条） */
+        public int merged = 1;
+        /** 合并后命中的来源，如「网易云 / QQ」 */
+        public String sources = "";
     }
 
     /** 查询上下文。 */
@@ -728,23 +735,17 @@ public final class Sources {
     }
 
     /** 分发到具体数据源。 */
+    /** 单源分派：走注册表（新增源只要在 {@link SourceRegistry} 登记，这里不用改）。 */
     private static List<Candidate> query(MbClient client, Query ctx, String source) {
-        if ("musicbrainz".equals(source)) {
-            return musicBrainz(client, ctx);
-        } else if ("deezer".equals(source)) {
-            return deezer(ctx);
-        } else if ("itunes".equals(source)) {
-            return iTunes(ctx);
-        } else if ("netease".equals(source)) {
-            return netease(ctx);
-        } else if ("qqmusic".equals(source)) {
-            return qqMusic(ctx);
-        } else if ("kugou".equals(source)) {
-            return kugou(ctx);
-        } else if ("kuwo".equals(source)) {
-            return kuwo(ctx);
-        } else {
-            return migu(ctx);
+        OnlineSource s = SourceRegistry.get(source);
+        if (s == null) {
+            return new ArrayList<Candidate>();
+        }
+        try {
+            return s.search(ctx, client);
+        } catch (Exception e) {
+            // 单源异常只是少一家结果，聚合层本来也按「空结果」处理
+            return new ArrayList<Candidate>();
         }
     }
 
@@ -916,6 +917,13 @@ public final class Sources {
             }
             c.confidence = Math.min(cap, blended);
         }
+        // 多源去重：同一首歌在几家都返回时只留一条（保留最高分），并记下「几源一致」。
+        // 放在打分之后 —— 代表条目必须是最高的那条，否则排序会把次优结果顶到最前面。
+        results = dedupe(results);
+        if (results.size() > MAX_CANDIDATES) {
+            // 预览面板最多展示这么多条：再多用户也不会往下翻，反而拖慢渲染
+            results = new ArrayList<Candidate>(results.subList(0, MAX_CANDIDATES));
+        }
         java.util.Collections.sort(results, new java.util.Comparator<Candidate>() {
             @Override
             public int compare(Candidate a, Candidate b) {
@@ -924,6 +932,44 @@ public final class Sources {
             }
         });
         return results;
+    }
+
+    /**
+     * 把同一首歌的候选合并成一条（v0.1.80）。
+     *
+     * <p>判同规则见 {@link com.dsh.musicorganizer.core.MatchDedupe}（标题 + 艺人 + 时长容差）。
+     * 合并后 {@code merged} 是命中源数，{@code sources} 是来源串 —— 多源一致本身是可信度信号，
+     * 预览里可以据此让用户更放心。
+     */
+    static List<Candidate> dedupe(List<Candidate> in) {
+        if (in == null || in.size() < 2) {
+            return in;
+        }
+        List<com.dsh.musicorganizer.core.MatchDedupe.Entry> entries =
+                new ArrayList<com.dsh.musicorganizer.core.MatchDedupe.Entry>(in.size());
+        for (Candidate c : in) {
+            if (c == null) {
+                continue;
+            }
+            com.dsh.musicorganizer.core.MatchDedupe.Entry e =
+                    new com.dsh.musicorganizer.core.MatchDedupe.Entry();
+            e.title = c.title;
+            e.artist = c.artist;
+            e.duration = c.duration;
+            e.score = c.confidence;
+            e.source = sourceLabel(c.source);
+            e.payload = c;
+            entries.add(e);
+        }
+        List<Candidate> out = new ArrayList<Candidate>(entries.size());
+        for (com.dsh.musicorganizer.core.MatchDedupe.Entry g
+                : com.dsh.musicorganizer.core.MatchDedupe.merge(entries)) {
+            Candidate c = (Candidate) g.payload;
+            c.merged = g.merged;
+            c.sources = g.sources;
+            out.add(c);
+        }
+        return out;
     }
 
     /**

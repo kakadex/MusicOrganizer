@@ -1579,6 +1579,84 @@ public class MainActivity extends Activity implements Logger {
         }
     }
 
+    /**
+     * 扫描过滤（v0.1.80）：按路径关键字剔除文件、按需忽略视频。
+     *
+     * <p>只影响扫描结果，不动文件本身。关键字存在偏好 {@code scan_skip} 里
+     * （空格/逗号分隔），勾选「忽略视频」存 {@code scan_ignore_video}。
+     */
+    private List<VFile> applyScanFilters(List<VFile> files) {
+        if (files == null || files.isEmpty()) {
+            return files;
+        }
+        boolean ignoreVideo = repo.bool(SettingsPage.KEY_SCAN_IGNORE_VIDEO, true);
+        String raw = repo.str(SettingsPage.KEY_SCAN_SKIP, "");
+        List<String> keys = new ArrayList<String>();
+        if (raw != null && !raw.trim().isEmpty()) {
+            for (String part : raw.split("[,，;；\\s]+")) {
+                String t = part.trim().toLowerCase();
+                if (!t.isEmpty()) {
+                    keys.add(t);
+                }
+            }
+        }
+        if (!ignoreVideo && keys.isEmpty()) {
+            return files;
+        }
+        List<VFile> out = new ArrayList<VFile>(files.size());
+        int skipped = 0;
+        for (VFile f : files) {
+            if (f == null) {
+                continue;
+            }
+            if (f.dir) {
+                out.add(f);
+                continue;
+            }
+            if (ignoreVideo && isVideoFile(f)) {
+                skipped++;
+                continue;
+            }
+            if (!keys.isEmpty() && pathHits(f, keys)) {
+                skipped++;
+                continue;
+            }
+            out.add(f);
+        }
+        if (skipped > 0) {
+            log("扫描过滤：跳过 " + skipped + " 个文件（路径关键字 " + keys.size()
+                    + " 个" + (ignoreVideo ? " · 忽略视频" : "") + "）", "info");
+        }
+        return out;
+    }
+
+    private static boolean isVideoFile(VFile f) {
+        String mime = f.mime == null ? "" : f.mime.toLowerCase();
+        if (mime.startsWith("video/")) {
+            return true;
+        }
+        String ext = f.ext();
+        return "mp4".equals(ext) || "m4v".equals(ext) || "mov".equals(ext)
+                || "avi".equals(ext) || "mkv".equals(ext) || "webm".equals(ext)
+                || "flv".equals(ext) || "wmv".equals(ext);
+    }
+
+    private static boolean pathHits(VFile f, List<String> keys) {
+        String path;
+        try {
+            path = f.pathAfterRoot();
+        } catch (Throwable t) {
+            path = f.name;
+        }
+        String low = (path == null ? "" : path).toLowerCase();
+        for (String k : keys) {
+            if (low.contains(k)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** 当前是否有任务在跑（任务中心同一时间只允许一个）。 */
     public boolean isTaskBusy() {
         TaskControl c = TaskCenter.current();
@@ -1754,6 +1832,9 @@ public class MainActivity extends Activity implements Logger {
                     files = Scanner.walkMusic(st, root(), true,
                             progressCallback(), cancelToken(), dups);
                 }
+                // 扫描过滤（v0.1.80）：按路径关键字剔除、按需忽略视频文件。
+                // 放在增量合并之前 —— 被过滤掉的文件不该进 lastFiles，否则列表里一直有它们。
+                files = applyScanFilters(files);
                 // 增量：上一次扫到的文件如果 size / lastModified 都没变，就把已经读过的标签
                 // 接力到新对象上（增量同步判定）。这样重扫目录只是重走
                 // SAF 遍历，不必再把整库标签读一遍。

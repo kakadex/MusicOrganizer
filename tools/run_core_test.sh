@@ -64,6 +64,7 @@ mkdir -p "$OUT/classes"
     "$CORE/Layout.java" "$CORE/HealthCheck.java" "$CORE/LyricsShift.java" "$CORE/CsvExport.java" \
     "$CORE/LyricsTimeline.java" "$CORE/Junk.java" "$CORE/MoveLog.java" "$CORE/Krc.java" \
     "$CORE/MediaTrack.java" "$CORE/SourceRank.java" "$CORE/TagText.java" "$CORE/Id3.java" "$CORE/Bitrate.java" \
+    "$CORE/LyricsTool.java" "$CORE/TagFix.java" "$CORE/MatchDedupe.java" \
     "$PROJ/app/src/main/java/com/dsh/musicorganizer/net/Net.java" \
     "$PROJ/app/src/main/java/com/dsh/musicorganizer/net/Endpoints.java" \
     "$PROJ/tools/NameWeightTest.java" "$PROJ/tools/TagFillTest.java" \
@@ -81,7 +82,8 @@ mkdir -p "$OUT/classes"
     "$PROJ/tools/MoveLogTest.java" "$PROJ/tools/KrcTest.java" "$PROJ/tools/MediaTrackTest.java" \
     "$PROJ/tools/SourceRankTest.java" "$PROJ/tools/TagTextTest.java" "$PROJ/tools/TrackInfoTest.java" "$PROJ/tools/TrackRestoreTest.java" "$PROJ/tools/DupFilesTest.java" \
     "$PROJ/tools/ScanMergeTest.java" \
-    "$PROJ/tools/LyricsFormatTest.java" "$PROJ/tools/BitrateTest.java"
+    "$PROJ/tools/LyricsFormatTest.java" "$PROJ/tools/BitrateTest.java" \
+    "$PROJ/tools/LyricsToolTest.java" "$PROJ/tools/TagFixTest.java" "$PROJ/tools/MatchDedupeTest.java"
 
 "$JAVA" -Dfile.encoding=UTF-8 -cp "$OUT/classes" NameWeightTest
 "$JAVA" -Dfile.encoding=UTF-8 -cp "$OUT/classes" TagFillTest
@@ -121,3 +123,6 @@ mkdir -p "$OUT/classes"
 "$JAVA" -Dfile.encoding=UTF-8 -cp "$OUT/classes" ScanMergeTest
 "$JAVA" -Dfile.encoding=UTF-8 -cp "$OUT/classes" LyricsFormatTest
 "$JAVA" -Dfile.encoding=UTF-8 -cp "$OUT/classes" BitrateTest
+"$JAVA" -Dfile.encoding=UTF-8 -cp "$OUT/classes" LyricsToolTest
+"$JAVA" -Dfile.encoding=UTF-8 -cp "$OUT/classes" TagFixTest
+"$JAVA" -Dfile.encoding=UTF-8 -cp "$OUT/classes" MatchDedupeTest

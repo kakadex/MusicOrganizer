@@ -26,6 +26,8 @@ import com.dsh.musicorganizer.core.Scanner;
 import com.dsh.musicorganizer.core.Storage;
 import com.dsh.musicorganizer.core.TagIO;
 import com.dsh.musicorganizer.core.TagTransaction;
+import com.dsh.musicorganizer.core.TagFix;
+import com.dsh.musicorganizer.core.MediaRefresh;
 import com.dsh.musicorganizer.core.Tags;
 import com.dsh.musicorganizer.core.TextUtil;
 import com.dsh.musicorganizer.core.VFile;
@@ -35,6 +37,8 @@ import com.dsh.musicorganizer.net.Sources;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -190,29 +194,39 @@ public final class TagEditorDialog {
 
             LinearLayout btns = UiKit.horizontal(ctx);
             UiKit.margin(btns, 0, 6, 0, 0);
-            // 三个按钮等宽等高：文案缩到 11sp 并允许换两行，避免窄屏上最右侧被裁掉
-            String[] coverLabels = {"在线取封面", "从文件选封面", "移除封面"};
-            Button[] coverBtns = new Button[3];
-            int coverBtnH = UiKit.dp(ctx, 52);
-            for (int i = 0; i < coverLabels.length; i++) {
-                Button b = UiKit.button(ctx, coverLabels[i], false);
-                b.setTextSize(11f);
-                b.setSingleLine(false);
-                b.setMaxLines(2);
-                b.setGravity(Gravity.CENTER);
-                b.setPadding(UiKit.dp(ctx, 4), UiKit.dp(ctx, 4),
-                        UiKit.dp(ctx, 4), UiKit.dp(ctx, 4));
-                LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(0, coverBtnH, 1f);
-                if (i > 0) {
-                    blp.setMargins(UiKit.dp(ctx, 6), 0, 0, 0);
+            // 四个动作排成两行（窄屏一行放不下）：在线取 / 本地选 // 移除 / 导出到目录
+            LinearLayout btns1 = UiKit.horizontal(ctx);
+            UiKit.margin(btns1, 0, 6, 0, 0);
+            info.addView(btns1);
+            LinearLayout btns2 = UiKit.horizontal(ctx);
+            UiKit.margin(btns2, 0, 6, 0, 0);
+            info.addView(btns2);
+
+            String[][] rows = {{"在线取封面", "从文件选封面"}, {"移除封面", "导出到目录"}};
+            Button[][] coverBtns = new Button[2][2];
+            for (int r = 0; r < rows.length; r++) {
+                LinearLayout line = r == 0 ? btns1 : btns2;
+                for (int i = 0; i < rows[r].length; i++) {
+                    Button b = UiKit.button(ctx, rows[r][i], false);
+                    b.setTextSize(11f);
+                    b.setSingleLine(false);
+                    b.setMaxLines(2);
+                    b.setGravity(Gravity.CENTER);
+                    b.setPadding(UiKit.dp(ctx, 4), UiKit.dp(ctx, 4),
+                            UiKit.dp(ctx, 4), UiKit.dp(ctx, 4));
+                    LinearLayout.LayoutParams blp =
+                            new LinearLayout.LayoutParams(0, UiKit.dp(ctx, 48), 1f);
+                    if (i > 0) {
+                        blp.setMargins(UiKit.dp(ctx, 6), 0, 0, 0);
+                    }
+                    line.addView(b, blp);
+                    coverBtns[r][i] = b;
                 }
-                btns.addView(b, blp);
-                coverBtns[i] = b;
             }
-            final Button online = coverBtns[0];
-            final Button pick = coverBtns[1];
-            final Button remove = coverBtns[2];
-            info.addView(btns);
+            final Button online = coverBtns[0][0];
+            final Button pick = coverBtns[0][1];
+            final Button remove = coverBtns[1][0];
+            final Button export = coverBtns[1][1];
 
             coverSection.body.addView(row);
             coverSection.body.addView(UiKit.caption(ctx,
@@ -240,6 +254,12 @@ public final class TagEditorDialog {
                     refreshSaveButton();
                 }
             });
+            export.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    exportCover();
+                }
+            });
             box.addView(coverSection.root);
         }
 
@@ -262,7 +282,127 @@ public final class TagEditorDialog {
             section.body.addView(row);
 
             addField(section.body, "comment", "注释");
+
+            // 两个本地修正工具（v0.1.80）：编码修正救回读错的乱码，清理文本去掉多余空格/全角
+            LinearLayout tools = UiKit.horizontal(ctx);
+            UiKit.margin(tools, 0, 8, 0, 0);
+            Button fixEnc = UiKit.button(ctx, "编码修正", false);
+            fixEnc.setTextSize(12f);
+            Button tidy = UiKit.button(ctx, "清理文本", false);
+            tidy.setTextSize(12f);
+            tools.addView(fixEnc, new LinearLayout.LayoutParams(0, UiKit.dp(ctx, 40), 1f));
+            LinearLayout.LayoutParams tlp =
+                    new LinearLayout.LayoutParams(0, UiKit.dp(ctx, 40), 1f);
+            tlp.setMargins(UiKit.dp(ctx, 6), 0, 0, 0);
+            tools.addView(tidy, tlp);
+            section.body.addView(tools);
+            fixEnc.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    openEncodingFix();
+                }
+            });
+            tidy.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    tidyText();
+                }
+            });
             box.addView(section.root);
+        }
+
+        /** 当前表单里某个字段的值。 */
+        private String valueOf(String key) {
+            EditText et = inputs.get(key);
+            return et == null ? "" : et.getText().toString();
+        }
+
+        /**
+         * 编码修正（v0.1.80）：把「按错误编码解出来」的乱码重新按 GBK / UTF-8 / Big5 解释一遍。
+         *
+         * <p>只对「每个字符都 ≤ U+00FF」的字符串有意义 —— 那才是典型的多字节文本被当成
+         * Latin-1 解出来的样子（{@code Ã©} 这类）。真中文不需要修，直接提示。
+         */
+        private void openEncodingFix() {
+            final String[] keys = {"title", "artist", "album"};
+            boolean any = false;
+            for (String k : keys) {
+                if (looksMojibake(valueOf(k))) {
+                    any = true;
+                    break;
+                }
+            }
+            if (!any) {
+                host.toast("标题 / 艺术家 / 专辑看起来不是乱码，不需要修正");
+                return;
+            }
+            final String[] charsets = {"GBK", "UTF-8", "Big5"};
+            final String[] labels = new String[charsets.length + 1];
+            labels[0] = "保持原样";
+            for (int i = 0; i < charsets.length; i++) {
+                StringBuilder sb = new StringBuilder("按 " + charsets[i] + " 重新解释：");
+                sb.append(preview(keys, charsets[i]));
+                labels[i + 1] = sb.toString();
+            }
+            new AlertDialog.Builder(ctx)
+                    .setTitle("编码修正")
+                    .setItems(labels, new android.content.DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(android.content.DialogInterface d, int which) {
+                            if (which == 0) {
+                                return;
+                            }
+                            String cs = charsets[which - 1];
+                            for (String k : keys) {
+                                String old = valueOf(k);
+                                String now = reinterpret(old, cs);
+                                if (!now.equals(old)) {
+                                    EditText et = inputs.get(k);
+                                    if (et != null) {
+                                        et.setText(now);
+                                    }
+                                }
+                            }
+                            status.setText("已按 " + cs + " 重新解释，确认无误后保存");
+                        }
+                    })
+                    .setNegativeButton("取消", null)
+                    .show();
+        }
+
+        private String preview(String[] keys, String cs) {
+            StringBuilder sb = new StringBuilder();
+            for (String k : keys) {
+                String now = reinterpret(valueOf(k), cs);
+                if (!now.isEmpty()) {
+                    if (sb.length() > 0) {
+                        sb.append(" / ");
+                    }
+                    sb.append(now);
+                }
+            }
+            return sb.length() == 0 ? "（空）" : sb.toString();
+        }
+
+        /** 本地清理：去多余空格 / 全角转半角 / 音轨补零（不走网络，也不碰封面）。 */
+        private void tidyText() {
+            int ops = TagFix.TRIM | TagFix.SPACES | TagFix.WIDTH | TagFix.TRACK;
+            int n = 0;
+            for (String k : TagFix.FIELDS) {
+                EditText et = inputs.get(k);
+                if (et == null) {
+                    continue;
+                }
+                String old = et.getText().toString();
+                String now = "track".equals(k)
+                        ? TagFix.clean(TagFix.track(old), ops & ~TagFix.TRACK)
+                        : TagFix.clean(old, ops);
+                if (!now.equals(old)) {
+                    et.setText(now);
+                    n++;
+                }
+            }
+            status.setText(n == 0 ? "没有需要清理的内容" : "已清理 " + n + " 项，确认无误后保存");
         }
 
         private void addField(LinearLayout parent, final String key, String label) {
@@ -335,6 +475,39 @@ public final class TagEditorDialog {
                     refreshSaveButton();
                 }
             });
+        }
+
+        /** 是否为「多字节文本被当 Latin-1 解出来」的样子：非 ASCII 但每个字符都 ≤ U+00FF。 */
+        private static boolean looksMojibake(String s) {
+            if (s == null || s.isEmpty()) {
+                return false;
+            }
+            boolean high = false;
+            for (int i = 0; i < s.length(); i++) {
+                char c = s.charAt(i);
+                if (c > 0xFF) {
+                    return false;   // 已经是正常中文
+                }
+                if (c > 0x7F) {
+                    high = true;
+                }
+            }
+            return high;
+        }
+
+        /** 取回「原始字节」再按指定编码解一次；做不到就原样返回。 */
+        private static String reinterpret(String s, String charset) {
+            if (!looksMojibake(s)) {
+                return s;
+            }
+            try {
+                byte[] raw = s.getBytes("ISO-8859-1");
+                String out = new String(raw, charset);
+                // 解出来还是乱码（含替换符）就当作失败
+                return out.indexOf('\uFFFD') >= 0 ? s : out;
+            } catch (Throwable t) {
+                return s;
+            }
         }
 
         // --------------------------------------------------------------
@@ -650,6 +823,77 @@ public final class TagEditorDialog {
         // --------------------------------------------------------------
         // 封面：在线 / 本地
         // --------------------------------------------------------------
+
+        /**
+         * 把这一首的封面导出成同目录的 {@code cover.jpg / cover.png}（v0.1.80）。
+         *
+         * <p>很多老曲库的音频本身没有内嵌封面，封面是文件夹里一张图；反过来，
+         * 从别处下来的单曲往往只有内嵌封面。导出之后同目录其它歌就能走「目录封面」显示，
+         * 配合「封面导出 + 目录封面兜底」形成一个闭环，不必给每首重复塞图。
+         */
+        private void exportCover() {
+            status.setText("正在导出封面…");
+            host.runTask("导出封面", new Tasks.Job() {
+                @Override
+                public Object run() throws Exception {
+                    Storage st = host.safeStorage();
+                    byte[] art = pendingCover != null
+                            ? (pendingCover.length > 0 ? pendingCover : null)
+                            : Scanner.readCover(st, host.getContentResolver(), file);
+                    if (art == null || art.length == 0) {
+                        return "";
+                    }
+                    boolean png = art.length > 8 && (art[0] & 0xFF) == 0x89
+                            && art[1] == 'P' && art[2] == 'N' && art[3] == 'G';
+                    String ext = png ? ".png" : ".jpg";
+                    String name = "cover" + ext;
+                    VFile dir = new VFile(file.parentId, null, "",
+                            "vnd.android.document/directory", 0L, 0L, true);
+                    VFile target = null;
+                    try {
+                        for (VFile k : st.children(dir)) {
+                            if (!k.dir && k.name.equalsIgnoreCase(name)) {
+                                target = k;   // 已有同名文件就覆盖，别攒出 cover(1).jpg
+                                break;
+                            }
+                        }
+                    } catch (Throwable ignored) {
+                    }
+                    File tmp = File.createTempFile("mo_coverout_", ext);
+                    try {
+                        FileOutputStream out = new FileOutputStream(tmp);
+                        out.write(art);
+                        out.close();
+                        if (target == null) {
+                            target = st.createFile(dir, name, png ? "image/png" : "image/jpeg");
+                        }
+                        st.writeFromLocal(target, tmp);
+                    } finally {
+                        //noinspection ResultOfMethodCallIgnored
+                        tmp.delete();
+                    }
+                    FolderCover.clear();          // 目录封面缓存要作废，否则新图要等重启才认
+                    MediaRefresh.scan(ctx, target);  // 顺带让系统媒体库看见这张图
+                    return name;
+                }
+            }, new Tasks.Callback() {
+                @Override
+                public void done(Object result, Exception error) {
+                    if (error != null) {
+                        status.setText("导出失败：" + TextUtil.shortError(error));
+                        return;
+                    }
+                    String name = String.valueOf(result);
+                    if (name.isEmpty()) {
+                        status.setText("这一首没有封面可导出");
+                        host.toast("没有内嵌封面可导出");
+                        return;
+                    }
+                    status.setText("已导出 " + name + " 到同目录（其它歌可用作目录封面）");
+                    host.toast("封面已导出：" + name);
+                }
+            });
+        }
 
         private void fetchCoverOnline() {
             status.setText("正在查找封面…");

@@ -2067,15 +2067,22 @@ public final class BrowsePage extends LinearLayout {
         }
         new UiKit.Builder(getContext())
                 .setTitle(f.name)
-                .setItems(new String[]{"编辑标签…", "手动归类到歌手…", "获取歌词", "查看信息"},
+                .setItems(new String[]{"编辑标签…", "歌词工具箱…", "清理标签文本",
+                                "手动归类到歌手…", "获取歌词", "查看信息"},
                         new android.content.DialogInterface.OnClickListener() {
                             @Override
                             public void onClick(android.content.DialogInterface d, int which) {
                                 if (which == 0) {
                                     TagEditorDialog.show(host, f);
                                 } else if (which == 1) {
-                                    manualClassify(f);
+                                    LyricsToolDialog.show(host, f);
                                 } else if (which == 2) {
+                                    List<VFile> one = new ArrayList<VFile>();
+                                    one.add(f);
+                                    BatchActions.tidyTags(host, one);
+                                } else if (which == 3) {
+                                    manualClassify(f);
+                                } else if (which == 4) {
                                     fetchOneLyrics(f);
                                 } else {
                                     showInfo(f);

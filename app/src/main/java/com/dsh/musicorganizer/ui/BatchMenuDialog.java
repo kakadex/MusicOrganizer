@@ -284,6 +284,20 @@ public final class BatchMenuDialog {
                         LyricsShiftDialog.show(host, sel.selectedFiles());
                     }
                 }));
+        items.add(new Item("整理歌词文本", "删空行 / 去头部标签 / 规范时间轴（只处理 .lrc）",
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        LyricsToolDialog.show(host, sel.selectedFiles());
+                    }
+                }));
+        items.add(new Item("清理标签文本", "去多余空格、全角转半角、音轨号补零",
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        BatchActions.tidyTags(host, sel.selectedFiles());
+                    }
+                }));
         items.add(new Item("查看歌词", "看歌词轴与逐字时间（看选中的第一首）",
                 new Runnable() {
                     @Override

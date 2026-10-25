@@ -6,6 +6,8 @@ import com.dsh.musicorganizer.core.CoverBatch;
 import com.dsh.musicorganizer.core.Lyrics;
 import com.dsh.musicorganizer.core.NameWeight;
 import com.dsh.musicorganizer.core.Scanner;
+import com.dsh.musicorganizer.core.TagFix;
+import com.dsh.musicorganizer.core.TagTransaction;
 import com.dsh.musicorganizer.core.Storage;
 import com.dsh.musicorganizer.core.TagBatch;
 import com.dsh.musicorganizer.core.TagFill;
@@ -468,6 +470,94 @@ public final class BatchActions {
      * <p>原来写死成「艺人 - 歌名」，现在交给 {@link RenameDialog}：模板可改、预设一键换、
      * 实时预览「旧名 → 新名」，确认后走长任务改名（可暂停/取消）。
      */
+    /**
+     * 批量清理标签文本（v0.1.80）：去多余空格、全角转半角、音轨号补零。
+     *
+     * <p>不联网、不改字段含义；{@code TagFix.plan} 只列真正需要变的字段，
+     * 全都干净的文件直接跳过（不算失败），所以整批跑完很便宜。
+     */
+    public static void tidyTags(final MainActivity host, final List<VFile> files) {
+        if (files == null || files.isEmpty()) {
+            host.toast("没有选中文件");
+            return;
+        }
+        final int ops = TagFix.TRIM | TagFix.SPACES | TagFix.WIDTH | TagFix.TRACK;
+        host.confirm("清理标签文本",
+                "对选中的 " + files.size() + " 首统一处理：\n"
+                        + "· 去掉首尾与重复空格\n"
+                        + "· 全角字母/数字/标点转半角\n"
+                        + "· 音轨号补零（1 → 01）\n\n"
+                        + "只改确实需要改的字段，写入前逐首校验。",
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        host.runTask("清理标签文本", new Tasks.Job() {
+                            @Override
+                            public Object run() throws Exception {
+                                Storage st = host.safeStorage();
+                                String batchId = "tidy-" + System.currentTimeMillis();
+                                int changed = 0;
+                                int skipped = 0;
+                                int failed = 0;
+                                List<String> errors = new ArrayList<String>();
+                                List<VFile> touched = new ArrayList<VFile>();
+                                for (VFile f : files) {
+                                    if (f == null || f.dir || !f.audio()) {
+                                        continue;
+                                    }
+                                    try {
+                                        Tags tags = Scanner.readTagsCheap(st,
+                                                host.getContentResolver(), f);
+                                        Map<String, String> plan = TagFix.plan(tags, ops);
+                                        if (plan.isEmpty()) {
+                                            skipped++;
+                                            continue;
+                                        }
+                                        String err = TagTransaction.apply(st,
+                                                host.getContentResolver(), host, f, plan,
+                                                true, batchId, host);
+                                        if (err == null || err.isEmpty()) {
+                                            changed++;
+                                            touched.add(f);
+                                        } else {
+                                            failed++;
+                                            errors.add(f.name + "：" + err);
+                                        }
+                                    } catch (Throwable t) {
+                                        failed++;
+                                        errors.add(f.name + "：" + TextUtil.shortError(t));
+                                    }
+                                }
+                                return new Object[]{new int[]{changed, skipped, failed},
+                                        errors, touched};
+                            }
+                        }, new Tasks.Callback() {
+                            @Override
+                            public void done(Object result, Exception error) {
+                                if (error != null) {
+                                    host.fail(error);
+                                    return;
+                                }
+                                Object[] arr = (Object[]) result;
+                                int[] r = (int[]) arr[0];
+                                @SuppressWarnings("unchecked")
+                                List<String> errors = (List<String>) arr[1];
+                                @SuppressWarnings("unchecked")
+                                List<VFile> touched = (List<VFile>) arr[2];
+                                host.log("清理标签文本：改动 " + r[0] + " 首，无需改动 " + r[1]
+                                        + " 首，失败 " + r[2] + " 首",
+                                        r[2] > 0 ? "warning" : "success");
+                                for (String e : errors) {
+                                    host.log(e, "warning");
+                                }
+                                host.toast("改动 " + r[0] + " 首，无需改动 " + r[1] + " 首");
+                                host.refreshBrowseTagOnly(touched);
+                            }
+                        });
+                    }
+                });
+    }
+
     public static void renameByTag(final MainActivity host, final List<VFile> files) {
         RenameDialog.show(host, files);
     }
