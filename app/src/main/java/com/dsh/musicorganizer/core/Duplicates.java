@@ -13,7 +13,24 @@ import java.util.regex.Pattern;
  */
 public final class Duplicates {
 
+    /**
+     * 「确证」档门槛：相似度 ≥ 0.95 且不依赖「包含度兜底」的组。
+     *
+     * <p>低于它的不丢，只是标「疑似」并默认不勾选 —— 查重是提示，误删是不可逆的。
+     */
+    public static final double HIGH_CONFIDENCE = 0.95;
+
     private Duplicates() {
+    }
+
+    /**
+     * 读音频时长（秒）；返回 0 表示读不到。
+     *
+     * <p>只在「短名被长名完整包含」这种最容易误判的情况下才调用，实现方应自行缓存 ——
+     * 一次查重里同一首可能被问好几次。
+     */
+    public interface DurationSource {
+        double durationOf(VFile file);
     }
 
     private static final Pattern COPY_SUFFIX_RE = Pattern.compile(
@@ -24,6 +41,11 @@ public final class Duplicates {
     private static final Pattern COPY_MARK_RE = Pattern.compile(
             "[（(]\\s*\\d+\\s*[)）]|[-_ ]\\s*(?:副本|拷贝|copy|複製|复制)\\s*\\d*\\s*$",
             Pattern.CASE_INSENSITIVE);
+
+    /** 相似度门槛：完全相同或 ≥ 0.90 即成组。 */
+    private static final double THRESHOLD = 0.90;
+    /** 整串比较前的长度比门槛：差太多根本不必算相似度（省时间，也避免长串包含短串误判）。 */
+    private static final double MIN_LEN_RATIO = 0.58;
 
     public static String normalizeDuplicateKey(String stem) {
         String text = TextUtil.stripTrailingNumericSuffix(stem == null ? "" : stem);
@@ -38,6 +60,32 @@ public final class Duplicates {
             }
         }
         return sb.toString();
+    }
+
+    /**
+     * 只留歌名的归一键。
+     *
+     * <p>「陈奕迅-十年」→{@code 十年}；解析不出艺人时等价于整串归一。
+     * 查重真正要比的是歌名，艺人只是同一首歌的额外信息。
+     */
+    public static String titleKeyOf(String stem) {
+        String s = stem == null ? "" : stem;
+        NameParser.Split split = NameParser.splitArtistTitle(s);
+        String title = split == null ? NameParser.stripNameNoise(s) : split.right;
+        return normalizeDuplicateKey(title);
+    }
+
+    /** 只留艺人的归一键；解析不出艺人时返回空串。 */
+    public static String artistKeyOf(String stem) {
+        NameParser.Split split = NameParser.splitArtistTitle(stem == null ? "" : stem);
+        return split == null ? "" : normalizeDuplicateKey(split.left);
+    }
+
+    /** 整串比较前的长度比门槛（标题比较不走这道门，标题本来就短）。 */
+    private static boolean lengthGateOk(String a, String b) {
+        int min = Math.min(a.length(), b.length());
+        int max = Math.max(a.length(), b.length());
+        return min > 0 && min / (double) max >= MIN_LEN_RATIO;
     }
 
     private static Set<String> bigrams(String text) {
@@ -71,6 +119,12 @@ public final class Duplicates {
         public final String key;
         /** 组内最高相似度（1.0 表示归一后完全相同，可能只差「(1)」「副本」这类尾巴） */
         public double score = 1.0;
+        /**
+         * 疑似：要么相似度落在 [0.90, 0.95)，要么靠「短名被长名包含」达成命中但读不到时长。
+         *
+         * <p>界面据此默认不勾选，让用户先确认再删。
+         */
+        public boolean suspect;
 
         public Group(String key) {
             this.key = key;
@@ -121,19 +175,25 @@ public final class Duplicates {
         return best;
     }
 
-    /** 摘要文案：「3 组 · 5 个多余文件 · 约 12.3 MB」，供对话框与日志复用。 */
+    /** 摘要文案：「3 组 · 5 个多余文件 · 约 12.3 MB」，有疑似组时一并说明。 */
     public static String summary(List<Group> groups) {
         if (groups == null || groups.isEmpty()) {
             return "没有发现相似文件";
         }
         long wasted = 0;
         int extra = 0;
+        int suspect = 0;
         for (Group g : groups) {
             extra += Math.max(0, g.files.size() - 1);
             wasted += g.wastedBytes();
+            if (g.suspect) {
+                suspect++;
+            }
         }
-        return groups.size() + " 组 · " + extra + " 个多余文件 · 约 "
-                + TextUtil.formatSize(wasted);
+        String head = suspect > 0
+                ? groups.size() + " 组（其中 " + suspect + " 组疑似）"
+                : groups.size() + " 组";
+        return head + " · " + extra + " 个多余文件 · 约 " + TextUtil.formatSize(wasted);
     }
 
     private static class UnionFind {
@@ -175,10 +235,30 @@ public final class Duplicates {
     }
 
     /**
-     * 查找相似文件名分组。threshold 与 Python 版一致：完全相同或相似度 ≥ 0.90。
+     * 查找相似文件名分组（不读时长，包含度命中一律按「疑似」处理）。
+     *
+     * <p>保留这个签名是为了纯逻辑测试与不带 Storage 的调用方。
      */
     public static List<Group> find(List<VFile> audioFiles, String rootDocId,
                                    Progress progress, CancelToken cancel) {
+        return find(audioFiles, rootDocId, progress, cancel, null);
+    }
+
+    /**
+     * 查找相似文件名分组。完全相同或相似度 ≥ 0.90 即成组。
+     *
+     * <p><b>为什么用综合相似度而不是纯编辑距离</b>：带艺人前缀的文件名
+     * （{@code 艺人-歌名} 与 {@code 歌名}）编辑距离永远差好几个字，
+     * 纯 Levenshtein 只有 0.6 上下，等于「只要写了艺人就查不出来」。
+     * 综合相似度里的「包含度」能识别出「短名整个出现在长名里」，这正是同曲不同命名的典型形态。
+     *
+     * <p><b>但包含度会误伤前缀延长的不同歌</b>（{@code 歌名} 与 {@code 歌名加长版} 也可能到 0.90），
+     * 所以包含度单独命中时要求时长对得上（差 ≤3s 或 ≤2%）；读不到时长就并组但标
+     * {@link Group#suspect}，界面默认不勾选。
+     */
+    public static List<Group> find(List<VFile> audioFiles, String rootDocId,
+                                   Progress progress, CancelToken cancel,
+                                   final DurationSource durations) {
         int total = audioFiles.size();
         if (total == 0) {
             return new ArrayList<Group>();
@@ -187,8 +267,15 @@ public final class Duplicates {
             progress.onProgress(0, total, "已找到 " + total + " 个音频文件，正在比较文件名");
         }
         List<String> keys = new ArrayList<String>(total);
+        // 标题键：把「艺人-歌名」里的艺人剥掉，只留歌名。
+        // 不这么做的话「陈奕迅-十年」与「十年」长度比只有 0.4，在比相似度之前就被
+        // 0.58 的长度门槛刷掉 —— 这是「带艺人前缀就查不出重复」的另一半原因。
+        List<String> titleKeys = new ArrayList<String>(total);
+        List<String> artistKeys = new ArrayList<String>(total);
         for (int i = 0; i < total; i++) {
             keys.add(normalizeDuplicateKey(audioFiles.get(i).stem()));
+            titleKeys.add(titleKeyOf(audioFiles.get(i).stem()));
+            artistKeys.add(artistKeyOf(audioFiles.get(i).stem()));
         }
 
         UnionFind uf = new UnionFind(total);
@@ -212,7 +299,7 @@ public final class Duplicates {
         Map<String, List<Integer>> inverted = new HashMap<String, List<Integer>>();
         for (int i = 0; i < total; i++) {
             String key = keys.get(i);
-            if (key.length() < 3) {
+            if (key.length() < 2) {
                 continue;
             }
             for (String gram : bigrams(key)) {
@@ -226,6 +313,9 @@ public final class Duplicates {
         }
 
         Set<Long> compared = new HashSet<Long>();
+        // 靠「包含度」命中但没读到时长的文件：成组后整组标「疑似」
+        final boolean[] unknownDuration = new boolean[total];
+        final Map<String, Double> durCache = new HashMap<String, Double>();
         for (int i = 0; i < total; i++) {
             if (cancel != null && cancel.isCancelled()) {
                 return new ArrayList<Group>();
@@ -234,7 +324,7 @@ public final class Duplicates {
                 progress.onProgress(i, total, "正在比较相似文件名");
             }
             String key = keys.get(i);
-            if (key.length() < 3) {
+            if (key.length() < 2) {
                 continue;
             }
             Set<Integer> candidates = new HashSet<Integer>();
@@ -263,16 +353,61 @@ public final class Duplicates {
                 if (otherKey.isEmpty()) {
                     continue;
                 }
-                int minLen = Math.min(key.length(), otherKey.length());
-                int maxLen = Math.max(key.length(), otherKey.length());
-                if (minLen == 0 || minLen / (double) maxLen < 0.58) {
-                    continue;
-                }
+                String t1 = titleKeys.get(i);
+                String t2 = titleKeys.get(other);
+                boolean bothTitles = !t1.isEmpty() && !t2.isEmpty();
+
+                boolean matched;
+                boolean containsDriven = false;
                 if (key.equals(otherKey)) {
-                    uf.union(i, other);
-                    continue;
+                    matched = true;                       // 归一后完全相同：复制件
+                } else if (bothTitles && t1.equals(t2)) {
+                    // 标题一致、只差艺人前缀 —— 通常就是「艺人-歌名 / 歌名」这种同一首。
+                    // 但两边都写了艺人且明显不是一个人时，多半是翻唱或重名曲，别自动并组。
+                    String a1 = artistKeys.get(i);
+                    String a2 = artistKeys.get(other);
+                    boolean bothArtists = !a1.isEmpty() && !a2.isEmpty();
+                    matched = !(bothArtists && TextUtil.smartSimilarity(a1, a2) < 0.80);
+                } else {
+                    double fullScore = 0;
+                    double fullContains = 0;
+                    if (lengthGateOk(key, otherKey)) {
+                        fullScore = TextUtil.smartSimilarity(key, otherKey);
+                        fullContains = TextUtil.containsSimilarity(key, otherKey);
+                    }
+                    double titleScore = 0;
+                    double titleContains = 0;
+                    if (bothTitles) {
+                        titleScore = TextUtil.smartSimilarity(t1, t2);
+                        titleContains = TextUtil.containsSimilarity(t1, t2);
+                    }
+                    if (Math.max(fullScore, titleScore) < THRESHOLD) {
+                        matched = false;
+                    } else if (titleScore >= fullScore) {
+                        matched = true;
+                        containsDriven = titleContains >= THRESHOLD;
+                    } else {
+                        matched = true;
+                        containsDriven = fullContains >= THRESHOLD;
+                    }
                 }
-                if (TextUtil.ratio(key, otherKey) >= 0.90) {
+
+                if (matched && containsDriven) {
+                    // 包含度单独就够 0.90 时最容易误判（短名整个落在长名里），
+                    // 必须再拿时长确认一次；读不到就并组但打「疑似」标记。
+                    double d1 = durationOf(durations, durCache, audioFiles.get(i));
+                    double d2 = durationOf(durations, durCache, audioFiles.get(other));
+                    if (d1 > 0 && d2 > 0) {
+                        double tol = Math.max(3.0, Math.max(d1, d2) * 0.02);
+                        if (Math.abs(d1 - d2) > tol) {
+                            matched = false;              // 时长差太多：不是同一首
+                        }
+                    } else {
+                        unknownDuration[i] = true;
+                        unknownDuration[other] = true;
+                    }
+                }
+                if (matched) {
                     uf.union(i, other);
                 }
                 count++;
@@ -292,11 +427,16 @@ public final class Duplicates {
             }
             VFile f = audioFiles.get(i);
             group.files.add(new Item(f, f.pathAfterRoot(), f.size, null));
+            if (unknownDuration[i]) {
+                group.suspect = true;
+            }
         }
         List<Group> out = new ArrayList<Group>();
         for (Group group : clusters.values()) {
             if (group.files.size() >= 2) {
                 group.score = groupScore(group);
+                // 相似度没到「确证」档的也标疑似：0.90~0.95 之间确实可能是不同版本
+                group.suspect = group.suspect || group.score < HIGH_CONFIDENCE;
                 out.add(group);
             }
         }
@@ -326,17 +466,54 @@ public final class Duplicates {
         double best = 0;
         for (int i = 0; i < group.files.size(); i++) {
             String a = normalizeDuplicateKey(group.files.get(i).file.stem());
+            String ta = titleKeyOf(group.files.get(i).file.stem());
             for (int j = i + 1; j < group.files.size(); j++) {
                 String b = normalizeDuplicateKey(group.files.get(j).file.stem());
+                String tb = titleKeyOf(group.files.get(j).file.stem());
                 if (a.equals(b)) {
                     return 1.0;
                 }
-                double s = TextUtil.ratio(a, b);
+                // 标题一致（只差艺人前缀）按确证算 —— 这正是「艺人-歌名 / 歌名」的形态；
+                // 但两边艺人明确不同（翻唱/重名）不按确证，交给下面的相似度打分
+                if (!ta.isEmpty() && ta.equals(tb)) {
+                    String aa = artistKeyOf(group.files.get(i).file.stem());
+                    String ab = artistKeyOf(group.files.get(j).file.stem());
+                    boolean both = !aa.isEmpty() && !ab.isEmpty();
+                    if (!both || TextUtil.smartSimilarity(aa, ab) >= 0.80) {
+                        return 1.0;
+                    }
+                }
+                // 必须与成组判定用同一个函数，否则界面显示 60% 却已经成组（v0.1.84 修）
+                double s = Math.max(TextUtil.smartSimilarity(a, b),
+                        TextUtil.smartSimilarity(ta, tb));
                 if (s > best) {
                     best = s;
                 }
             }
         }
         return best;
+    }
+
+    /** 取时长（带缓存）；来源为 null 或读失败都按「未知」返回 0。 */
+    private static double durationOf(DurationSource src, Map<String, Double> cache, VFile file) {
+        if (src == null || file == null) {
+            return 0;
+        }
+        String key = (file.docId == null || file.docId.isEmpty()) ? file.name : file.docId;
+        Double cached = cache.get(key);
+        if (cached != null) {
+            return cached.doubleValue();
+        }
+        double value = 0;
+        try {
+            value = src.durationOf(file);
+        } catch (Exception ignored) {
+            value = 0;
+        }
+        if (value < 0) {
+            value = 0;
+        }
+        cache.put(key, Double.valueOf(value));
+        return value;
     }
 }

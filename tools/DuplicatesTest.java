@@ -36,6 +36,7 @@ public final class DuplicatesTest {
         grouping();
         copies();
         nearMiss();
+        artistPrefix();
         keepRule();
         scoring();
         ordering();
@@ -119,6 +120,66 @@ public final class DuplicatesTest {
         check("单字母短名不乱合并（长度 < 3 不参与）", g.size() == 0);
     }
 
+    /**
+     * 艺人前缀 / 包含度兜底（v0.1.84）：
+     * 「示例歌手-示例歌名」与「示例歌名」这种同曲不同命名，纯编辑距离只有 0.6 查不出；
+     * 换成综合相似度后靠「包含度」命中，但必须用时长把「示例歌名加长版」这类挡在外面。
+     */
+    private static void artistPrefix() {
+        section("艺人前缀（包含度）");
+        java.util.Map<String, Double> dur = new java.util.HashMap<String, Double>();
+        dur.put("示例歌名.mp3", 245.0);
+        dur.put("示例歌手-示例歌名.mp3", 246.0);
+        List<Duplicates.Group> g = runDur(dur,
+                file("Music/示例歌手-示例歌名.mp3", 6_800_000),
+                file("Music/示例歌名.mp3", 6_100_000));
+        check("带艺人前缀的同曲能成组", g.size() == 1);
+        check("标题一致按确证算（score=1.0）", !g.isEmpty()
+                && Math.abs(g.get(0).score - 1.0) < 1e-9);
+        check("确证组不标疑似", !g.isEmpty() && !g.get(0).suspect);
+
+        section("同名但艺人明确不同（翻唱/重名）");
+        java.util.Map<String, Double> durX = new java.util.HashMap<String, Double>();
+        durX.put("示例歌手甲-示例歌名.mp3", 240.0);
+        durX.put("示例歌手乙-示例歌名.mp3", 240.0);
+        check("不自动并组", runDur(durX,
+                file("Music/示例歌手甲-示例歌名.mp3", 3_000_000),
+                file("Music/示例歌手乙-示例歌名.mp3", 3_000_000)).isEmpty());
+
+        section("前缀延长但时长不符（必须挡住）");
+        java.util.Map<String, Double> dur2 = new java.util.HashMap<String, Double>();
+        dur2.put("示例歌名.mp3", 245.0);
+        dur2.put("示例歌名加长版.mp3", 180.0);
+        check("时长差 60s 不并组", runDur(dur2,
+                file("Music/示例歌名.mp3", 3_000_000),
+                file("Music/示例歌名加长版.mp3", 3_000_000)).isEmpty());
+
+        java.util.Map<String, Double> dur3 = new java.util.HashMap<String, Double>();
+        dur3.put("示例歌名.mp3", 245.0);
+        dur3.put("示例歌名加长版.mp3", 246.5);
+        check("时长一致则并组（疑似）", runDur(dur3,
+                file("Music/示例歌名.mp3", 3_000_000),
+                file("Music/示例歌名加长版.mp3", 3_100_000)).size() == 1);
+
+        section("读不到时长");
+        List<Duplicates.Group> unknown = runDur(new java.util.HashMap<String, Double>(),
+                file("Music/示例歌名.mp3", 3_000_000),
+                file("Music/示例歌名加长版.mp3", 3_000_000));
+        check("时长未知仍并组", unknown.size() == 1);
+        check("但标疑似（默认不勾选）", unknown.size() == 1 && unknown.get(0).suspect);
+
+        section("确证档不标疑似");
+        java.util.Map<String, Double> dur4 = new java.util.HashMap<String, Double>();
+        dur4.put("示例歌名 (1).mp3", 245.0);
+        dur4.put("示例歌名.mp3", 245.0);
+        List<Duplicates.Group> copy = runDur(dur4,
+                file("Music/示例歌名 (1).mp3", 3_000_000),
+                file("Music/示例歌名.mp3", 3_000_000));
+        check("复制件归一后 score=1.0", copy.size() == 1
+                && Math.abs(copy.get(0).score - 1.0) < 1e-9);
+        check("确证档不标疑似", copy.size() == 1 && !copy.get(0).suspect);
+    }
+
     private static void keepRule() {
         section("建议保留");
         List<Duplicates.Group> g = run(
@@ -186,11 +247,24 @@ public final class DuplicatesTest {
     // ------------------------------------------------------------------
 
     private static List<Duplicates.Group> run(VFile... files) {
+        return runDur(new java.util.HashMap<String, Double>(), files);
+    }
+
+    /** 带时长来源的跑法：按文件名查时长，缺省视为「读不到」。 */
+    private static List<Duplicates.Group> runDur(final java.util.Map<String, Double> durations,
+                                                 VFile... files) {
         List<VFile> list = new ArrayList<VFile>();
         for (VFile f : files) {
             list.add(f);
         }
-        return Duplicates.find(list, "primary:Music", NO_PROGRESS, NO_CANCEL);
+        return Duplicates.find(list, "primary:Music", NO_PROGRESS, NO_CANCEL,
+                new Duplicates.DurationSource() {
+                    @Override
+                    public double durationOf(VFile file) {
+                        Double d = durations.get(file.name);
+                        return d == null ? 0 : d.doubleValue();
+                    }
+                });
     }
 
     private static VFile file(String docId, long size) {

@@ -47,15 +47,15 @@ public final class DuplicateDialog {
     public static void show(final MainActivity host, final List<Duplicates.Group> groups) {
         final Context ctx = host;
         final List<Row> rows = new ArrayList<Row>();
-        final Set<String> keepIds = new HashSet<String>();
 
         LinearLayout root = UiKit.vertical(ctx);
         int pad = UiKit.dp(ctx, 14);
         root.setPadding(pad, pad, pad, pad);
 
         root.addView(UiKit.caption(ctx,
-                "同一条歌可能因为「另存为」「复制到别的文件夹」留下多份。"
-                        + "下面是文件名相似度 ≥ 90% 的分组，勾选后删除，删掉的不会进回收站。"));
+                "同一条歌可能因为「另存为」「复制到别的文件夹」留下多份，也可能只是文件名写法不同"
+                        + "（带艺人前缀、带 (1) 尾巴）。下面是按文件名相似度 ≥ 90% 归出的分组；"
+                        + "标「疑似」的组相似度偏低或读不到时长，默认不勾选，建议先试听确认再删。"));
 
         // 「建议保留」的不给勾，避免手滑把唯一一份删了
         for (int i = 0; i < groups.size(); i++) {
@@ -65,8 +65,13 @@ public final class DuplicateDialog {
             UiKit.margin(card, 0, i == 0 ? 10 : 16, 0, 0);
 
             String head = "组 " + (i + 1) + " · " + group.files.size() + " 个文件 · 相似度 "
-                    + Math.round(group.score * 100) + "%";
+                    + Math.round(group.score * 100) + "%"
+                    + (group.suspect ? " · 疑似" : "");
             card.addView(UiKit.text(ctx, head, 14, UiKit.textColor(), true));
+            if (group.suspect) {
+                card.addView(UiKit.caption(ctx,
+                        "疑似同一首的不同命名或不同版本。默认不勾选，确认无误后再勾。"));
+            }
             TextView sub = UiKit.caption(ctx, "重复占用约 " + TextUtil.formatSize(group.wastedBytes()));
             card.addView(sub);
 
@@ -75,16 +80,13 @@ public final class DuplicateDialog {
                 boolean isKeep = j == keep;
                 String label = item.relative + "\n" + TextUtil.formatSize(item.size)
                         + (isKeep ? "  ·  建议保留" : "");
-                final CheckBox box = UiKit.checkbox(ctx, label, !isKeep);
+                // 疑似组默认不勾：查重是提示，误删不可逆
+                final CheckBox box = UiKit.checkbox(ctx, label, !isKeep && !group.suspect);
                 UiKit.margin(box, 0, 6, 0, 0);
-                if (isKeep) {
-                    box.setEnabled(false);
-                    keepIds.add(item.file.docId);
-                }
+                // 保留项不再强制锁定：用户可能想删掉被推荐保留的那一份。
+                // 校验阶段保证「每组至少留一个」，避免误删唯一副本。
                 card.addView(box);
-                if (!isKeep) {
-                    rows.add(new Row(item.file, box));
-                }
+                rows.add(new Row(item.file, box));
             }
             root.addView(card);
         }
@@ -141,6 +143,25 @@ public final class DuplicateDialog {
                                 if (picked.isEmpty()) {
                                     host.toast("没有勾选任何文件");
                                     return;
+                                }
+                                // 每组至少保留一个，禁止整组删光
+                                java.util.Set<String> pickedIds = new java.util.HashSet<String>();
+                                for (VFile f : picked) {
+                                    pickedIds.add(f.docId);
+                                }
+                                for (Duplicates.Group g : groups) {
+                                    int total = g.files.size();
+                                    int willDelete = 0;
+                                    for (Duplicates.Item it : g.files) {
+                                        if (pickedIds.contains(it.file.docId)) {
+                                            willDelete++;
+                                        }
+                                    }
+                                    if (willDelete >= total) {
+                                        host.toast("每组至少保留一个文件，不能把「"
+                                                + g.files.get(0).file.name + "」所在组整组删光");
+                                        return;
+                                    }
                                 }
                                 confirmDelete(host, dialog, picked);
                             }
@@ -199,10 +220,11 @@ public final class DuplicateDialog {
                     if (host.cancelToken().isCancelled()) {
                         break;
                     }
-                    if (st.delete(f)) {
+                    String reason = st.deleteWithReason(f);
+                    if (reason == null) {
                         ok++;
                     } else {
-                        failed.add(f.name);
+                        failed.add(f.name + "：" + reason);
                     }
                     host.progressCallback().onProgress(ok + failed.size(), picked.size(),
                             "正在删除重复文件");
@@ -220,10 +242,18 @@ public final class DuplicateDialog {
                 Object[] r = (Object[]) result;
                 int ok = ((Integer) r[0]).intValue();
                 List<String> failed = (List<String>) r[1];
+                StringBuilder detail = new StringBuilder();
+                for (String s : failed) {
+                    if (detail.length() > 0) {
+                        detail.append("\n");
+                    }
+                    detail.append(s);
+                }
                 host.log("查重删除：" + ok + " 个文件" + (failed.isEmpty() ? ""
-                        : "，失败 " + failed.size() + " 个"), failed.isEmpty() ? "success" : "warning");
+                        : "，失败 " + failed.size() + " 个\n" + detail),
+                        failed.isEmpty() ? "success" : "warning");
                 host.toast("已删除 " + ok + " 个文件"
-                        + (failed.isEmpty() ? "" : "，失败 " + failed.size()));
+                        + (failed.isEmpty() ? "" : "，失败 " + failed.size() + " 个"));
                 host.invalidateScan();
                 host.refreshBrowseAfterChange();
                 dialog.dismiss();

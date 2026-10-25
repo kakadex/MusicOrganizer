@@ -330,10 +330,22 @@ public final class Storage {
     }
 
     public boolean delete(VFile f) {
+        return deleteWithReason(f) == null;
+    }
+
+    /**
+     * 同 {@link #delete}，但把失败原因带出来（成功返回 null）。
+     *
+     * <p>之前删除失败只会返回 false、界面显示「失败 N 个」却给不出原因，
+     * 用户无法判断是权限、占用还是系统拒绝。这里把 {@code deleteDocument} 的
+     * 返回值和异常都转成可读文案，便于定位真正的删除失败。
+     */
+    public String deleteWithReason(VFile f) {
         try {
-            return DocumentsContract.deleteDocument(resolver, documentUri(f));
+            boolean ok = DocumentsContract.deleteDocument(resolver, documentUri(f));
+            return ok ? null : "系统拒绝删除（deleteDocument 返回 false，可能无权限或文件被占用）";
         } catch (Exception e) {
-            return false;
+            return "删除异常：" + TextUtil.shortError(e);
         }
     }
 

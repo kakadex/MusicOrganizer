@@ -174,15 +174,14 @@ public final class DupFilesDialog {
             DupFiles.Item keep = g.suggestKeep();
             for (DupFiles.Item it : g.items) {
                 boolean isKeep = it == keep;
-                String label = (isKeep ? "【保留】" : "") + it.path + "\n"
+                String label = (isKeep ? "【建议保留】" : "") + it.path + "\n"
                         + HealthCheck.size(it.size);
                 CheckBox box = UiKit.checkbox(ctx, label, !isKeep);
                 UiKit.margin(box, 0, 6, 0, 0);
-                if (isKeep) {
-                    box.setEnabled(false);
-                }
+                // 保留项不再强制锁定：用户可能想删掉被推荐保留的那一份。
+                // 只在删除前校验「每组至少留一个」，避免误删唯一副本。
                 VFile f = byId.get(it.docId);
-                if (f != null && !isKeep) {
+                if (f != null) {
                     boxes.put(it.docId, box);
                 }
                 card.addView(box);
@@ -232,6 +231,22 @@ public final class DupFilesDialog {
                     host.toast("没有勾选任何文件");
                     return;
                 }
+                // 每组至少保留一个，禁止把整组删光（否则会丢失这首歌）
+                for (DupFiles.Group g : groups) {
+                    int total = g.items.size();
+                    int willDelete = 0;
+                    for (DupFiles.Item it : g.items) {
+                        CheckBox b = boxes.get(it.docId);
+                        if (b != null && b.isChecked()) {
+                            willDelete++;
+                        }
+                    }
+                    if (willDelete >= total) {
+                        host.toast("每组至少保留一个文件，不能把「"
+                                + g.items.get(0).name + "」所在组整组删光");
+                        return;
+                    }
+                }
                 host.confirm("删除 " + selected.size() + " 个副本",
                         "这些文件不进回收站，删掉找不回来。确认只删副本、保留的那份不动？",
                         new Runnable() {
@@ -253,25 +268,22 @@ public final class DupFilesDialog {
                 int ok = 0;
                 int failed = 0;
                 long freed = 0;
+                List<String> failedNames = new ArrayList<String>();
                 for (VFile f : files) {
                     if (host.cancelToken().isCancelled()) {
                         break;
                     }
-                    boolean done;
-                    try {
-                        done = st.delete(f);
-                    } catch (Exception e) {
-                        done = false;
-                    }
-                    if (done) {
+                    String reason = st.deleteWithReason(f);
+                    if (reason == null) {
                         ok++;
                         freed += f.size;
                     } else {
                         failed++;
+                        failedNames.add(f.name + "：" + reason);
                     }
                 }
                 return new Object[]{Integer.valueOf(ok), Integer.valueOf(failed),
-                        Long.valueOf(freed)};
+                        Long.valueOf(freed), failedNames};
             }
         }, new Tasks.Callback() {
             @Override
@@ -284,9 +296,21 @@ public final class DupFilesDialog {
                 int ok = ((Integer) arr[0]).intValue();
                 int failed = ((Integer) arr[1]).intValue();
                 long freed = ((Long) arr[2]).longValue();
+                @SuppressWarnings("unchecked")
+                List<String> failedNames = (List<String>) arr[3];
+                StringBuilder detail = new StringBuilder();
+                for (String s : failedNames) {
+                    if (detail.length() > 0) {
+                        detail.append("\n");
+                    }
+                    detail.append(s);
+                }
                 host.log("删除重复副本：成功 " + ok + "，失败 " + failed
-                        + "，释放 " + HealthCheck.size(freed), failed > 0 ? "warning" : "success");
-                host.toast("已删除 " + ok + " 个副本，释放 " + HealthCheck.size(freed));
+                        + "，释放 " + HealthCheck.size(freed)
+                        + (detail.length() == 0 ? "" : "\n失败明细：\n" + detail),
+                        failed > 0 ? "warning" : "success");
+                host.toast("已删除 " + ok + " 个副本，释放 " + HealthCheck.size(freed)
+                        + (failed == 0 ? "" : "，失败 " + failed + " 个"));
                 host.invalidateScan();
             }
         });

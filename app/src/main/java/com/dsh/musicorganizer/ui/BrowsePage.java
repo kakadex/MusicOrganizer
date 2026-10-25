@@ -2305,7 +2305,7 @@ public final class BrowsePage extends LinearLayout {
         host.runTask("文件名查重", new Tasks.Job() {
             @Override
             public Object run() throws Exception {
-                Storage st = host.safeStorage();
+                final Storage st = host.safeStorage();
                 List<VFile> files = Scanner.walkMusic(st, host.root(), true,
                         host.progressCallback(), host.cancelToken());
                 List<VFile> audio = new ArrayList<VFile>();
@@ -2314,8 +2314,17 @@ public final class BrowsePage extends LinearLayout {
                         audio.add(f);
                     }
                 }
+                // 时长只在「包含度命中」的灰区才会被问到（见 Duplicates.find），
+                // 用来把「歌名」和「歌名加长版」这种前缀延长的不同曲挡掉。
                 return com.dsh.musicorganizer.core.Duplicates.find(audio, host.root().docId,
-                        host.progressCallback(), host.cancelToken());
+                        host.progressCallback(), host.cancelToken(),
+                        new com.dsh.musicorganizer.core.Duplicates.DurationSource() {
+                            @Override
+                            public double durationOf(VFile file) {
+                                Double d = Scanner.durationOf(st, host.getContentResolver(), file);
+                                return d == null ? 0 : d.doubleValue();
+                            }
+                        });
             }
         }, new Tasks.Callback() {
             @Override
