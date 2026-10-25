@@ -19,6 +19,18 @@ PKG="$(cd "$(dirname "$0")" && pwd)"
 PROJ="$PKG"
 MODE="${1:-release}"
 
+# --- versionName 后缀 = 源码内容哈希（v0.1.87 起）---
+# 同一份源码永远得到同一个后缀，任何改动都会变；比随机串可追溯，也不会像提交 SHA
+# 那样「先构建后提交」时标错代码。只编译模式不写文件；MO_NO_STAMP=1 可跳过。
+case "$MODE" in
+    check|compile) ;;
+    *)
+        if [ "${MO_NO_STAMP:-0}" != "1" ] && [ -x "$PROJ/tools/stamp-version.sh" ]; then
+            "$PROJ/tools/stamp-version.sh"
+        fi
+        ;;
+esac
+
 # --- 定位工具链：便携优先，其次系统环境 ---
 TOOLS=""
 if [ -d "$PKG/env/jdk17" ]; then
