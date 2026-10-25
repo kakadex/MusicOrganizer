@@ -12,6 +12,9 @@ import '../../core/model/vfile.dart';
 import '../../core/scan/search_index.dart';
 import '../../core/scan/search_query.dart';
 import '../../core/task/task_center.dart';
+import '../covers/covers_page.dart';
+import '../editor/editor_page.dart';
+import '../lyrics_batch/lyrics_batch_page.dart';
 import 'preview_sheet.dart';
 
 /// 曲库页：搜索 + 筛选 + 排序 + 多选 + 批量匹配。
@@ -291,10 +294,16 @@ class _LibraryPageState extends State<LibraryPage> {
       );
     }
     if (_shown.isEmpty) {
+      final bool failed = _status.contains('失败') || _status.contains('E_');
       return EmptyState(
-        icon: Icons.music_off,
-        text: _busy ? '正在扫描…' : '这个筛选下没有曲目',
-        hint: _busy ? null : '换个筛选条件，或点右上角重新扫描',
+        icon: failed ? Icons.error_outline : Icons.music_off,
+        text: _busy ? '正在扫描…' : (failed ? _status : '这个筛选下没有曲目'),
+        hint: _busy
+            ? null
+            : (failed ? '目录授权可能已失效，重新选一次目录即可' : '换个筛选条件，或点右上角重新扫描'),
+        action: failed
+            ? MoButton('重新选择目录', icon: Icons.folder_open, onPressed: _pickRoot)
+            : null,
       );
     }
     return ListView.builder(
@@ -360,9 +369,63 @@ class _LibraryPageState extends State<LibraryPage> {
             child: const Text('关闭'),
           ),
           const SizedBox(width: 6),
+          TextButton(
+            onPressed: _busy ? null : _moreForSelection,
+            child: const Text('更多'),
+          ),
           MoButton('匹配标签', busy: _busy, onPressed: _matchSelected),
         ],
       ),
+    );
+  }
+
+  /// 选中后的其它动作（补封面 / 补歌词）。
+  void _moreForSelection() {
+    final List<VFile> files = <VFile>[];
+    for (final Entry e in _shown) {
+      final VFile? f = e.file;
+      if (f != null && _selected.contains(e.docId)) files.add(f);
+    }
+    if (files.isEmpty) return;
+    showMoSheet<void>(
+      context,
+      title: '对选中的 ${files.length} 首',
+      children: <Widget>[
+        MoTile(
+          title: '批量补封面',
+          subtitle: '多源取图写入内嵌封面',
+          icon: Icons.image_outlined,
+          onTap: () {
+            Navigator.of(context).pop();
+            _push(CoversPage(files: files));
+          },
+        ),
+        MoTile(
+          title: '批量补歌词',
+          subtitle: '五源并发，按打分取最优',
+          icon: Icons.lyrics_outlined,
+          onTap: () {
+            Navigator.of(context).pop();
+            _push(LyricsBatchPage(files: files));
+          },
+        ),
+        MoTile(
+          title: '全选当前筛选结果',
+          icon: Icons.select_all,
+          onTap: () {
+            Navigator.of(context).pop();
+            setState(() => _selected
+              ..clear()
+              ..addAll(_shown.map((Entry e) => e.docId)));
+          },
+        ),
+      ],
+    );
+  }
+
+  void _push(Widget page) {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(builder: (BuildContext _) => page),
     );
   }
 
@@ -415,6 +478,14 @@ class _LibraryPageState extends State<LibraryPage> {
               _kv('大小', '${(e.size / 1024 / 1024).toStringAsFixed(2)} MB'),
               _kv('封面', e.hasCover ? '有' : '无'),
               _kv('歌词', e.hasLyrics ? '有' : '无'),
+              const SizedBox(height: 6),
+              MoButton('编辑标签', icon: Icons.edit_outlined, onPressed: () async {
+                final VFile? f = e.file;
+                if (f == null) return;
+                Navigator.of(context).pop();
+                final bool? changed = await EditorPage.show(context, f);
+                if (changed == true && mounted) _applyFilter();
+              }),
             ],
           ),
         ),

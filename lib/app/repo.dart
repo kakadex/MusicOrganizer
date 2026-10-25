@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -22,6 +23,7 @@ import '../core/task/match_runner.dart';
 import '../core/tx/journal.dart';
 import '../core/tx/tag_transaction.dart';
 import '../platform/media_refresh.dart';
+import 'theme/theme_controller.dart';
 
 /// 一次扫描的结果。
 class ScanOutcome {
@@ -49,7 +51,7 @@ class ScanOutcome {
 ///
 /// 页面只跟它打交道：取 [store] 读写、取 [files] 展示、取 [runner] 跑批量。
 /// 单例，进程内共享（Dart 单线程，不需要额外加锁）。
-class Repo {
+class Repo extends ChangeNotifier {
   Repo._();
 
   /// 进程内全局单例。
@@ -74,6 +76,9 @@ class Repo {
 
   /// 设置。
   final SettingsStore settings = SettingsStore();
+
+  /// 主题控制器（main 创建后挂上来，设置页切换主题用）。
+  ThemeController? themeController;
 
   bool _initialized = false;
   bool _scanning = false;
@@ -137,6 +142,7 @@ class Repo {
   /// 把设置写回持久化（界面改了之后调用）。
   Future<void> setSetting(String key, Object? value) async {
     settings.set(key, value);
+    notifyListeners();
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     if (value == null) {
       await prefs.remove(key);
@@ -152,22 +158,44 @@ class Repo {
   }
 
   /// 恢复上次的目录（有就静默恢复，没有返回 false）。
+  ///
+  /// 关键：**不能只从设置里读 treeUri 就当真**。真正能读写的前提是系统还记着
+  /// 这棵树的持久授权；重装、清数据、换设备后授权会消失，此时 listRoots 为空，
+  /// 直接拿旧 treeUri 去读会报「不属于任何已授权目录树」（E_NOT_FOUND）。
+  /// 所以这里以 [FileStore.roots] 为准：有授权才恢复，没有就返回 false 让界面引导重新授权。
   Future<bool> restoreRoot() async {
-    if (store == null) return false;
+    final FileStore? st = store;
+    if (st == null) return false;
     final SharedPreferences prefs = await SharedPreferences.getInstance();
+
     if (isDesktop) {
       // 桌面没有「授权」概念：上次的目录还在就直接用
       final String? path = prefs.getString('root_doc_id');
       if (path != null && Directory(path).existsSync()) {
         root = TreeRef(treeUri: 'file://$path', rootDocId: path);
+        notifyListeners();
         return true;
       }
       return false;
     }
-    final String? treeUri = prefs.getString('root_tree_uri');
-    final String? rootDocId = prefs.getString('root_doc_id');
-    if (treeUri == null || rootDocId == null) return false;
-    root = TreeRef(treeUri: treeUri, rootDocId: rootDocId);
+
+    List<TreeRef> roots;
+    try {
+      roots = await st.roots();
+    } catch (_) {
+      roots = <TreeRef>[];
+    }
+    if (roots.isEmpty) return false;
+    final String? saved = prefs.getString('root_doc_id');
+    TreeRef picked = roots.first;
+    for (final TreeRef t in roots) {
+      if (t.rootDocId == saved) {
+        picked = t;
+        break;
+      }
+    }
+    root = picked;
+    notifyListeners();
     return true;
   }
 
@@ -180,6 +208,7 @@ class Repo {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setString('root_tree_uri', t.treeUri);
     await prefs.setString('root_doc_id', t.rootDocId);
+    notifyListeners();
     return true;
   }
 
@@ -211,6 +240,7 @@ class Repo {
           ScanMerge.merge(incremental ? files : null, walk.files);
       files = merge.files;
       _rebuildIndex();
+      notifyListeners();
       final ScanStats stats = Scanner.statsOf(files);
       return ScanOutcome(files, stats, merge, walk.duplicates, '');
     } catch (e) {
@@ -266,6 +296,7 @@ class Repo {
       });
     } finally {
       _metaLoading = false;
+      notifyListeners();
     }
   }
 

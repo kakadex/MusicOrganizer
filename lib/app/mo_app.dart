@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'router.dart';
+import 'shell.dart';
 import 'theme/theme_controller.dart';
 
 /// 应用根组件（Phase 0 骨架）：主题源 + 路由表。
@@ -19,9 +19,7 @@ class MoApp extends StatelessWidget {
           title: 'MusicOrganizer',
           debugShowCheckedModeBanner: false,
           theme: themeController.themeData,
-          initialRoute: MoRoutes.home,
-          onGenerateRoute: (RouteSettings settings) =>
-              MoRouter.onGenerateRoute(settings, themeController),
+          home: const MoShell(),
         );
       },
     );

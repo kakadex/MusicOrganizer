@@ -1,0 +1,108 @@
+name: release
+
+# 推 v* tag 时出包并建 Release（安卓 APK + 桌面 zip）。
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布的 tag（已存在）'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter (stable)
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      - name: Build APK
+        run: flutter build apk --release --split-per-abi
+
+      - name: Collect APKs
+        run: |
+          mkdir -p out
+          for f in build/app/outputs/flutter-apk/app-*-release.apk; do
+            abi=$(basename "$f" | sed 's/^app-//; s/-release\.apk$//')
+            cp "$f" "out/musicorganizer-${abi}.apk"
+          done
+          ls -l out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: out/*.apk
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter (stable)
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Dependencies
+        run: flutter pub get
+
+      - name: Build Windows
+        run: flutter build windows --release
+
+      - name: Package zip
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path out | Out-Null
+          Compress-Archive -Path build\windows\x64\runner\Release\* `
+            -DestinationPath out\musicorganizer-windows-x64.zip -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-zip
+          path: out/musicorganizer-windows-x64.zip
+
+  publish:
+    needs: [android, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Show files
+        run: ls -l dist
+
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" dist/* \
+            --title "$TAG" \
+            --notes-file RELEASE_NOTES.md 2>/dev/null || \
+          gh release create "$TAG" dist/* --title "$TAG" --generate-notes

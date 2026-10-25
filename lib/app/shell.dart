@@ -68,6 +68,9 @@ class _MoShellState extends State<MoShell> {
                 child: Text('初始化失败：$_bootError',
                     style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.err(context))),
               ),
+            // 三个页面都常驻（IndexedStack）。注意：**不要在这里统一包 ListenableBuilder**——
+            // 子页面是 const 实例，widget 完全相同，Flutter 会跳过重建，监听白挂。
+            // 每个页面自己监听 Repo（见 OrganizePage / SettingsPage 的 build）。
             Expanded(
               child: IndexedStack(
                 index: _tab,
