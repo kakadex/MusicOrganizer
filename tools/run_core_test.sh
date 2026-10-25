@@ -66,6 +66,7 @@ mkdir -p "$OUT/classes"
     "$CORE/MediaTrack.java" "$CORE/SourceRank.java" "$CORE/TagText.java" "$CORE/Id3.java" "$CORE/Bitrate.java" \
     "$CORE/LyricsTool.java" "$CORE/TagFix.java" "$CORE/MatchDedupe.java" \
     "$PROJ/app/src/main/java/com/dsh/musicorganizer/net/Net.java" \
+    "$PROJ/app/src/main/java/com/dsh/musicorganizer/net/NetTuning.java" \
     "$PROJ/app/src/main/java/com/dsh/musicorganizer/net/Endpoints.java" \
     "$PROJ/tools/NameWeightTest.java" "$PROJ/tools/TagFillTest.java" \
     "$PROJ/tools/NetTest.java" "$PROJ/tools/PartialSinkTest.java" \
@@ -84,7 +85,7 @@ mkdir -p "$OUT/classes"
     "$PROJ/tools/ScanMergeTest.java" \
     "$PROJ/tools/LyricsFormatTest.java" "$PROJ/tools/BitrateTest.java" \
     "$PROJ/tools/LyricsToolTest.java" "$PROJ/tools/TagFixTest.java" "$PROJ/tools/MatchDedupeTest.java" \
-    "$PROJ/tools/MatchQueueTest.java"
+    "$PROJ/tools/MatchQueueTest.java" "$PROJ/tools/NetTuningTest.java"
 
 "$JAVA" -Dfile.encoding=UTF-8 -cp "$OUT/classes" NameWeightTest
 "$JAVA" -Dfile.encoding=UTF-8 -cp "$OUT/classes" TagFillTest
@@ -128,3 +129,4 @@ mkdir -p "$OUT/classes"
 "$JAVA" -Dfile.encoding=UTF-8 -cp "$OUT/classes" TagFixTest
 "$JAVA" -Dfile.encoding=UTF-8 -cp "$OUT/classes" MatchDedupeTest
 "$JAVA" -Dfile.encoding=UTF-8 -cp "$OUT/classes" MatchQueueTest
+"$JAVA" -Dfile.encoding=UTF-8 -cp "$OUT/classes" NetTuningTest

@@ -222,6 +222,12 @@ public class MainActivity extends Activity implements Logger {
             repo = Repo.get(this); // 必须在 attach 之后调用，保证 appContext 有效
             // 把「用户可改的接口地址」接进网络层：此后所有请求都按设置走
             com.dsh.musicorganizer.net.Endpoints.install(repo);
+            // 并发度 / 超时倍率同样要在任何批量开跑之前生效
+            com.dsh.musicorganizer.net.NetTuning.apply(
+                    repo.intVal(SettingsBackup.KEY_NET_FILES,
+                            com.dsh.musicorganizer.net.NetTuning.DEFAULT_FILE_CONCURRENCY),
+                    repo.intVal(SettingsBackup.KEY_NET_TIMEOUT,
+                            com.dsh.musicorganizer.net.NetTuning.DEFAULT_TIMEOUT_PERCENT));
             // 歌词繁→简开关：默认开，关掉后取到的歌词保持原样
             com.dsh.musicorganizer.core.Lyrics.setSimplify(repo.bool("lyrics_simplify", true));
             // 一次性迁移到「嵌入歌词」模式（v0.1.60）。

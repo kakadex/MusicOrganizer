@@ -1,6 +1,7 @@
 package com.dsh.musicorganizer.core;
 
 import com.dsh.musicorganizer.net.Endpoints;
+import com.dsh.musicorganizer.net.NetTuning;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -54,6 +55,10 @@ public final class SettingsBackup {
     public static final String KEY_WEIGHT = "fn_weight";
     /** 主题 id（0 暖橙 / 1 极简 / 2 霓虹）。 */
     public static final String KEY_THEME_ID = "theme_id";
+    /** 文件级并发（1~5，默认 3）。弱网降到 1~2，好网可到 4~5。 */
+    public static final String KEY_NET_FILES = "net_files";
+    /** 网络超时倍率（百分比，50~300，默认 100）。 */
+    public static final String KEY_NET_TIMEOUT = "net_timeout";
 
     public static final String PREFIX_ENDPOINT = "ep:";
     public static final String PREFIX_SOURCE_ON = "ep_on:";
@@ -74,7 +79,8 @@ public final class SettingsBackup {
                 return Kind.BOOL;
             }
         }
-        if (KEY_WEIGHT.equals(key) || KEY_THEME_ID.equals(key) || KEY_LAYOUT.equals(key)) {
+        if (KEY_WEIGHT.equals(key) || KEY_THEME_ID.equals(key) || KEY_LAYOUT.equals(key)
+                || KEY_NET_FILES.equals(key) || KEY_NET_TIMEOUT.equals(key)) {
             return Kind.INT;
         }
         if (key.startsWith(PREFIX_FIELD_MODE)) {
@@ -122,6 +128,9 @@ public final class SettingsBackup {
         m.put(KEY_THEME_ID, Integer.valueOf(1));
         m.put(KEY_WEIGHT, Integer.valueOf(20));
         m.put(KEY_LAYOUT, Integer.valueOf(0));
+        // 网络：并发与超时倍率（见 net/NetTuning，默认值必须与它一致）
+        m.put(KEY_NET_FILES, Integer.valueOf(NetTuning.DEFAULT_FILE_CONCURRENCY));
+        m.put(KEY_NET_TIMEOUT, Integer.valueOf(NetTuning.DEFAULT_TIMEOUT_PERCENT));
         return m;
     }
 
@@ -358,8 +367,17 @@ public final class SettingsBackup {
                 return null;
             }
             int max = KEY_THEME_ID.equals(key) ? Theme.NAMES.length - 1 : NameWeight.MAX_PERCENT;
-            if (v < 0 || v > max) {
-                int fixed = Math.max(0, Math.min(v, max));
+            int min = 0;
+            // 有自己取值范围的几项：主题是枚举下标，网络两项是物理约束（并发 1~5、倍率 50%~300%）
+            if (KEY_NET_FILES.equals(key)) {
+                min = NetTuning.MIN_FILE_CONCURRENCY;
+                max = NetTuning.MAX_FILE_CONCURRENCY;
+            } else if (KEY_NET_TIMEOUT.equals(key)) {
+                min = NetTuning.MIN_TIMEOUT_PERCENT;
+                max = NetTuning.MAX_TIMEOUT_PERCENT;
+            }
+            if (v < min || v > max) {
+                int fixed = Math.max(min, Math.min(v, max));
                 warn(warnings, key, "越界 " + v + " → " + fixed);
                 return Integer.valueOf(fixed);
             }

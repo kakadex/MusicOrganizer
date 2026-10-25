@@ -248,7 +248,7 @@ public final class TagBatch {
         final AtomicInteger skippedKnown = new AtomicInteger();
         final AtomicInteger resumed = new AtomicInteger();
 
-        List<Match> raw = Net.mapIndexed(files, Net.FILE_CONCURRENCY, cancel,
+        List<Match> raw = Net.mapIndexed(files, Net.fileConcurrency(), cancel,
                 new Net.IndexedWork<VFile, Match>() {
                     @Override
                     public Match run(int index, VFile file) {

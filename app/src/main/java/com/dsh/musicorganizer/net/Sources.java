@@ -846,7 +846,7 @@ public final class Sources {
         }
 
         List<Candidate> results = new ArrayList<Candidate>();
-        for (SourceResult part : Net.gather(tasks, Net.SOURCE_BUDGET_MS, cancel)) {
+        for (SourceResult part : Net.gather(tasks, Net.sourceBudgetMs(), cancel)) {
             if (part != null && part.items != null) {
                 results.addAll(part.items);
             }

@@ -34,8 +34,9 @@ public final class Net {
     public static final int IO_THREADS = 8;
 
     /**
-     * 同时处理的文件数。手机/家用网络 3 路已能吃满带宽，
-     * 再多会出现互相排队与频繁重传，反而更慢；也避免触发对方的限流。
+     * 同时处理的文件数的<b>默认值</b>。实际生效值见 {@link #fileConcurrency()}（设置页可调）：
+     * 手机/家用网络 3 路已能吃满带宽，再多会出现互相排队与频繁重传，反而更慢；
+     * 也避免触发对方的限流。弱网建议 1~2，好网可到 4~5。
      */
     public static final int FILE_CONCURRENCY = 3;
 
@@ -50,6 +51,21 @@ public final class Net {
 
     /** 单个文件的源级总预算：最慢的 MusicBrainz 超时是 12s，按 12s 收口。 */
     public static final long SOURCE_BUDGET_MS = 12000L;
+
+    /** 当前生效的文件级并发（设置页可调，见 {@link NetTuning}）。 */
+    public static int fileConcurrency() {
+        return NetTuning.fileConcurrency();
+    }
+
+    /**
+     * 当前生效的单源总预算。
+     *
+     * <p>必须跟着超时倍率一起缩放：预算比分项超时短的话，{@code gather} 会先到点收工，
+     * 用户把超时调大反而毫无效果（表现为「设置没生效」）。
+     */
+    public static long sourceBudgetMs() {
+        return NetTuning.scale(SOURCE_BUDGET_MS);
+    }
 
     /**
      * 等待线程池的单次切片时长。

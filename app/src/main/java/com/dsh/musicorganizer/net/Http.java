@@ -195,8 +195,10 @@ public final class Http {
         try {
             String full = buildUrl(url, params);
             conn = (HttpURLConnection) new URL(full).openConnection();
-            conn.setConnectTimeout(Math.min(CONNECT_TIMEOUT_MS, timeoutMs));
-            conn.setReadTimeout(timeoutMs);
+            // 连接与读取超时都按设置的倍率缩放（弱网放宽、好网收紧），见 NetTuning
+            conn.setConnectTimeout(Math.min(NetTuning.scale(CONNECT_TIMEOUT_MS),
+                    NetTuning.scale(timeoutMs)));
+            conn.setReadTimeout(NetTuning.scale(timeoutMs));
             conn.setRequestMethod("GET");
             // keep-alive 是 HTTP/1.1 默认；显式声明避免个别 CDN 回 Connection: close
             conn.setRequestProperty("Connection", "keep-alive");

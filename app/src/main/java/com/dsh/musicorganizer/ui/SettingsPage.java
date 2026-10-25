@@ -123,6 +123,98 @@ public final class SettingsPage extends ScrollView {
                 "只影响之后的扫描结果，不会改动任何文件。"));
         root.addView(cardFilter);
 
+        // ---- 网络与并发（v0.1.82）----
+        LinearLayout cardNet = UiKit.card(ctx);
+        UiKit.margin(cardNet, 0, 12, 0, 0);
+        cardNet.addView(UiKit.text(ctx, "网络与并发", 16, UiKit.textColor(), true));
+        cardNet.addView(UiKit.caption(ctx,
+                "「同时处理」= 几首歌一起联网查；「超时」= 单次请求最多等多久。"
+                        + "弱网或老机器把并发降到 1~2、超时放到 1.5~2× 更稳；"
+                        + "网络好时可以提到 4~5 首，整批更快。"));
+
+        final java.util.List<TextView> fileChips = new java.util.ArrayList<TextView>();
+        final java.util.List<TextView> timeChips = new java.util.ArrayList<TextView>();
+        final TextView netSummary = UiKit.caption(ctx, "");
+
+        final Runnable syncNetChips = new Runnable() {
+            @Override
+            public void run() {
+                int curFiles = host.repo.intVal(SettingsBackup.KEY_NET_FILES,
+                        com.dsh.musicorganizer.net.NetTuning.DEFAULT_FILE_CONCURRENCY);
+                int curTime = host.repo.intVal(SettingsBackup.KEY_NET_TIMEOUT,
+                        com.dsh.musicorganizer.net.NetTuning.DEFAULT_TIMEOUT_PERCENT);
+                for (int i = 0; i < fileChips.size(); i++) {
+                    UiKit.setChip(fileChips.get(i),
+                            com.dsh.musicorganizer.net.NetTuning.MIN_FILE_CONCURRENCY + i == curFiles);
+                }
+                for (int i = 0; i < timeChips.size(); i++) {
+                    UiKit.setChip(timeChips.get(i),
+                            com.dsh.musicorganizer.net.NetTuning.TIMEOUT_STEPS[i] == curTime);
+                }
+                netSummary.setText("当前：" + com.dsh.musicorganizer.net.NetTuning.describe());
+            }
+        };
+
+        cardNet.addView(UiKit.caption(ctx, "同时处理"));
+        LinearLayout rowFiles = UiKit.horizontal(ctx);
+        UiKit.margin(rowFiles, 0, 6, 0, 0);
+        for (int i = com.dsh.musicorganizer.net.NetTuning.MIN_FILE_CONCURRENCY;
+             i <= com.dsh.musicorganizer.net.NetTuning.MAX_FILE_CONCURRENCY; i++) {
+            final int value = i;
+            TextView chip = UiKit.chip(ctx, String.valueOf(i), false);
+            chip.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    host.repo.setInt(SettingsBackup.KEY_NET_FILES, value);
+                    applyNetTuning();
+                    syncNetChips.run();
+                    host.log("网络并发：同时处理 " + value + " 首", "info");
+                }
+            });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+            if (i > com.dsh.musicorganizer.net.NetTuning.MIN_FILE_CONCURRENCY) {
+                lp.setMargins(UiKit.dp(ctx, 6), 0, 0, 0);
+            }
+            rowFiles.addView(chip, lp);
+            fileChips.add(chip);
+        }
+        cardNet.addView(rowFiles);
+
+        cardNet.addView(UiKit.caption(ctx, "超时倍率"));
+        LinearLayout rowTime = UiKit.horizontal(ctx);
+        UiKit.margin(rowTime, 0, 6, 0, 0);
+        for (int i = 0; i < com.dsh.musicorganizer.net.NetTuning.TIMEOUT_STEPS.length; i++) {
+            final int percent = com.dsh.musicorganizer.net.NetTuning.TIMEOUT_STEPS[i];
+            TextView chip = UiKit.chip(ctx,
+                    com.dsh.musicorganizer.net.NetTuning.timeoutLabel(percent), false);
+            chip.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    host.repo.setInt(SettingsBackup.KEY_NET_TIMEOUT, percent);
+                    applyNetTuning();
+                    syncNetChips.run();
+                    host.log("网络超时：" + com.dsh.musicorganizer.net.NetTuning.timeoutLabel(percent),
+                            "info");
+                }
+            });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+            if (i > 0) {
+                lp.setMargins(UiKit.dp(ctx, 6), 0, 0, 0);
+            }
+            rowTime.addView(chip, lp);
+            timeChips.add(chip);
+        }
+        cardNet.addView(rowTime);
+
+        UiKit.margin(netSummary, 0, 8, 0, 0);
+        cardNet.addView(netSummary);
+        cardNet.addView(UiKit.caption(ctx,
+                "只影响联网匹配（标签 / 歌词 / 封面），不影响扫描和写盘速度。修改即时生效，下一批就按新值跑。"));
+        syncNetChips.run();
+        root.addView(cardNet);
+
         // ---- 主题 ----
         LinearLayout cardTheme = UiKit.card(ctx);
         cardTheme.addView(UiKit.text(ctx, "主题", 16, UiKit.textColor(), true));
@@ -373,6 +465,20 @@ public final class SettingsPage extends ScrollView {
     }
 
     /**
+     * 把「并发 / 超时」立刻灌进网络层。
+     *
+     * <p>不用 recreate：文件级并发是每批现建线程池（见 {@code Net.mapIndexed}），
+     * 超时是每次请求现读倍率，所以下一批/下一次请求就生效。
+     */
+    private void applyNetTuning() {
+        com.dsh.musicorganizer.net.NetTuning.apply(
+                host.repo.intVal(SettingsBackup.KEY_NET_FILES,
+                        com.dsh.musicorganizer.net.NetTuning.DEFAULT_FILE_CONCURRENCY),
+                host.repo.intVal(SettingsBackup.KEY_NET_TIMEOUT,
+                        com.dsh.musicorganizer.net.NetTuning.DEFAULT_TIMEOUT_PERCENT));
+    }
+
+    /**
      * 恢复默认设置（v0.1.36）：只还原偏好，不动目录授权 / 扫描结果 / 写入历史。
      * 先算「哪些项不是默认值」，在确认框里说清楚再动手。
      */
@@ -433,6 +539,12 @@ public final class SettingsPage extends ScrollView {
         }
         if (SettingsBackup.KEY_LAYOUT.equals(key)) {
             return "整理目录结构";
+        }
+        if (SettingsBackup.KEY_NET_FILES.equals(key)) {
+            return "同时处理（并发）";
+        }
+        if (SettingsBackup.KEY_NET_TIMEOUT.equals(key)) {
+            return "网络超时倍率";
         }
         if (key.startsWith(SettingsBackup.PREFIX_FIELD_MODE)) {
             return "字段策略：" + key.substring(SettingsBackup.PREFIX_FIELD_MODE.length());

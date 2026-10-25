@@ -150,7 +150,7 @@ public final class CoverBatch {
         final int total = files.size();
         final AtomicInteger done = new AtomicInteger();
 
-        List<One> parts = Net.mapIndexed(files, Net.FILE_CONCURRENCY, cancel,
+        List<One> parts = Net.mapIndexed(files, Net.fileConcurrency(), cancel,
                 new Net.IndexedWork<VFile, One>() {
                     @Override
                     public One run(int index, VFile file) {

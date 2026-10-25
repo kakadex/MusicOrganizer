@@ -6,6 +6,7 @@ import com.dsh.musicorganizer.net.Endpoints;
 import com.dsh.musicorganizer.net.LrcClient;
 import com.dsh.musicorganizer.net.LyricSources;
 import com.dsh.musicorganizer.net.Net;
+import com.dsh.musicorganizer.net.NetTuning;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -285,7 +286,7 @@ public final class Lyrics {
         });
 
         List<Offer> all = new ArrayList<Offer>();
-        for (List<Offer> part : Net.gather(tasks, LYRIC_SOURCE_BUDGET_MS, cancel)) {
+        for (List<Offer> part : Net.gather(tasks, NetTuning.scale(LYRIC_SOURCE_BUDGET_MS), cancel)) {
             if (part != null) {
                 all.addAll(part);
             }
@@ -712,7 +713,7 @@ public final class Lyrics {
         final java.util.concurrent.atomic.AtomicInteger done =
                 new java.util.concurrent.atomic.AtomicInteger();
 
-        List<FileResult> parts = Net.mapIndexed(audioFiles, Net.FILE_CONCURRENCY, cancel,
+        List<FileResult> parts = Net.mapIndexed(audioFiles, Net.fileConcurrency(), cancel,
                 new Net.IndexedWork<VFile, FileResult>() {
                     @Override
                     public FileResult run(int index, VFile audio) {
