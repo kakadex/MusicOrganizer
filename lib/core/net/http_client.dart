@@ -11,6 +11,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'net_tuning.dart';
+import 'proxy_settings.dart';
 
 /// 主机熔断状态（可单独测试）。
 class HostBreaker {
@@ -85,8 +86,16 @@ abstract final class Http {
     _client ??= HttpClient()
       ..connectionTimeout =
           Duration(milliseconds: NetTuning.scale(connectTimeoutMs))
-      ..maxConnectionsPerHost = 8;
+      ..maxConnectionsPerHost = 8
+      // 走应用内配置的代理（直连 / 自动 / 手动）：联网源在需要代理的网络里也能用
+      ..findProxy = NetworkProxy.findProxy;
     return _client!;
+  }
+
+  /// 代理或超时配置变了之后调用：丢掉旧连接池，下次请求重新建客户端。
+  static void reset() {
+    _client?.close(force: true);
+    _client = null;
   }
 
   /// 带查询参数的 GET，返回 JSON（Object / List / 其它）或 null。

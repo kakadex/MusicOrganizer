@@ -13,7 +13,9 @@ import '../core/match/match_queue.dart';
 import '../core/model/cancel_token.dart';
 import '../core/model/tags.dart';
 import '../core/model/vfile.dart';
+import '../core/net/http_client.dart';
 import '../core/net/net.dart';
+import '../core/net/proxy_settings.dart';
 import '../core/scan/scan_merge.dart';
 import '../core/scan/scan_stats.dart';
 import '../core/scan/scanner.dart';
@@ -112,6 +114,7 @@ class Repo extends ChangeNotifier {
       memory: BatchMemory.open(dir, 'tags'),
     );
     await _loadSettings();
+    applyProxy();
     _initialized = true;
   }
 
@@ -155,6 +158,21 @@ class Repo extends ChangeNotifier {
     } else {
       await prefs.setString(key, '$value');
     }
+  }
+
+  /// 应用代理设置（启动时 + 设置页改动后调用）。
+  ///
+  /// 顺手重建 HTTP 客户端：连接池里是旧代理建的连接，不重建等于设置没生效。
+  void applyProxy() {
+    final int mode = settings.get<int>('proxy_mode', fallback: 0) ?? 0;
+    final String host = settings.get<String>('proxy_host', fallback: '') ?? '';
+    final int port = settings.get<int>('proxy_port', fallback: 0) ?? 0;
+    NetworkProxy.configure(
+      ProxyMode.values[mode.clamp(0, ProxyMode.values.length - 1)],
+      host: host,
+      port: port > 0 ? '$port' : '',
+    );
+    Http.reset();
   }
 
   /// 恢复上次的目录（有就静默恢复，没有返回 false）。

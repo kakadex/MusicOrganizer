@@ -13,7 +13,7 @@ import '../net/net_tuning.dart';
 import '../source/endpoints.dart';
 
 /// 键的类别（决定校验方式与写回类型）。
-enum SettingsKind { boolKey, intKey, fieldMode, endpointUrl, sourceOn }
+enum SettingsKind { boolKey, intKey, stringKey, fieldMode, endpointUrl, sourceOn }
 
 /// 导入结果：values 可直接逐项写回；warnings/ignored 用来告诉用户「哪些没生效」。
 class SettingsImport {
@@ -95,6 +95,9 @@ abstract final class SettingsBackup {
   static const String keyThemeId = 'theme_id';
   static const String keyNetFiles = 'net_files';
   static const String keyNetTimeout = 'net_timeout';
+  static const String keyProxyMode = 'proxy_mode';
+  static const String keyProxyHost = 'proxy_host';
+  static const String keyProxyPort = 'proxy_port';
 
   static const String prefixEndpoint = 'ep:';
   static const String prefixSourceOn = 'ep_on:';
@@ -113,8 +116,13 @@ abstract final class SettingsBackup {
         key == keyThemeId ||
         key == keyLayout ||
         key == keyNetFiles ||
-        key == keyNetTimeout) {
+        key == keyNetTimeout ||
+        key == keyProxyMode ||
+        key == keyProxyPort) {
       return SettingsKind.intKey;
+    }
+    if (key == keyProxyHost) {
+      return SettingsKind.stringKey;
     }
     if (key.startsWith(prefixFieldMode)) {
       final String field = key.substring(prefixFieldMode.length);
@@ -281,11 +289,25 @@ abstract final class SettingsBackup {
       } else if (key == keyNetTimeout) {
         min = NetTuning.minTimeoutPercent;
         max = NetTuning.maxTimeoutPercent;
+      } else if (key == keyProxyPort) {
+        min = 0;
+        max = 65535;
+      } else if (key == keyProxyMode) {
+        min = 0;
+        max = 2;
       }
       if (v < min || v > max) {
         final int fixed = v < min ? min : (v > max ? max : v);
         _warn(warnings, key, '越界 $v → $fixed');
         return fixed;
+      }
+      return v;
+    }
+    if (kind == SettingsKind.stringKey) {
+      final String v = '${raw ?? ''}'.trim();
+      if (v.length > 120) {
+        _warn(warnings, key, '内容过长，已丢弃');
+        return null;
       }
       return v;
     }

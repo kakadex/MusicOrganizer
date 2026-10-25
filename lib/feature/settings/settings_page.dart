@@ -8,7 +8,10 @@ import '../../app/repo.dart';
 import '../../app/theme/palette.dart';
 import '../../app/ui_kit.dart';
 import '../../core/model/vfile.dart';
+import '../../core/net/http_client.dart';
 import '../../core/net/net_tuning.dart';
+import '../../core/net/proxy_settings.dart';
+import '../../core/source/endpoints.dart';
 import '../../core/settings/settings_backup.dart';
 import '../../core/version.dart';
 import '../health/health_page.dart';
@@ -28,6 +31,25 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   Repo get _repo => Repo.instance;
+
+  late final TextEditingController _proxyHost;
+  late final TextEditingController _proxyPort;
+
+  @override
+  void initState() {
+    super.initState();
+    final String host = _repo.settings.get<String>('proxy_host', fallback: '') ?? '';
+    final int port = _repo.settings.get<int>('proxy_port', fallback: 0) ?? 0;
+    _proxyHost = TextEditingController(text: host);
+    _proxyPort = TextEditingController(text: port > 0 ? '$port' : '');
+  }
+
+  @override
+  void dispose() {
+    _proxyHost.dispose();
+    _proxyPort.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -185,8 +207,150 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
           ],
         ),
+        const SizedBox(height: 10),
+        Divider(color: MoKit.line(context), height: 1),
+        const SizedBox(height: 10),
+        _proxyBlock(context),
       ],
     );
+  }
+
+  /// 代理：直连 / 自动（读环境变量）/ 手动。
+  Widget _proxyBlock(BuildContext context) {
+    final int mode = _repo.settings.get<int>('proxy_mode', fallback: 0) ?? 0;
+    final ProxyMode current =
+        ProxyMode.values[mode.clamp(0, ProxyMode.values.length - 1)];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            Text('代理',
+                style: TextStyle(fontSize: MoKit.fsBody, color: MoKit.text(context))),
+            const Spacer(),
+            MoChip(
+              label: '直连',
+              selected: current == ProxyMode.direct,
+              onTap: () => _setProxy(ProxyMode.direct),
+            ),
+            const SizedBox(width: 6),
+            MoChip(
+              label: '自动',
+              selected: current == ProxyMode.auto,
+              onTap: () => _setProxy(ProxyMode.auto),
+            ),
+            const SizedBox(width: 6),
+            MoChip(
+              label: '手动',
+              selected: current == ProxyMode.manual,
+              onTap: () => _setProxy(ProxyMode.manual),
+            ),
+          ],
+        ),
+        if (current == ProxyMode.manual) ...<Widget>[
+          const SizedBox(height: 8),
+          Row(
+            children: <Widget>[
+              Expanded(
+                flex: 3,
+                child: TextField(
+                  controller: _proxyHost,
+                  style: TextStyle(fontSize: MoKit.fsBody, color: MoKit.text(context)),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    labelText: '主机',
+                    hintText: '127.0.0.1',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 2,
+                child: TextField(
+                  controller: _proxyPort,
+                  keyboardType: TextInputType.number,
+                  style: TextStyle(fontSize: MoKit.fsBody, color: MoKit.text(context)),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    labelText: '端口',
+                    hintText: '7890',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              MoButton('应用', onPressed: _applyManualProxy),
+            ],
+          ),
+        ],
+        const SizedBox(height: 6),
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: Text(
+                NetworkProxy.describe() +
+                    (NetworkProxy.lastError.isEmpty ? '' : ' · ${NetworkProxy.lastError}'),
+                style: TextStyle(
+                  fontSize: MoKit.fsCaption,
+                  color: NetworkProxy.lastError.isEmpty
+                      ? MoKit.sub(context)
+                      : MoKit.err(context),
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: _testConnectivity,
+              child: const Text('测试连通'),
+            ),
+          ],
+        ),
+        Text(
+          '自动模式读环境变量（HTTPS_PROXY 等）；只支持 HTTP 代理，不支持 SOCKS。'
+          '安卓上没有应用内读系统代理的途径，建议用系统 VPN / 代理（网络层生效，应用无需设置）。',
+          style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.faint(context)),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _setProxy(ProxyMode mode) async {
+    await _repo.setSetting('proxy_mode', mode.index);
+    if (mode == ProxyMode.manual) {
+      _applyManualProxy();
+    } else {
+      _repo.applyProxy();
+    }
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _applyManualProxy() async {
+    final String host = _proxyHost.text.trim();
+    final int port = int.tryParse(_proxyPort.text.trim()) ?? 0;
+    await _repo.setSetting('proxy_host', host);
+    await _repo.setSetting('proxy_port', port);
+    await _repo.setSetting('proxy_mode', ProxyMode.manual.index);
+    _repo.applyProxy();
+    if (!mounted) return;
+    setState(() {});
+    moSnack(context, NetworkProxy.lastError.isEmpty
+        ? '代理已应用：${NetworkProxy.describe()}'
+        : NetworkProxy.lastError);
+  }
+
+  /// 打一次版本清单：能拿到内容就说明出口通了。
+  Future<void> _testConnectivity() async {
+    moSnack(context, '正在测试连通…');
+    final String url = Endpoints.urlOf('gitee', 0);
+    final String? text =
+        await Http.getText(url, null, null, Http.readTimeoutOverseasMs);
+    if (!mounted) return;
+    if (text != null && text.trim().isNotEmpty) {
+      final String first = text.trim().split('\n').first;
+      moSnack(context, '连通正常：${first.length > 40 ? first.substring(0, 40) : first}');
+    } else {
+      moSnack(context, '连不上（${NetworkProxy.describe()}），检查代理或网络');
+    }
   }
 
   Widget _themeCard() {
