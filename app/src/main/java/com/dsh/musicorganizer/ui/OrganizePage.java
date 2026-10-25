@@ -42,6 +42,9 @@ public final class OrganizePage extends ScrollView {
 
     private TextView scanSummary;
 
+    /** 扫描完成后是否自动触发整理（「自动整理」按钮 = 扫描 + 整理，v0.1.99）。 */
+    private boolean pendingAutoOrganize = false;
+
     public OrganizePage(MainActivity host) {
         super(host);
         this.host = host;
@@ -61,14 +64,13 @@ public final class OrganizePage extends ScrollView {
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
         p2.setMargins(UiKit.dp(ctx, 8), 0, 0, 0);
 
-        // ---- ① 扫描与自动整理 ----
-        UiKit.Section secScan = UiKit.collapsibleCard(ctx, "① 扫描与自动整理",
+        // ---- ① 自动整理（扫描统计 + 自动整理 合并为一个按钮）----
+        UiKit.Section secScan = UiKit.collapsibleCard(ctx, "① 自动整理",
                 !host.repo.bool("org_scan", false));
         LinearLayout body = secScan.body;
         body.addView(UiKit.caption(ctx,
-                "按歌手名建目录，音频 + 歌词成组归位；识别失败的组默认「保留原位」，"
-                        + "可在设置页改「未识别」的处理方式。整理前先跑一次「扫描统计」，"
-                        + "列表过期会按跳过处理。"));
+                "点「自动整理」即先扫描再按所选目录结构归位（音频 + 歌词成组）；"
+                        + "识别失败的组默认「保留原位」。"));
         // 系统媒体库（v0.1.42）：SAF 选不到的目录（如「下载」）靠它列出来
         Button btnMedia = UiKit.button(ctx, "系统媒体库（含下载目录）", false);
         btnMedia.setOnClickListener(new View.OnClickListener() {
@@ -83,37 +85,23 @@ public final class OrganizePage extends ScrollView {
                 "系统媒体库能看到「下载」这类手动授权不了的目录；勾选后复制到当前目录，"
                         + "之后再走标签 / 歌词 / 整理。第一次用需要给一次读取音频的权限。"));
 
-        LinearLayout row1 = UiKit.horizontal(ctx);
-        Button btnScan = UiKit.button(ctx, "扫描统计", false);
         Button btnOrganize = UiKit.button(ctx, "自动整理", true);
-        btnScan.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                host.scanGroups(false);
-            }
-        });
+        UiKit.margin(btnOrganize, 0, 8, 0, 0);
         btnOrganize.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                organize();
+                autoOrganize();
             }
         });
-        row1.addView(btnScan, lp1);
-        row1.addView(btnOrganize, p2);
-        body.addView(row1);
+        body.addView(btnOrganize);
         scanSummary = UiKit.caption(ctx, "尚未扫描");
         UiKit.margin(scanSummary, 0, 6, 0, 0);
         body.addView(scanSummary);
+
+        // 整理选项（艺人 / 专辑）+ 设置入口，内联进自动整理卡片（v0.1.99）
+        body.addView(new OrganizeOptionsPanel(host));
         bindCollapse(secScan, "org_scan");
         root.addView(secScan.root);
-
-        // ---- 整理选项与写入策略（v0.1.73：从设置页移入整理工具）----
-        UiKit.Section secOptions = UiKit.collapsibleCard(ctx, "整理选项与写入策略",
-                !host.repo.bool("org_options", false));
-        UiKit.margin(secOptions.root, 0, 12, 0, 0);
-        secOptions.body.addView(new OrganizeOptionsPanel(host));
-        bindCollapse(secOptions, "org_options");
-        root.addView(secOptions.root);
 
         // ---- ② 文件名清理 ----
         UiKit.Section secClean = UiKit.collapsibleCard(ctx, "② 文件名清理",
@@ -318,11 +306,31 @@ public final class OrganizePage extends ScrollView {
 
     // ------------------------------------------------------------------
 
+    /** 「自动整理」按钮入口：先扫描，扫描完成后自动整理（v0.1.99 合并了「扫描统计」）。 */
+    private void autoOrganize() {
+        pendingAutoOrganize = true;
+        host.scanGroups(false);
+    }
+
+    /** 扫描完成后由 MainActivity 调用：若本轮是「自动整理」触发的扫描，返回 true 并清标志。 */
+    public boolean consumePendingOrganize() {
+        if (!pendingAutoOrganize) {
+            return false;
+        }
+        pendingAutoOrganize = false;
+        return true;
+    }
+
+    /** 供 MainActivity 在扫描完成后触发整理（organize 为私有，这里给一个公开包装）。 */
+    public void doOrganize() {
+        organize();
+    }
+
     private void organize() {
         // 用「有没有扫到文件」判断是否扫过，而不是「待归位组是否为空」——
         // 否则「都归位了 / 都在未识别目录」这类「0 组待归位」会被误报成「请先扫描」。
         if (host.repo.lastFiles.isEmpty()) {
-            host.toast("请先「扫描统计」");
+            host.toast("没有找到可整理的音频文件");
             return;
         }
         if (host.repo.lastGroups.isEmpty()) {
@@ -473,7 +481,7 @@ public final class OrganizePage extends ScrollView {
     /** 扁平化：把子文件夹里的文件全部拉到当前目录这一层（先预览再执行）。 */
     private void flatten() {
         if (host.repo.lastFiles.isEmpty()) {
-            host.toast("请先「扫描统计」");
+            host.toast("请先点「自动整理」扫描一次");
             return;
         }
         host.runTask("扫描目录结构", new Tasks.Job() {

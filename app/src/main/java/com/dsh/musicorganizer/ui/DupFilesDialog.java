@@ -43,7 +43,7 @@ public final class DupFilesDialog {
             return;
         }
         if (host.repo.lastFiles.isEmpty()) {
-            host.toast("先扫描一次目录（整理页 →「扫描统计」）");
+            host.toast("先扫描一次目录（整理页 →「自动整理」）");
             return;
         }
         host.runTask("查找重复文件", new Tasks.Job() {

@@ -47,7 +47,7 @@ public final class HealthDialog {
             }
         }
         if (audioCount == 0) {
-            host.toast("还没有扫描到音频文件，先去整理页「扫描统计」");
+            host.toast("还没有扫描到音频文件，先去整理页「自动整理」");
             return;
         }
 

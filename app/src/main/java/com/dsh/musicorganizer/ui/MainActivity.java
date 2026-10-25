@@ -1204,7 +1204,7 @@ public class MainActivity extends Activity implements Logger {
         final java.util.List<com.dsh.musicorganizer.core.VFile> audio =
                 com.dsh.musicorganizer.core.CsvExport.audioOnly(repo.lastFiles);
         if (audio.isEmpty()) {
-            toast("还没有扫描到音频文件，先去整理页「扫描统计」");
+            toast("还没有扫描到音频文件，先去整理页「自动整理」");
             return;
         }
         runTask("导出曲库清单", new Tasks.Job() {
@@ -1723,7 +1723,7 @@ public class MainActivity extends Activity implements Logger {
             if (repo.lastStats != null) {
                 organizePage.setScanSummary(repo.lastScanAt > 0
                         ? "上次扫描 " + agoText(repo.lastScanAt) + "：" + repo.lastStats.summary()
-                        + "\n列表来自本地缓存，点「扫描统计」可刷新"
+                        + "\n列表来自本地缓存，点「自动整理」可刷新"
                         : repo.lastStats.summary());
             }
             return;
@@ -1744,7 +1744,7 @@ public class MainActivity extends Activity implements Logger {
         repo.lastStats = snap.stats;
         repo.lastScanAt = snap.savedAt;
         organizePage.setScanSummary("上次扫描 " + snap.ageText() + "：" + snap.stats.summary()
-                + "\n列表来自本地缓存，点「扫描统计」可刷新");
+                + "\n列表来自本地缓存，点「自动整理」可刷新");
         // 快照读进来之后再清码率缓存 —— 清早了 lastFiles 还是空的，等于没清（v0.1.79 修）
         migrateBitrateOnce();
         browsePage.reload();
@@ -1998,7 +1998,7 @@ public class MainActivity extends Activity implements Logger {
     // 扫描（整理页 + 文件页共用）
     // ------------------------------------------------------------------
 
-    public void scanGroups(final boolean silent) {        runTask("扫描统计", new Tasks.Job() {
+    public void scanGroups(final boolean silent) {        runTask("扫描", new Tasks.Job() {
             @Override
             public Object run() throws Exception {
                 Storage st = safeStorage();
@@ -2079,6 +2079,10 @@ public class MainActivity extends Activity implements Logger {
                 FolderCover.clear();
                 organizePage.setScanSummary(stats.summary());
                 browsePage.reload();
+                // 「自动整理」按钮 = 扫描 + 整理（v0.1.99）：扫描完成后紧接着触发整理
+                if (organizePage.consumePendingOrganize()) {
+                    organizePage.doOrganize();
+                }
                 // 扫描完成后自动显示文件列表：不管是从设置里的整理工具还是授权后自动扫的，
                 // 都把界面切回主界面「音乐库」（静默重扫除外，避免打断当前页操作）。
                 if (!silent) {
