@@ -406,16 +406,49 @@ public final class Scanner {
     private static final int HEAD_SMALL = 512 * 1024;
 
     /** 低成本标签读取：有缓存直接返回；否则只复制文件头部解析（不够再回退整文件）。 */
+    /** 已经为「缓存里没歌词」的文件重读盘确认过的集合（docId|size|mtime）。 */
+    private static final java.util.Set<String> LYRICS_PROBED =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /** 缓存里没有歌词、且还没重读过 → 需要重读盘确认（旧快照可能没把内嵌歌词读进缓存）。 */
+    public static boolean lyricsNeedProbe(VFile f) {
+        if (f == null || !f.metaCached()) {
+            return false;
+        }
+        String lyric = f.cachedTags.get(Tags.LYRICS);
+        if (lyric != null && !lyric.trim().isEmpty()) {
+            return false;
+        }
+        String key = f.docId + "|" + f.size + "|" + f.lastModified;
+        return !LYRICS_PROBED.contains(key);
+    }
+
+    /** 标记这个文件已做过「无歌词」重读确认。 */
+    public static void markLyricsProbed(VFile f) {
+        if (f == null) {
+            return;
+        }
+        LYRICS_PROBED.add(f.docId + "|" + f.size + "|" + f.lastModified);
+    }
+
     public static Tags readTagsCheap(Storage st, ContentResolver resolver, VFile f) {
         if (f == null) {
             return new Tags();
         }
+        String probeKey = f.docId + "|" + f.size + "|" + f.lastModified;
         // 库索引已经读过这一首（且 size / lastModified 没变）→ 直接用，不再碰磁盘。
         // 这是「补完一首歌不必重扫整个目录」的关键：索引重建时也走这条快路。
+        // 但歌词字段可能被旧版本漏读进缓存：缓存里没有歌词时，重读一次确认（只重读一次）。
         if (f.metaCached()) {
-            return f.cachedTags.copy();
+            String lyric = f.cachedTags.get(Tags.LYRICS);
+            if (lyric != null && !lyric.trim().isEmpty()) {
+                return f.cachedTags.copy();
+            }
+            if (LYRICS_PROBED.contains(probeKey)) {
+                return f.cachedTags.copy();
+            }
         }
-        String key = f.docId + "|" + f.size + "|" + f.lastModified;
+        String key = probeKey;
         Tags cached = TAG_CACHE.get(key);
         if (cached != null) {
             return cached;
@@ -446,6 +479,7 @@ public final class Scanner {
                 tmp.delete();
             }
         }
+        LYRICS_PROBED.add(probeKey);
         if (TAG_CACHE.size() > 2048) {
             TAG_CACHE.clear();
         }

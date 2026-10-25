@@ -1211,7 +1211,8 @@ public final class BrowsePage extends LinearLayout {
         Tags tags;
         byte[] art = null;
         boolean cover;
-        if (e.file != null && e.file.metaCached()) {
+        if (e.file != null && e.file.metaCached()
+                && !com.dsh.musicorganizer.core.Scanner.lyricsNeedProbe(e.file)) {
             // 缓存直填：标签与「有无封面」都已知；位图由 requestCover 单独补
             tags = e.file.cachedTags.copy();
             cover = e.file.cachedHasCover;
@@ -1229,6 +1230,8 @@ public final class BrowsePage extends LinearLayout {
                 art = FolderCover.read(host, st, e.file);
             }
             cover = art != null && art.length > 0;
+            // 歌词也已确认过（内嵌 USLT/SYLT/TXXX 或确实没有）
+            com.dsh.musicorganizer.core.Scanner.markLyricsProbed(e.file);
             // 顺手落盘（这里是后台线程）：下次重建列表可以直接读本地小图，
             // 不必再为这一首复制 2MB 文件头重抠封面。
             if (cover) {
