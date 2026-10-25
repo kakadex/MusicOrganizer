@@ -498,6 +498,8 @@ public final class Lyrics {
         public boolean simplified = false;
         /** 是否默认勾选（纯文本等低质量结果默认不勾） */
         public boolean selected = true;
+        /** 这条是从中间态队列续跑来的（没重新联网）。 */
+        public boolean resumed;
     }
 
     /**
@@ -645,7 +647,7 @@ public final class Lyrics {
                                            final Progress progress, final CancelToken cancel,
                                            final Logger log, final BatchMemory memory) {
         return fetchMatches(st, resolver, audioFiles, overwrite, acceptPlain, filenameWeight,
-                sink, progress, cancel, log, memory, null);
+                sink, progress, cancel, log, memory, (BatchSkip) null);
     }
 
     /**
@@ -659,6 +661,37 @@ public final class Lyrics {
                                            final Progress progress, final CancelToken cancel,
                                            final Logger log, final BatchMemory memory,
                                            final BatchSkip skip) {
+        return fetchMatches(st, resolver, audioFiles, overwrite, acceptPlain, filenameWeight,
+                sink, progress, cancel, log, memory, skip, null);
+    }
+
+    /**
+     * 带中间态队列、但不关心「按记忆跳过」名单的版本（整理页走这条）。
+     */
+    public static FetchResult fetchMatches(final Storage st, final ContentResolver resolver,
+                                           List<VFile> audioFiles, final boolean overwrite,
+                                           final boolean acceptPlain, final double filenameWeight,
+                                           final PartialSink<Match> sink,
+                                           final Progress progress, final CancelToken cancel,
+                                           final Logger log, final BatchMemory memory,
+                                           final MatchQueue queue) {
+        return fetchMatches(st, resolver, audioFiles, overwrite, acceptPlain, filenameWeight,
+                sink, progress, cancel, log, memory, null, queue);
+    }
+
+    /**
+     * 再带一个中间态队列：上次匹配到、但没写完的歌词，这次直接复用，不再联网。
+     *
+     * <p>歌词正文本身就比较长（一首几 KB），所以队列按条数封顶（见 {@code MatchQueue}），
+     * 用户连续攒几批也不会把内存吃爆。
+     */
+    public static FetchResult fetchMatches(final Storage st, final ContentResolver resolver,
+                                           List<VFile> audioFiles, final boolean overwrite,
+                                           final boolean acceptPlain, final double filenameWeight,
+                                           final PartialSink<Match> sink,
+                                           final Progress progress, final CancelToken cancel,
+                                           final Logger log, final BatchMemory memory,
+                                           final BatchSkip skip, final MatchQueue queue) {
         final LrcClient client = new LrcClient();
         final FetchResult res = new FetchResult();
         // 去重：重叠授权 / 重复扫描可能让同一个文档出现多次，只处理一次
@@ -685,7 +718,7 @@ public final class Lyrics {
                     public FileResult run(int index, VFile audio) {
                         try {
                             FileResult r = oneFile(st, resolver, client, audio, overwrite,
-                                    acceptPlain, filenameWeight, cancel, log, memory, skip);
+                                    acceptPlain, filenameWeight, cancel, log, memory, skip, queue);
                             if (sink != null && r != null) {
                                 sink.add(index, r.match);
                             }
@@ -747,6 +780,9 @@ public final class Lyrics {
         if (memory != null) {
             memory.save();
         }
+        if (queue != null) {
+            queue.save();
+        }
         if (log != null) {
             if (removed > 0) {
                 log.log("歌词匹配：去重 " + removed + " 个重复文件", "info");
@@ -765,7 +801,7 @@ public final class Lyrics {
     private static FileResult oneFile(Storage st, ContentResolver resolver, LrcClient client,
                                       VFile audio, boolean overwrite, boolean acceptPlain,
                                       double filenameWeight, CancelToken cancel, Logger log,
-                                      BatchMemory memory, BatchSkip skip) {
+                                      BatchMemory memory, BatchSkip skip, MatchQueue queue) {
         FileResult r = new FileResult();
         if (!audio.audio()) {
             return r;
@@ -790,6 +826,18 @@ public final class Lyrics {
             if (existing != null && !overwrite) {
                 r.skippedExisting = true;
                 return r;
+            }
+            // 续跑：上次已经匹配到、还没写盘的歌词直接用，省掉四家源的一次查询。
+            // 放在「已有 lrc」判定之后 —— 文件已经有了，就不该再拿旧结果去覆盖。
+            if (queue != null && !(memory != null && memory.ignoreExisting())) {
+                Match rm = fromQueue(queue.take(memKey, audio.size, audio.lastModified), audio);
+                if (rm != null) {
+                    r.match = rm;
+                    if (log != null) {
+                        log.log("歌词续跑：沿用上次匹配结果 · " + audio.name, "info");
+                    }
+                    return r;
+                }
             }
             Tags tags = Scanner.readTagsCheap(st, resolver, audio);
             String tagTitle = TextUtil.safeStr(tags.get("title"));
@@ -870,6 +918,19 @@ public final class Lyrics {
                 m.selected = false; // 无时间轴的低质量结果默认不写
             }
             r.match = m;
+            // 中间态落库：正文一并存下来（几 KB），被杀后重启不必再查四家源
+            if (queue != null) {
+                java.util.Map<String, String> f = new java.util.LinkedHashMap<String, String>();
+                f.put("@content", hit.content);
+                f.put("@t", usedTitle);
+                f.put("@a", usedArtist);
+                f.put("@src", TextUtil.safeStr(hit.sourceLabel));
+                f.put("@tl", m.timeline ? "1" : "0");
+                f.put("@tr", String.valueOf(m.translationLines));
+                f.put("@simp", m.simplified ? "1" : "0");
+                f.put("@note", TextUtil.safeStr(m.note));
+                queue.put(memKey, audio.size, audio.lastModified, f);
+            }
         } catch (Exception e) {
             r.failed = true;
             r.error = TextUtil.shortError(e);
@@ -879,6 +940,35 @@ public final class Lyrics {
             }
         }
         return r;
+    }
+
+    /** 从中间态队列还原一条歌词匹配；正文为空视为无效（当作没命中过）。 */
+    private static Match fromQueue(MatchQueue.Item it, VFile audio) {
+        if (it == null) {
+            return null;
+        }
+        String content = it.field("@content", "");
+        if (content.trim().isEmpty()) {
+            return null;
+        }
+        Match m = new Match();
+        m.file = audio;
+        m.title = it.field("@t", "");
+        m.artist = it.field("@a", "");
+        m.content = content;
+        m.sourceLabel = it.field("@src", "");
+        m.timeline = "1".equals(it.field("@tl", "0"));
+        m.note = it.field("@note", "");
+        m.simplified = "1".equals(it.field("@simp", "0"));
+        try {
+            m.translationLines = Integer.parseInt(it.field("@tr", "0").trim());
+        } catch (Exception ignored) {
+            m.translationLines = 0;
+        }
+        // 与首次匹配同一套默认勾选规则：没有时间轴的纯文本默认不写
+        m.selected = m.timeline;
+        m.resumed = true;
+        return m;
     }
 
     /**
@@ -898,6 +988,16 @@ public final class Lyrics {
                                      boolean overwrite, boolean embed,
                                      Progress progress, CancelToken cancel, Logger log,
                                      BatchMemory memory) {
+        return writeMatches(st, resolver, ctx, matches, overwrite, embed, progress, cancel, log,
+                memory, null);
+    }
+
+    /** 同上，并同步中间态队列（写完 / 跳过 / 失败的销账，剩下的留待续跑）。 */
+    public static int[] writeMatches(Storage st, ContentResolver resolver,
+                                     android.content.Context ctx, List<Match> matches,
+                                     boolean overwrite, boolean embed,
+                                     Progress progress, CancelToken cancel, Logger log,
+                                     BatchMemory memory, MatchQueue queue) {
         int written = 0;
         int skipped = 0;
         int failed = 0;
@@ -912,6 +1012,9 @@ public final class Lyrics {
             }
             if (!m.selected) {
                 skipped++;
+                if (queue != null) {
+                    queue.mark(TagBatch.memKey(m.file), MatchQueue.SKIPPED);
+                }
                 continue;
             }
             try {
@@ -920,6 +1023,9 @@ public final class Lyrics {
                     written++;
                     if (memory != null) {
                         memory.markDone(TagBatch.memKey(m.file), m.file.size, m.file.lastModified);
+                    }
+                    if (queue != null) {
+                        queue.mark(TagBatch.memKey(m.file), MatchQueue.WRITTEN);
                     }
                     if (embed) {
                         String embedErr = embedLyrics(st, resolver, ctx, m.file, m.content, log);
@@ -933,6 +1039,9 @@ public final class Lyrics {
                     if (log != null) {
                         log.log("歌词写入失败：" + m.file.name + "（" + err + "）", "error");
                     }
+                    if (queue != null) {
+                        queue.mark(TagBatch.memKey(m.file), MatchQueue.FAILED);
+                    }
                 }
             } catch (Exception e) {
                 failed++;
@@ -940,10 +1049,16 @@ public final class Lyrics {
                     log.log("歌词处理失败：" + m.file.name + "（" + TextUtil.shortError(e) + "）",
                             "error");
                 }
+                if (queue != null) {
+                    queue.mark(TagBatch.memKey(m.file), MatchQueue.FAILED);
+                }
             }
         }
         if (memory != null) {
             memory.save();
+        }
+        if (queue != null) {
+            queue.clearFinished();
         }
         return new int[]{written, skipped, failed};
     }

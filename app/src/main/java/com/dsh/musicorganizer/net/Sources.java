@@ -973,6 +973,24 @@ public final class Sources {
     }
 
     /**
+     * 取封面图需要的请求头。
+     *
+     * <p>QQ 音乐与网易的图床都校验 Referer：不带就回 403，预览里会变成一片空白
+     * （而不是「下载失败」，容易误判成没有封面）。批量补封面与候选卡片预览共用这一份，
+     * 免得两处规则走偏。
+     */
+    public static Map<String, String> coverHeaders(String url) {
+        Map<String, String> headers = new java.util.HashMap<String, String>();
+        String u = url == null ? "" : url;
+        if (u.contains("gtimg.cn")) {
+            headers.put("Referer", "https://y.qq.com/");
+        } else if (u.contains("126.net") || u.contains("music.163.com")) {
+            headers.put("Referer", "https://music.163.com/");
+        }
+        return headers;
+    }
+
+    /**
      * 候选与文件名解析结果的相似度（标题 70% + 艺术家 30%）。
      * 没有文件名线索返回 -1。
      */

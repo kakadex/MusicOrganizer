@@ -145,6 +145,15 @@ public final class BrowsePage extends LinearLayout {
     private int sortKey;
     private boolean sortDesc;
     private boolean selectMode;
+    /**
+     * 滑动区间选择的锚点（长按那行的下标）；-1 = 当前没有在拖选。
+     *
+     * <p>手势：长按进入多选并记下锚点 → 手指不放继续上下滑 → 经过的行整段选中。
+     * 抬手结束。列表照常滚动，所以在几千首里拖过一屏再拖回来也能连续选。
+     */
+    private int rangeAnchor = -1;
+    private int rangeLast = -1;
+    private boolean rangeDragging;
     /** 本轮搜索为了找结果自动摘掉了筛选（计数行要说明，免得用户以为筛选坏了）。 */
     private boolean droppedFilter;
 
@@ -357,13 +366,27 @@ public final class BrowsePage extends LinearLayout {
             @Override
             public boolean onTouchEvent(android.view.MotionEvent ev) {
                 int threshold = UiKit.dp(getContext(), PULL_THRESHOLD_DP);
+                // 多选态的拖选：长按后不抬手继续上下滑，经过的行整段选中。
+                // 必须在 super 之前处理 —— 抬手后 ListView 会自己清掉按压状态。
+                if (selectMode && rangeDragging) {
+                    if (ev.getActionMasked() == android.view.MotionEvent.ACTION_MOVE) {
+                        int pos = pointToPosition((int) ev.getX(), (int) ev.getY());
+                        if (pos != android.widget.AdapterView.INVALID_POSITION && pos != rangeLast) {
+                            extendRange(pos);
+                        }
+                    } else if (ev.getActionMasked() == android.view.MotionEvent.ACTION_UP
+                            || ev.getActionMasked() == android.view.MotionEvent.ACTION_CANCEL) {
+                        rangeDragging = false;
+                    }
+                }
                 switch (ev.getActionMasked()) {
                     case android.view.MotionEvent.ACTION_DOWN:
                         pullDownY = ev.getY();
                         pullDist = 0f;
                         break;
                     case android.view.MotionEvent.ACTION_MOVE:
-                        if (pullRefreshing) {
+                        // 多选态不触发下拉刷新：这里下拉的意图是「拖选」，两件事会打架
+                        if (pullRefreshing || selectMode) {
                             break;
                         }
                         boolean atTop = false;
@@ -416,7 +439,16 @@ public final class BrowsePage extends LinearLayout {
                         if (!selectMode) {
                             setSelectMode(true);
                         }
-                        toggleSelect(e);
+                        // 锚点行一律「置为选中」而不是切换：长按后接着往下拖时，
+                        // 若这里刚好把它取消掉，整段选择的第一步就自我抵消了。
+                        if (!selected.contains(e.docId)) {
+                            selected.add(e.docId);
+                            refreshSelectionUi();
+                            adapter.notifyDataSetChanged();
+                        }
+                        rangeAnchor = position;
+                        rangeLast = position;
+                        rangeDragging = true;
                         return true;
                     }
                 });
@@ -1587,6 +1619,9 @@ public final class BrowsePage extends LinearLayout {
         selectMode = on;
         if (!on) {
             selected.clear();
+            rangeDragging = false;
+            rangeAnchor = -1;
+            rangeLast = -1;
         }
         batchBar.setVisibility(on ? VISIBLE : GONE);
         if (batchFab != null) {
@@ -1604,6 +1639,32 @@ public final class BrowsePage extends LinearLayout {
         }
         refreshSelectionUi();
         adapter.notifyDataSetChanged();
+    }
+
+    /**
+     * 把「锚点 → pos」整段加入选择（只增不减）。
+     *
+     * <p>只增不减是刻意的：拖过去再拖回来时，如果按「区间取反」实现，手指
+     * 来回抖一下就会把中间几行反复选中/取消，最后剩下一堆不连续的洞。
+     * 要取消某一行，抬手后点一下那行即可。
+     */
+    private void extendRange(int pos) {
+        if (!selectMode || rangeAnchor < 0 || shown.isEmpty()) {
+            return;
+        }
+        int from = Math.max(0, Math.min(rangeAnchor, pos));
+        int to = Math.min(shown.size() - 1, Math.max(rangeAnchor, pos));
+        boolean changed = false;
+        for (int i = from; i <= to; i++) {
+            if (selected.add(shown.get(i).docId)) {
+                changed = true;
+            }
+        }
+        rangeLast = pos;
+        if (changed) {
+            refreshSelectionUi();
+            adapter.notifyDataSetChanged();
+        }
     }
 
     private void refreshSelectionUi() {
@@ -2144,7 +2205,8 @@ public final class BrowsePage extends LinearLayout {
                                 Storage st = host.safeStorage();
                                 return Lyrics.writeMatches(st, host.getContentResolver(), host,
                                         selected, true, host.repo.bool("lrc_embed", true),
-                                        host.progressCallback(), host.cancelToken(), host, null);
+                                        host.progressCallback(), host.cancelToken(), host, null,
+                                        host.batchQueue("lyrics"));
                             }
                         }, new Tasks.Callback() {
                             @Override

@@ -104,6 +104,9 @@ public final class TagEditorDialog {
         /** null = 不动封面；长度 0 = 删除；否则为新图。 */
         byte[] pendingCover;
 
+        /** 本地文件时长（秒）；0 = 未知。用于在候选里显示「本地差 +2s」。 */
+        double localDurSec;
+
         ImageView coverView;
         TextView coverInfo;
         TextView lyricPreview;
@@ -673,6 +676,9 @@ public final class TagEditorDialog {
                     q.embeddedTags.put("title", tags.get("title"));
                     q.embeddedTags.put("artist", tags.get("artist"));
                     q.localDuration = Scanner.durationOf(st, host.getContentResolver(), file);
+                    if (q.localDuration != null) {
+                        localDurSec = q.localDuration.doubleValue();
+                    }
                     q.useCnSources = host.repo.bool("cn", true);
                     q.filenameWeight = NameWeight.fromPercent(weightBar.getProgress());
                     return Sources.aggregate(host.repo.mb, q, host.progressCallback(),
@@ -718,7 +724,28 @@ public final class TagEditorDialog {
                 if (!TextUtil.safeStr(c.title).isEmpty()) {
                     head = head.isEmpty() ? c.title : head + " - " + c.title;
                 }
-                card.addView(UiKit.text(ctx, head, 14, UiKit.textColor(), true));
+
+                // 顶部：封面缩略图 + 文字（图异步到，占位块先撑住高度，避免列表跳动）
+                LinearLayout top = UiKit.horizontal(ctx);
+                top.setGravity(Gravity.TOP);
+                ImageView thumb = new ImageView(ctx);
+                LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(
+                        UiKit.dp(ctx, 52), UiKit.dp(ctx, 52));
+                thumb.setLayoutParams(tlp);
+                thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                android.graphics.drawable.GradientDrawable ph =
+                        new android.graphics.drawable.GradientDrawable();
+                ph.setColor(0x1A808080);
+                ph.setCornerRadius(UiKit.dp(ctx, 6));
+                thumb.setBackground(ph);
+                top.addView(thumb);
+
+                LinearLayout texts = UiKit.vertical(ctx);
+                LinearLayout.LayoutParams vlp = new LinearLayout.LayoutParams(0,
+                        LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+                vlp.setMargins(UiKit.dp(ctx, 10), 0, 0, 0);
+                top.addView(texts, vlp);
+                texts.addView(UiKit.text(ctx, head, 14, UiKit.textColor(), true));
 
                 StringBuilder sub = new StringBuilder();
                 if (!TextUtil.safeStr(c.album).isEmpty()) {
@@ -727,12 +754,18 @@ public final class TagEditorDialog {
                 if (!TextUtil.safeStr(c.year).isEmpty()) {
                     sub.append(c.year).append(" · ");
                 }
+                String dur = durationText(c.duration, localDurSec);
+                if (!dur.isEmpty()) {
+                    sub.append(dur).append(" · ");
+                }
                 sub.append(c.source).append("  ")
                         .append(String.format(java.util.Locale.US, "%.2f", c.confidence));
                 if (c.confidence < 0.50) {
                     sub.append("  ⚠低置信");
                 }
-                card.addView(UiKit.caption(ctx, sub.toString()));
+                texts.addView(UiKit.caption(ctx, sub.toString()));
+                card.addView(top);
+                loadThumb(ctx, thumb, c.coverUrl);
 
                 final Map<String, android.widget.CheckBox> boxes =
                         new LinkedHashMap<String, android.widget.CheckBox>();
@@ -1197,6 +1230,81 @@ public final class TagEditorDialog {
     }
 
     // ------------------------------------------------------------------
+
+    /**
+     * 候选卡片缩略图缓存（按 URL，最多 24 张）。
+     *
+     * <p>只缓存已降采样的 52dp 小图，一张几十 KB；不缓存原图 —— 原图是
+     * 800×800 起步，存十张就能吃掉十几 MB。
+     */
+    private static final android.util.LruCache<String, Bitmap> THUMBS =
+            new android.util.LruCache<String, Bitmap>(24);
+
+    /**
+     * 异步取一张候选封面塞进缩略图位。
+     *
+     * <p>失败就保持占位底色：很多候选来自只提供文字、不给图的源，
+     * 这里不能因为它把整张卡片打成错误态（用户要的是「能看出是哪张专辑」，
+     * 不是「必须有图」）。
+     */
+    static void loadThumb(final android.content.Context context, final ImageView view, String url) {
+        if (view == null || url == null) {
+            return;
+        }
+        final String key = url.trim();
+        if (key.isEmpty()) {
+            return;
+        }
+        Bitmap cached = THUMBS.get(key);
+        if (cached != null) {
+            view.setImageBitmap(cached);
+            return;
+        }
+        final int px = UiKit.dp(context, 52);
+        com.dsh.musicorganizer.net.Net.io().execute(new Runnable() {
+            @Override
+            public void run() {
+                final byte[] bytes = Http.getBytes(key, null, Sources.coverHeaders(key),
+                        6000, CoverArt.MAX_BYTES);
+                if (bytes == null) {
+                    return;
+                }
+                final Bitmap bmp = decode(bytes, px);
+                if (bmp == null) {
+                    return;
+                }
+                THUMBS.put(key, bmp);
+                view.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        view.setImageBitmap(bmp);
+                    }
+                });
+            }
+        });
+    }
+
+    /**
+     * 「4:29（本地差 +2s）」里的时长部分；无时长返回空串。
+     *
+     * <p>候选时长单位是<b>秒</b>（各源在 {@code Sources} 里已统一），
+     * 这里只在显示层换算，避免又引入一套单位。
+     */
+    static String durationText(Double sec, double localSec) {
+        if (sec == null || sec.doubleValue() <= 0) {
+            return "";
+        }
+        String base = com.dsh.musicorganizer.core.TrackInfo.duration(
+                Math.round(sec.doubleValue() * 1000));
+        if (localSec <= 0) {
+            return base;
+        }
+        long diff = Math.round(sec.doubleValue() - localSec);
+        if (Math.abs(diff) <= 1) {
+            return base + "（时长一致）";
+        }
+        return base + "（本地差 " + (diff > 0 ? "+" : "-") + Math.abs(diff) + "s）";
+    }
 
     /** 缩略图解码：先量尺寸再按 2 的幂降采样，避免一张 4000px 封面直接进内存。 */
     static Bitmap decode(byte[] bytes, int maxPx) {

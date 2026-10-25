@@ -54,7 +54,7 @@ mkdir -p "$OUT/classes"
     "$CORE/NameWeight.java" "$CORE/TaskControl.java" \
     "$CORE/Tags.java" "$CORE/TrackInfo.java" "$CORE/TagFill.java" "$CORE/PartialSink.java" \
     "$CORE/SettingsBackup.java" "$CORE/AppLog.java" \
-    "$CORE/Json.java" "$CORE/BatchMemory.java" "$CORE/BatchSkip.java" "$CORE/LyricsDoc.java" "$CORE/Ttml.java" "$CORE/CoverArt.java" \
+    "$CORE/Json.java" "$CORE/BatchMemory.java" "$CORE/MatchQueue.java" "$CORE/BatchSkip.java" "$CORE/LyricsDoc.java" "$CORE/Ttml.java" "$CORE/CoverArt.java" \
     "$CORE/VFile.java" "$CORE/Duplicates.java" "$CORE/Progress.java" \
     "$CORE/SearchQuery.java" "$CORE/SearchIndex.java" "$CORE/TrackRestore.java" "$CORE/DupFiles.java" \
     "$CORE/ScanStats.java" "$CORE/TrackGroup.java" "$CORE/ScanSnapshot.java" "$CORE/Zh.java" \
@@ -83,7 +83,8 @@ mkdir -p "$OUT/classes"
     "$PROJ/tools/SourceRankTest.java" "$PROJ/tools/TagTextTest.java" "$PROJ/tools/TrackInfoTest.java" "$PROJ/tools/TrackRestoreTest.java" "$PROJ/tools/DupFilesTest.java" \
     "$PROJ/tools/ScanMergeTest.java" \
     "$PROJ/tools/LyricsFormatTest.java" "$PROJ/tools/BitrateTest.java" \
-    "$PROJ/tools/LyricsToolTest.java" "$PROJ/tools/TagFixTest.java" "$PROJ/tools/MatchDedupeTest.java"
+    "$PROJ/tools/LyricsToolTest.java" "$PROJ/tools/TagFixTest.java" "$PROJ/tools/MatchDedupeTest.java" \
+    "$PROJ/tools/MatchQueueTest.java"
 
 "$JAVA" -Dfile.encoding=UTF-8 -cp "$OUT/classes" NameWeightTest
 "$JAVA" -Dfile.encoding=UTF-8 -cp "$OUT/classes" TagFillTest
@@ -126,3 +127,4 @@ mkdir -p "$OUT/classes"
 "$JAVA" -Dfile.encoding=UTF-8 -cp "$OUT/classes" LyricsToolTest
 "$JAVA" -Dfile.encoding=UTF-8 -cp "$OUT/classes" TagFixTest
 "$JAVA" -Dfile.encoding=UTF-8 -cp "$OUT/classes" MatchDedupeTest
+"$JAVA" -Dfile.encoding=UTF-8 -cp "$OUT/classes" MatchQueueTest

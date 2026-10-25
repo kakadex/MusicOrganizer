@@ -371,14 +371,8 @@ public final class CoverBatch {
 
     /** 部分图床按 Referer 判断来源，缺了会 403。 */
     private static Map<String, String> headersFor(String url) {
-        Map<String, String> headers = new HashMap<String, String>();
-        String u = url == null ? "" : url;
-        if (u.contains("gtimg.cn")) {
-            headers.put("Referer", "https://y.qq.com/");
-        } else if (u.contains("126.net") || u.contains("music.163.com")) {
-            headers.put("Referer", "https://music.163.com/");
-        }
-        return headers;
+        // 规则集中在 net/Sources.coverHeaders：候选卡片预览也用同一份，避免两处走偏
+        return com.dsh.musicorganizer.net.Sources.coverHeaders(url);
     }
 
     public static String sourceLabel(String source) {

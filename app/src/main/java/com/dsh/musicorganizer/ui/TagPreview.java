@@ -83,6 +83,10 @@ public final class TagPreview {
                     }
                     sb.append(" · ").append(String.format("%.2f", m.confidence))
                             .append(" · ").append(TextUtil.safeStr(m.source));
+                    if (m.resumed) {
+                        // 让用户知道这条没重新联网，是上一批匹配好、还没写完的结果
+                        sb.append(" · 续跑");
+                    }
                     return sb.toString();
                 }
 

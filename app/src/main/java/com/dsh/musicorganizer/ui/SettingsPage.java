@@ -450,9 +450,14 @@ public final class SettingsPage extends ScrollView {
         final com.dsh.musicorganizer.core.BatchMemory tags = host.batchMemory("tags");
         final com.dsh.musicorganizer.core.BatchMemory lyrics = host.batchMemory("lyrics");
         final com.dsh.musicorganizer.core.BatchMemory cover = host.batchMemory("cover");
+        final com.dsh.musicorganizer.core.MatchQueue qTags = host.batchQueue("tags");
+        final com.dsh.musicorganizer.core.MatchQueue qLyrics = host.batchQueue("lyrics");
         host.confirm("清除增量匹配记忆",
                 "当前记忆：\n· 标签：" + tags.summary() + "\n· 歌词：" + lyrics.summary()
                         + "\n· 封面：" + cover.summary()
+                        + "\n\n待写入（中断后可从这些继续，不必重新联网）："
+                        + "\n· 标签：" + qTags.summary()
+                        + "\n· 歌词：" + qLyrics.summary()
                         + "\n\n清除后下一批会把所有歌重新查一遍。"
                         + "\n只想重查某几首的话，在库页选中它们点「改标签」，"
                         + "弹窗里选「重新查询这 N 首」即可，不用清空全部记忆。",
@@ -462,8 +467,10 @@ public final class SettingsPage extends ScrollView {
                         tags.delete();
                         lyrics.delete();
                         cover.delete();
+                        qTags.delete();
+                        qLyrics.delete();
                         host.toast("已清除匹配记忆");
-                        host.log("已清除增量匹配记忆（标签/歌词/封面）", "info");
+                        host.log("已清除增量匹配记忆（标签/歌词/封面）与待写入中间态", "info");
                     }
                 });
     }

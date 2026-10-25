@@ -44,6 +44,8 @@ public final class TagBatch {
         public String source = "";
         public double confidence = 0;
         public boolean selected = true;
+        /** 这条是从中间态队列续跑来的（没重新联网，预览里会标注）。 */
+        public boolean resumed;
 
         /** 预览文案：动了哪些字段（只有字段名）。 */
         public String fieldSummary() {
@@ -209,6 +211,23 @@ public final class TagBatch {
                                            final Progress progress, final CancelToken cancel,
                                            final Logger log, final BatchMemory memory,
                                            final BatchSkip skip) {
+        return fetchMatches(st, resolver, client, files, fieldModes, filenameWeight, useCnSources,
+                sink, progress, cancel, log, memory, skip, null);
+    }
+
+    /**
+     * 同上，额外接一个中间态队列：上次匹配好但没写完的结果，这次直接复用，不再联网。
+     *
+     * <p>这是「断点续跑」的落点。队列为空时行为与不带队列完全一致。
+     */
+    public static List<Match> fetchMatches(final Storage st, final ContentResolver resolver,
+                                           final MbClient client, List<VFile> files,
+                                           final Map<String, Integer> fieldModes,
+                                           final double filenameWeight, final boolean useCnSources,
+                                           final PartialSink<Match> sink,
+                                           final Progress progress, final CancelToken cancel,
+                                           final Logger log, final BatchMemory memory,
+                                           final BatchSkip skip, final MatchQueue queue) {
         // 去重：重叠授权 / 重复扫描可能让同一个文档出现多次，只处理一次
         final java.util.LinkedHashMap<String, VFile> seen =
                 new java.util.LinkedHashMap<String, VFile>();
@@ -227,6 +246,7 @@ public final class TagBatch {
         final AtomicInteger skippedFormat = new AtomicInteger();
         final AtomicInteger saturated = new AtomicInteger();
         final AtomicInteger skippedKnown = new AtomicInteger();
+        final AtomicInteger resumed = new AtomicInteger();
 
         List<Match> raw = Net.mapIndexed(files, Net.FILE_CONCURRENCY, cancel,
                 new Net.IndexedWork<VFile, Match>() {
@@ -235,7 +255,8 @@ public final class TagBatch {
                         try {
                             Match m = one(st, resolver, client, file, fieldModes,
                                     filenameWeight, useCnSources, cancel, log,
-                                    skippedFormat, saturated, memory, skippedKnown, skip);
+                                    skippedFormat, saturated, memory, skippedKnown, skip,
+                                    queue, resumed);
                             if (sink != null && m != null) {
                                 sink.add(index, m);
                             }
@@ -273,10 +294,16 @@ public final class TagBatch {
             if (skippedKnown.get() > 0) {
                 sb.append("，按记忆跳过 ").append(skippedKnown.get());
             }
+            if (resumed.get() > 0) {
+                sb.append("，续跑上次结果 ").append(resumed.get());
+            }
             log.log(sb.toString(), "info");
         }
         if (memory != null) {
             memory.save();
+        }
+        if (queue != null) {
+            queue.save();
         }
         return out;
     }
@@ -287,7 +314,8 @@ public final class TagBatch {
                              boolean useCnSources,
                              CancelToken cancel, Logger log,
                              AtomicInteger skippedFormat, AtomicInteger saturated,
-                             BatchMemory memory, AtomicInteger skippedKnown, BatchSkip skip) {
+                             BatchMemory memory, AtomicInteger skippedKnown, BatchSkip skip,
+                             MatchQueue queue, AtomicInteger resumed) {
         if (!file.audio()) {
             return null;
         }
@@ -310,6 +338,18 @@ public final class TagBatch {
             if (TagFill.isSaturated(before, fieldModes)) {
                 saturated.incrementAndGet();
                 return null;
+            }
+            // 续跑优先：上次已经匹配好、只是没来得及写入的，直接复用，省掉一整轮 8 源查询。
+            // 「忽略匹配记忆」开关打开时一并忽略中间态 —— 那是用户明确要求全部重查。
+            if (queue != null && !(memory != null && memory.ignoreExisting())) {
+                Match rm = fromQueue(queue.take(memKey, file.size, file.lastModified), before, file);
+                if (rm != null) {
+                    resumed.incrementAndGet();
+                    if (log != null) {
+                        log.log("标签续跑：沿用上次匹配结果 · " + file.name, "info");
+                    }
+                    return rm;
+                }
             }
             Sources.Query q = new Sources.Query();
             q.filenameCandidates.addAll(NameParser.candidatePairs(file.stem()));
@@ -366,6 +406,10 @@ public final class TagBatch {
             m.source = best.source;
             m.confidence = best.confidence;
             m.selected = true;
+            // 中间态落库：这条已经匹配好，即使进程马上被杀，下次也能从这里接着写
+            if (queue != null) {
+                queue.put(memKey, file.size, file.lastModified, queueFields(m));
+            }
             return m;
         } catch (Exception e) {
             if (log != null) {
@@ -404,6 +448,19 @@ public final class TagBatch {
                                      List<Match> matches, Progress progress,
                                      CancelToken cancel, Logger log, List<String> errorSink,
                                      BatchMemory memory) {
+        return writeMatches(st, resolver, ctx, matches, progress, cancel, log, errorSink,
+                memory, null);
+    }
+
+    /**
+     * 同上，并同步中间态队列：写成功 / 跳过 / 失败的都收尾，只剩没轮到的继续待命。
+     *
+     * <p>这一步是「续跑」能否收敛的关键：如果写完不销账，下次还会把同一批再列出来。
+     */
+    public static int[] writeMatches(Storage st, ContentResolver resolver, Context ctx,
+                                     List<Match> matches, Progress progress,
+                                     CancelToken cancel, Logger log, List<String> errorSink,
+                                     BatchMemory memory, MatchQueue queue) {
         int written = 0;
         int skipped = 0;
         int failed = 0;
@@ -420,6 +477,9 @@ public final class TagBatch {
             }
             if (!m.selected || m.updates.isEmpty()) {
                 skipped++;
+                if (queue != null) {
+                    queue.mark(memKey(m.file), MatchQueue.SKIPPED);
+                }
                 continue;
             }
             try {
@@ -430,12 +490,19 @@ public final class TagBatch {
                     if (memory != null) {
                         memory.markDone(memKey(m.file), m.file.size, m.file.lastModified);
                     }
+                    if (queue != null) {
+                        queue.mark(memKey(m.file), MatchQueue.WRITTEN);
+                    }
                 } else {
                     failed++;
                     if (log != null) {
                         log.log("标签写入失败：" + m.file.name + "（" + err + "）", "error");
                     }
                     note(errorSink, m.file.name, err);
+                    if (queue != null) {
+                        // 失败就销账：下次重新匹配比反复重试同一条更有意义
+                        queue.mark(memKey(m.file), MatchQueue.FAILED);
+                    }
                 }
             } catch (Exception e) {
                 failed++;
@@ -444,10 +511,17 @@ public final class TagBatch {
                             "error");
                 }
                 note(errorSink, m.file.name, TextUtil.shortError(e));
+                if (queue != null) {
+                    queue.mark(memKey(m.file), MatchQueue.FAILED);
+                }
             }
         }
         if (memory != null) {
             memory.save();
+        }
+        if (queue != null) {
+            // 收尾：写成功/跳过/失败的都销账，只留下「这一批没轮到的」等下次续跑
+            queue.clearFinished();
         }
         return new int[]{written, skipped, failed};
     }
@@ -461,6 +535,66 @@ public final class TagBatch {
      */
     public static String memKey(VFile f) {
         return (f.docId == null || f.docId.isEmpty()) ? f.name : f.docId;
+    }
+
+    // ------------------------------------------------------------------
+    // 中间态（断点续跑）
+    // ------------------------------------------------------------------
+
+    /** 把一条匹配结果摊平成队列字段：真正的待写字段 + 预览要显示的来源信息。 */
+    static Map<String, String> queueFields(Match m) {
+        Map<String, String> f = new java.util.LinkedHashMap<String, String>();
+        if (m.updates != null) {
+            f.putAll(m.updates);
+        }
+        // 以 @ 开头的键不会和标签字段撞名
+        f.put("@t", TextUtil.safeStr(m.matchedTitle));
+        f.put("@a", TextUtil.safeStr(m.matchedArtist));
+        f.put("@al", TextUtil.safeStr(m.matchedAlbum));
+        f.put("@src", TextUtil.safeStr(m.source));
+        f.put("@conf", String.valueOf(m.confidence));
+        return f;
+    }
+
+    /**
+     * 从队列里还原一条匹配结果；字段为空返回 null（当作没命中过）。
+     *
+     * <p>{@code before} 现读：队列只在指纹一致时才给，所以读到的就是匹配时那份标签。
+     */
+    static Match fromQueue(MatchQueue.Item it, Tags before, VFile file) {
+        if (it == null) {
+            return null;
+        }
+        Map<String, String> updates = new HashMap<String, String>();
+        for (String k : Tags.KEYS) {
+            String v = it.fields.get(k);
+            if (v != null && !v.isEmpty()) {
+                updates.put(k, v);
+            }
+        }
+        if (updates.isEmpty()) {
+            return null;
+        }
+        Match m = new Match();
+        m.file = file;
+        m.before = before;
+        m.updates = updates;
+        m.matchedTitle = it.field("@t", "");
+        m.matchedArtist = it.field("@a", "");
+        m.matchedAlbum = it.field("@al", "");
+        m.source = it.field("@src", "");
+        m.confidence = parseDouble(it.field("@conf", "0"));
+        m.selected = true;
+        m.resumed = true;
+        return m;
+    }
+
+    private static double parseDouble(String s) {
+        try {
+            return Double.parseDouble(s.trim());
+        } catch (Exception e) {
+            return 0;
+        }
     }
 
     private static void note(List<String> sink, String name, String reason) {

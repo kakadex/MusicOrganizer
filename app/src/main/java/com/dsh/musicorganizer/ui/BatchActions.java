@@ -4,6 +4,7 @@ import com.dsh.musicorganizer.core.BatchMemory;
 import com.dsh.musicorganizer.core.BatchSkip;
 import com.dsh.musicorganizer.core.CoverBatch;
 import com.dsh.musicorganizer.core.Lyrics;
+import com.dsh.musicorganizer.core.MatchQueue;
 import com.dsh.musicorganizer.core.NameWeight;
 import com.dsh.musicorganizer.core.Scanner;
 import com.dsh.musicorganizer.core.TagFix;
@@ -100,7 +101,7 @@ public final class BatchActions {
                 Storage st = host.safeStorage();
                 return TagBatch.fetchMatches(st, host.getContentResolver(), host.repo.mb, files,
                         modes, weight, cn, null, host.progressCallback(), host.cancelToken(),
-                        host, memory, skip);
+                        host, memory, skip, host.batchQueue("tags"));
             }
         }, new Tasks.Callback() {
             @Override
@@ -157,7 +158,7 @@ public final class BatchActions {
                 List<String> errors = new ArrayList<String>();
                 int[] r = TagBatch.writeMatches(st, host.getContentResolver(), host,
                         selected, host.progressCallback(), host.cancelToken(), host, errors,
-                        memory);
+                        memory, host.batchQueue("tags"));
                 return new Object[]{r, errors};
             }
         }, new Tasks.Callback() {
@@ -224,7 +225,8 @@ public final class BatchActions {
                 Storage st = host.safeStorage();
                 return Lyrics.fetchMatches(st, host.getContentResolver(),
                         files, true, false, weight, null,
-                        host.progressCallback(), host.cancelToken(), host, memory, skip);
+                        host.progressCallback(), host.cancelToken(), host, memory, skip,
+                        host.batchQueue("lyrics"));
             }
         }, new Tasks.Callback() {
             @Override
@@ -278,7 +280,8 @@ public final class BatchActions {
             public Object run() throws Exception {
                 Storage st = host.safeStorage();
                 return Lyrics.writeMatches(st, host.getContentResolver(), host, selected,
-                        true, embed, host.progressCallback(), host.cancelToken(), host, memory);
+                        true, embed, host.progressCallback(), host.cancelToken(), host, memory,
+                        host.batchQueue("lyrics"));
             }
         }, new Tasks.Callback() {
             @Override

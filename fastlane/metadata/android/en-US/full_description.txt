@@ -1,0 +1,26 @@
+A local music library organizer for messy filenames, empty tags, missing lyrics and duplicates.
+
+WHAT IT DOES
+· Batch tag filling: match from several public metadata sources, review every "old → new" value before writing
+· Batch lyrics: timed lyrics preferred, saved as a sidecar LRC and optionally embedded into the audio tags
+· Duplicates: group by similar filename or by content (size + file header), keep one copy
+· Reorganize: sort files into artist / artist-album folders, with a dry run first
+· Library check-up: missing tags, covers, lyrics and odd bitrates in one list
+· Single track editor: fields, cover, lyrics and text-encoding repair in one screen
+
+SUPPORTED FORMATS
+· Writable: MP3, FLAC, M4A/MP4, WAV, OGG/Opus, APE, WV, MPC
+· Read-only: WMA
+
+WHY IT IS DIFFERENT
+· Local first: your files never leave the device; the network is only used for metadata and lyrics lookups
+· Preview before write: every change is listed and confirmed
+· Reversible: each batch keeps a transaction log and can be undone as a whole
+· No third-party dependencies, small download, no ads, no account
+
+WHO IT IS FOR
+Anyone with a library of inconsistent filenames and missing metadata who wants it fixed in one pass.
+
+Note: online matching relies on public metadata services, so obscure tracks may not be found.
+Lyrics hits are not guaranteed either; the preview shows the source and a confidence score,
+and you decide what gets written.

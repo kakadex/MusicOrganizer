@@ -611,7 +611,8 @@ public final class OrganizePage extends ScrollView {
                         overwrite, acceptPlain,
                         NameWeight.fromPercent(host.repo.intVal("fn_weight",
                                 NameWeight.DEFAULT_PERCENT)),
-                        sink, host.progressCallback(), host.cancelToken(), host, memory);
+                        sink, host.progressCallback(), host.cancelToken(), host, memory,
+                        host.batchQueue("lyrics"));
             }
         }, new Tasks.Callback() {
             @Override
@@ -709,7 +710,7 @@ public final class OrganizePage extends ScrollView {
                 Storage st = host.safeStorage();
                 return Lyrics.writeMatches(st, host.getContentResolver(), host, selected,
                         overwrite, embed, host.progressCallback(), host.cancelToken(), host,
-                        memory);
+                        memory, host.batchQueue("lyrics"));
             }
         };
         Tasks.Callback cb = new Tasks.Callback() {
@@ -776,7 +777,8 @@ public final class OrganizePage extends ScrollView {
                                         NameWeight.fromPercent(host.repo.intVal("fn_weight",
                                                 NameWeight.DEFAULT_PERCENT)),
                                         cn, sink, host.progressCallback(),
-                                        host.cancelToken(), host, memory);
+                                        host.cancelToken(), host, memory, null,
+                                        host.batchQueue("tags"));
                             }
                         }, new Tasks.Callback() {
                             @Override
@@ -895,7 +897,8 @@ public final class OrganizePage extends ScrollView {
             public Object run() throws Exception {
                 Storage st = host.safeStorage();
                 return TagBatch.writeMatches(st, host.getContentResolver(), host, selected,
-                        host.progressCallback(), host.cancelToken(), host, errors, memory);
+                        host.progressCallback(), host.cancelToken(), host, errors, memory,
+                        host.batchQueue("tags"));
             }
         };
         Tasks.Callback cb = new Tasks.Callback() {

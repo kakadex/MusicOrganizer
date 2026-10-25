@@ -260,6 +260,8 @@ public class MainActivity extends Activity implements Logger {
             }
             // 恢复上次扫描结果：闪退重开后列表还在，不用重扫
             restoreSnapshot();
+            // 外部应用用 ACTION_EDIT 调起时，直接开这个文件的标签编辑器
+            handleExternalEdit(getIntent());
         } catch (Throwable t) {
             boot("==== 启动失败，请截图发给开发者 ====");
             boot(exceptionToString(t));
@@ -940,6 +942,16 @@ public class MainActivity extends Activity implements Logger {
         return m;
     }
 
+    /**
+     * 批量匹配的中间态队列（断点续跑）。
+     *
+     * <p>与 {@link #batchMemory} 同目录、不同文件：记忆记「已经查过什么」，
+     * 队列记「查到但还没写什么」，两件事不能混在一份文件里。
+     */
+    public com.dsh.musicorganizer.core.MatchQueue batchQueue(String kind) {
+        return com.dsh.musicorganizer.core.MatchQueue.open(new File(getFilesDir(), "batches"), kind);
+    }
+
     private String logStatsText() {
         return "已落盘 " + AppLog.stats() + "（保留 " + AppLog.KEEP_DAYS
                 + " 天，崩溃堆栈也会记进去；「导出」可发给开发者）";
@@ -1339,6 +1351,111 @@ public class MainActivity extends Activity implements Logger {
 
     public Storage safeStorage() throws Exception {
         return repo.openStorage();
+    }
+
+    // ------------------------------------------------------------------
+    // 外部编辑协议（ACTION_EDIT）
+    // ------------------------------------------------------------------
+
+    /**
+     * 处理别的应用发来的「编辑这个音频的标签」请求。
+     *
+     * <p>为什么只做「映射到已授权目录」而不是直接拿 URI 写：标签写入走的是
+     * SAF 目录树（{@link Storage} + {@code TagTransaction} 的事务/自检/回滚全建立在这套路径上），
+     * 拿一个来路不明的 document URI 直接写会把「写坏能自检」这条保证绕过去。
+     * 所以这里先把它翻译成库里的 docId，能对上就正常走编辑器；对不上就明确告诉用户
+     * 该把哪个目录加进来 —— 比悄悄失败有用。
+     */
+    private void handleExternalEdit(android.content.Intent intent) {
+        if (intent == null || !android.content.Intent.ACTION_EDIT.equals(intent.getAction())) {
+            return;
+        }
+        android.net.Uri uri = intent.getData();
+        if (uri == null) {
+            uri = intent.getParcelableExtra(android.content.Intent.EXTRA_STREAM);
+        }
+        if (uri == null) {
+            toast("没有收到文件");
+            return;
+        }
+        String docId = docIdOf(uri);
+        if (docId == null) {
+            message("无法定位这个文件",
+                    "只支持「文件」类地址（content://…documents/… 或系统媒体库）。\n"
+                            + "如果是从网盘 / 压缩包里打开的，请先保存到本机音乐文件夹。");
+            return;
+        }
+        try {
+            Storage st = safeStorage();
+            String parent = docId.lastIndexOf('/') > 0
+                    ? docId.substring(0, docId.lastIndexOf('/')) : null;
+            VFile f = st.stat(docId, parent);
+            if (f == null || f.dir) {
+                message("这个文件不在音乐库里",
+                        "先把它所在的文件夹加入音乐库：设置 → 文件夹管理 → 添加文件夹。\n"
+                                + "加好之后从文件管理器再点一次「用其它应用编辑」即可。");
+                return;
+            }
+            if (!f.audio()) {
+                toast("这不是音频文件：" + f.name);
+                return;
+            }
+            if (!com.dsh.musicorganizer.core.TagIO.canWrite(f.ext())) {
+                message("这种格式只能读",
+                        f.name + " 的标签写入还不支持（WMA 等格式只读）。");
+                return;
+            }
+            log("外部调起编辑：" + f.name, "info");
+            TagEditorDialog.show(this, f);
+        } catch (Exception e) {
+            message("打不开这个文件", TextUtil.shortError(e)
+                    + "\n\n确认该文件所在文件夹已在「设置 → 文件夹管理」里授权。");
+        }
+    }
+
+    /** 把外部 URI 翻成 SAF docId（documents URI 直接取，媒体库 / file 走路径换算）。 */
+    private String docIdOf(android.net.Uri uri) {
+        try {
+            String id = android.provider.DocumentsContract.getDocumentId(uri);
+            if (id != null && !id.isEmpty()) {
+                return id;
+            }
+        } catch (Exception ignored) {
+        }
+        String path = null;
+        try {
+            if ("file".equals(uri.getScheme())) {
+                path = uri.getPath();
+            } else {
+                android.database.Cursor c = getContentResolver().query(uri,
+                        new String[]{"_data"}, null, null, null);
+                if (c != null) {
+                    try {
+                        if (c.moveToFirst()) {
+                            path = c.getString(0);
+                        }
+                    } finally {
+                        c.close();
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        if (path == null) {
+            return null;
+        }
+        String root = android.os.Environment.getExternalStorageDirectory().getAbsolutePath();
+        if (path.startsWith(root + "/")) {
+            return "primary:" + path.substring(root.length() + 1);
+        }
+        return null;
+    }
+
+    @Override
+    protected void onNewIntent(android.content.Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleExternalEdit(intent);
     }
 
     public VFile root() throws Exception {
