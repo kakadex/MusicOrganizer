@@ -42,13 +42,13 @@ abstract final class ScanMerge {
     if (current != null) {
       final Set<String> ids = <String>{};
       for (final VFile f in current) {
-        if (f != null && ids.add(f.docId)) out.add(f);
+        if (ids.add(f.docId)) out.add(f);
       }
     }
     final Map<String, VFile> before = <String, VFile>{};
     if (previous != null) {
       for (final VFile f in previous) {
-        if (f == null || f.dir || !f.audio()) continue;
+        if (f.dir || !f.audio()) continue;
         before.putIfAbsent(f.docId, () => f);
       }
     }

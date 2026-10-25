@@ -16,18 +16,16 @@ abstract final class CsvExport {
   /// 一行清单数据。
   static Row rowOf(VFile file, Tags tags, bool cover, bool lyrics) {
     final Row r = Row()
-      ..name = file == null ? '' : file.name
-      ..size = file == null ? 0 : file.size
+      ..name = file.name
+      ..size = file.size
       ..cover = cover
       ..lyrics = lyrics;
-    if (tags != null) {
-      r.title = tags.get('title').trim();
-      r.artist = tags.get('artist').trim();
-      r.album = tags.get('album').trim();
-      r.year = tags.get('year').trim();
-      r.track = tags.get('track').trim();
-      r.genre = tags.get('genre').trim();
-    }
+    r.title = tags.get('title').trim();
+    r.artist = tags.get('artist').trim();
+    r.album = tags.get('album').trim();
+    r.year = tags.get('year').trim();
+    r.track = tags.get('track').trim();
+    r.genre = tags.get('genre').trim();
     return r;
   }
 
@@ -40,9 +38,7 @@ abstract final class CsvExport {
       sb.write(esc(header[i]));
     }
     sb.write('\r\n');
-    if (rows == null) return sb.toString();
     for (final Row r in rows) {
-      if (r == null) continue;
       _appendCell(sb, r.name, 0);
       _appendCell(sb, r.title, 1);
       _appendCell(sb, r.artist, 2);
@@ -107,7 +103,7 @@ abstract final class CsvExport {
     final List<VFile> out = <VFile>[];
     if (files == null) return out;
     for (final VFile f in files) {
-      if (f != null && f.audio()) out.add(f);
+      if (f.audio()) out.add(f);
     }
     return out;
   }
