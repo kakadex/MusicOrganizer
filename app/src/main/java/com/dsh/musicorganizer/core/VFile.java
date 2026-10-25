@@ -17,7 +17,7 @@ public final class VFile {
 
     static {
         String[] audio = {".mp3", ".flac", ".m4a", ".wav", ".ogg", ".aac", ".wma", ".ape",
-                ".opus", ".wv", ".mpc"};
+                ".opus", ".wv", ".mpc", ".dsf"};
         String[] lyric = {".lrc", ".krc", ".qrc", ".trc", ".srt"};
         for (String s : audio) {
             AUDIO_EXTS.add(s);

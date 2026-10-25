@@ -43,6 +43,13 @@ public final class TagIO {
     public static boolean tagFitsCopy(File copy, String ext) {
         String e = (ext == null || ext.isEmpty()) ? extOf(copy.getName())
                 : ext.toLowerCase(java.util.Locale.US);
+        if (e.equals(".dsf")) {
+            // DSF 的 metadata 在文件任意偏移（通常尾部）。头切片里读得到完整标签 → fits；
+            // 指向副本之外（绝大多数，标签在文件尾）→ 也返回 true，
+            // 接受「快速路径读不到标签」，绝不能为读标签把几百 MB 的 DSD 整份复制
+            //（详情 / 编辑时走整文件副本路径，标签自然完整）。
+            return true;
+        }
         if (!(e.equals(".mp3") || e.equals(".flac"))) {
             return false;
         }
@@ -137,6 +144,8 @@ public final class TagIO {
             } else if (ext.equals(".wma")) {
                 // WMA 只读：ASF 头层层嵌套长度，改标签要重排整段头部，写坏整个文件的风险太高
                 tags = Wma.read(file);
+            } else if (ext.equals(".dsf")) {
+                tags = Dsf.isDsf(file) ? Dsf.read(file) : new Tags();
             }
         } catch (Exception ignored) {
             tags = new Tags();
@@ -194,6 +203,11 @@ public final class TagIO {
                 return "纯 ADTS AAC 不支持 ID3 标签，建议先转码为 M4A 或 MP3 再写入";
             } else if (ext.equals(".wma")) {
                 return "WMA 标签写入支持有限，建议转码为 FLAC 或 MP3";
+            } else if (ext.equals(".dsf")) {
+                if (!Dsf.isDsf(file)) {
+                    return "文件不是有效的 DSF";
+                }
+                Dsf.rewrite(file, values, cover);
             } else {
                 return "该格式不支持写标签：" + ext;
             }
@@ -210,7 +224,8 @@ public final class TagIO {
                 || ext.equals(".m4a") || ext.equals(".mp4")
                 || ext.equals(".wav")
                 || ext.equals(".ogg") || ext.equals(".opus")
-                || ext.equals(".ape") || ext.equals(".wv") || ext.equals(".mpc");
+                || ext.equals(".ape") || ext.equals(".wv") || ext.equals(".mpc")
+                || ext.equals(".dsf");
     }
 
     /** 这个文件里有没有内嵌封面（MP3 APIC / FLAC PICTURE / MP4 covr）。 */
@@ -231,6 +246,9 @@ public final class TagIO {
             }
             if (ext.equals(".ape")) {
                 return Ape.hasCover(file);
+            }
+            if (ext.equals(".dsf")) {
+                return Dsf.isDsf(file) && Dsf.hasCover(file);
             }
         } catch (Exception ignored) {
         }

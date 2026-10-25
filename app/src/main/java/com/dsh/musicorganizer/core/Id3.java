@@ -71,10 +71,16 @@ public final class Id3 {
     // ------------------------------------------------------------------
 
     public static Tags read(File file) {
+        return readAt(file, 0);
+    }
+
+    /** 从 file 的 offset 处开始解析 ID3v2（DSF 的 metadata 块在文件中部/尾部，v0.1.100）。 */
+    public static Tags readAt(File file, long offset) {
         Tags tags = new Tags();
         RandomAccessFile raf = null;
         try {
             raf = new RandomAccessFile(file, "r");
+            raf.seek(offset);
             byte[] head = new byte[10];
             raf.readFully(head);
             if (head[0] != 'I' || head[1] != 'D' || head[2] != '3') {
@@ -83,13 +89,13 @@ public final class Id3 {
             int version = head[3] & 0xFF;
             int flags = head[5] & 0xFF;
             long size = syncsafe(head, 6);
-            long tagEnd = 10 + size + ((flags & 0x10) != 0 ? 10 : 0);
-            long pos = 10;
+            long tagEnd = offset + 10 + size + ((flags & 0x10) != 0 ? 10 : 0);
+            long pos = offset + 10;
             if ((flags & 0x40) != 0) { // extended header
                 byte[] sizeBuf = new byte[4];
                 raf.readFully(sizeBuf);
                 long extSize = (version >= 4) ? syncsafe(sizeBuf, 0) : be32(sizeBuf, 0);
-                pos = 10 + 4 + extSize;
+                pos = offset + 10 + 4 + extSize;
                 raf.seek(pos);
             }
             if ((flags & 0x80) != 0) {
