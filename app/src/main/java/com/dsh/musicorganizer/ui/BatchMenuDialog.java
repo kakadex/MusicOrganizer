@@ -77,17 +77,24 @@ public final class BatchMenuDialog {
         final Context ctx = host;
         final Dialog dialog = new Dialog(ctx);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        // 多选操作框改成「浮在 + 号上方的半屏面板」，圆角与位置都跟底部弹层不同
+        final boolean anchored = sel != null;
 
         LinearLayout root = UiKit.vertical(ctx);
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(UiKit.cardColor());
-        // 只圆上面两角：贴在屏幕底部的弹层（常见的小弹层形态）
-        bg.setCornerRadii(new float[]{
-                UiKit.dp(ctx, 20), UiKit.dp(ctx, 20),
-                UiKit.dp(ctx, 20), UiKit.dp(ctx, 20),
-                0, 0, 0, 0});
+        if (anchored) {
+            bg.setCornerRadius(UiKit.dp(ctx, 18));   // 浮在中间：四角都圆
+        } else {
+            // 只圆上面两角：贴在屏幕底部的弹层（常见的小弹层形态）
+            bg.setCornerRadii(new float[]{
+                    UiKit.dp(ctx, 20), UiKit.dp(ctx, 20),
+                    UiKit.dp(ctx, 20), UiKit.dp(ctx, 20),
+                    0, 0, 0, 0});
+        }
         root.setBackground(bg);
-        int padH = UiKit.dp(ctx, 18);
+        // 半屏浮层横向只有半屏宽，内边距收一点，免得动作文字被挤成两行
+        int padH = UiKit.dp(ctx, anchored ? 14 : 18);
         root.setPadding(padH, UiKit.dp(ctx, 12), padH, UiKit.dp(ctx, 8));
 
         // 顶部小横条：提示可下拉关闭
@@ -103,7 +110,9 @@ public final class BatchMenuDialog {
         root.addView(grip, glp);
 
         // ---- 顶部一行：左「已选择 N 项」，右「全选 / 关闭」----
-        if (sel != null) {
+        // 半屏浮层（+ 号上方）不再重复这一行：主界面搜索框下方已经有同样的三个操作，
+        // 半屏宽放三列文字会挤成一团，这里只保留动作清单。
+        if (sel != null && !anchored) {
             final LinearLayout headRow = UiKit.horizontal(ctx);
             headRow.setGravity(Gravity.CENTER_VERTICAL);
             final TextView count = UiKit.text(ctx,
@@ -177,10 +186,11 @@ public final class BatchMenuDialog {
         }
 
         int screenH = ctx.getResources().getDisplayMetrics().heightPixels;
+        int screenW = ctx.getResources().getDisplayMetrics().widthPixels;
         int bodyCap;
-        if (sel != null) {
-            // 总高不超过整屏 1/4；扣掉 grip + 头部 + 内边距约 96dp
-            bodyCap = Math.max(UiKit.dp(ctx, 88), screenH / 4 - UiKit.dp(ctx, 96));
+        if (anchored) {
+            // 面板高度固定为半屏，滚动区直接把剩余高度吃满
+            bodyCap = screenH / 2;
         } else {
             bodyCap = Math.max(UiKit.dp(ctx, 120), (int) (screenH * 0.55f));
         }
@@ -189,18 +199,32 @@ public final class BatchMenuDialog {
         scroller.setFillViewport(false);
         scroller.addView(body, new android.widget.FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        root.addView(scroller, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        if (anchored) {
+            root.addView(scroller, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        } else {
+            root.addView(scroller, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
 
         dialog.setContentView(root);
         Window w = dialog.getWindow();
         if (w != null) {
             w.setBackgroundDrawableResource(android.R.color.transparent);
-            w.setGravity(Gravity.BOTTOM);
-            w.setLayout(ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT);
-            // 淡化遮罩：上方文件列表要能看见，不能整屏糊住
             android.view.WindowManager.LayoutParams lp = w.getAttributes();
+            if (anchored) {
+                // 贴在「+」按钮正上方、右对齐：宽高各半屏，单手拇指不用横跨屏幕
+                w.setGravity(Gravity.BOTTOM | Gravity.END);
+                w.setLayout(screenW / 2, screenH / 2);
+                lp.x = UiKit.dp(ctx, 16);          // 与 FAB 右边距对齐
+                // FAB 高 56dp + 底距(16+95)dp + 8dp 间隙 = 175dp
+                lp.y = UiKit.dp(ctx, 175);
+            } else {
+                w.setGravity(Gravity.BOTTOM);
+                w.setLayout(ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT);
+            }
+            // 淡化遮罩：上方文件列表要能看见，不能整屏糊住
             lp.dimAmount = 0.35f;
             w.setAttributes(lp);
             w.addFlags(WindowManagerFlag.DIM_BEHIND);

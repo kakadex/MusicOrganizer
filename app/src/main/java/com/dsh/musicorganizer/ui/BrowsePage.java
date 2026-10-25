@@ -628,8 +628,12 @@ public final class BrowsePage extends LinearLayout {
         });
         headRow.addView(closeBtn);
         batchBar.addView(headRow);
+        // 与搜索胶囊留一点呼吸，避免两行贴在一起
+        UiKit.margin(batchBar, 0, 2, 0, 2);
         // 批量操作入口改成右下角圆形「+」FAB（见 listWrap 里的 batchFab），这里不再放占位按钮
-        addView(batchBar);
+        // 位置：紧贴搜索框下方（toolbar 是第 0 个子 View），长按后马上就能看到、拇指也够得到；
+        // 放在列表后面（原实现）会被列表挤到屏幕最底部，多选时反而要往下去找。
+        addView(batchBar, 1);
 
         syncChips();
     }
