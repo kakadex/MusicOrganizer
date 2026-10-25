@@ -1,12 +1,12 @@
 # 版本清单（App 检查更新时优先读它：国内 Gitee 优先，GitHub 兜底）
 # 格式见 AppUpdate.parseManifest：每行 key=value
-version=0.1.83-cfhvci
-code=93
-tag=v0.1.83-cfhvci
+version=0.1.84-8u4n4b
+code=94
+tag=v0.1.84-8u4n4b
 apk=dist/musicorganizer-latest.apk
 size=382415
-sha256=213711aeee42a7c43bdd44581aab312168610b5c139dee335bf2215b63ccabf7
-summary=v0.1.83-cfhvci — 多选操作条挪到搜索框下；「+」弹层改成贴着按钮的半屏面板
+sha256=32d09e69c96af956ae35a3a6d553cbe53bc65d66cf2547f40d8440aec117172b
+summary=v0.1.84-8u4n4b — 带艺人前缀的文件现在也能查出重复了
 page=https://gitee.com/kakadex/MusicOrganizer/releases
 github=https://github.com/kakadex/MusicOrganizer/releases
 date=2026-10-25
