@@ -1,12 +1,12 @@
 # 版本清单（App 检查更新时优先读它：国内 Gitee 优先，GitHub 兜底）
 # 格式见 AppUpdate.parseManifest：每行 key=value
-version=0.1.87-391525
-code=97
-tag=v0.1.87-391525
+version=0.1.88-13e41f
+code=98
+tag=v0.1.88-13e41f
 apk=dist/musicorganizer-latest.apk
 size=386511
-sha256=b88f448394bb79249d2d9b5f6c8afd274c778bea1cfcf2ea65e0da072f97ed12
-summary=v0.1.87-391525 — 版本后缀改用源码内容哈希
+sha256=a0e7db20ed11900b1a399d7660b4cdfc5d75c85930cf508bb2a48ea5955d3ff4
+summary=v0.1.88-13e41f — 查重补上「内容核验」：名字像但内容不同的不再混在一起
 page=https://gitee.com/kakadex/MusicOrganizer/releases
 github=https://github.com/kakadex/MusicOrganizer/releases
 date=2026-10-25
