@@ -10,6 +10,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
+import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -49,7 +50,8 @@ public final class FolderManagerDialog {
         add.setPadding(tap, tap, 0, tap);
         head.addView(add);
         card.addView(head);
-        card.addView(UiKit.caption(ctx, "已授权的音乐文件夹。点右上角「＋ 添加」选择目录。"));
+        card.addView(UiKit.caption(ctx, "已授权的音乐文件夹。点「＋ 添加」选择目录。\n"
+                + "Android 11+ 无法授权应用私有目录（如 QQ 的 Android/data）：请先在 QQ 里把文件「保存到手机」，再回来添加它落到的公共目录。"));
 
         // 列表（多根，v0.1.91）
         LinearLayout list = UiKit.vertical(ctx);
@@ -114,6 +116,18 @@ public final class FolderManagerDialog {
             list.addView(UiKit.caption(ctx, "还没有添加文件夹。"));
         }
         card.addView(list);
+
+        // 公共目录里的歌可以走系统媒体库一键导入，不必手动一个个选
+        Button importMedia = UiKit.button(ctx, "从系统媒体库导入…", true);
+        UiKit.margin(importMedia, 0, 8, 0, 0);
+        importMedia.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                dialog.dismiss();
+                MediaStoreDialog.show(host);
+            }
+        });
+        card.addView(importMedia);
 
         add.setOnClickListener(new View.OnClickListener() {
             @Override
