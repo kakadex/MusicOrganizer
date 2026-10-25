@@ -1080,7 +1080,9 @@ public final class BrowsePage extends LinearLayout {
         }
         final List<SearchIndex.Entry> todo = new ArrayList<SearchIndex.Entry>();
         for (SearchIndex.Entry e : index.all()) {
-            if (!e.metaLoaded && e.file != null) {
+            // 没读过的、以及「缓存没歌词需重读确认」的都排进去（旧快照歌词可能被读丢）
+            if (e.file != null && (!e.metaLoaded
+                    || com.dsh.musicorganizer.core.Scanner.lyricsNeedProbe(e.file))) {
                 todo.add(e);
             }
         }
@@ -1353,7 +1355,12 @@ public final class BrowsePage extends LinearLayout {
     }
 
     private void requestMeta(final SearchIndex.Entry e) {
-        if (e == null || e.metaLoaded || e.file == null || metaPending.contains(e.docId)) {
+        if (e == null || e.file == null || metaPending.contains(e.docId)) {
+            return;
+        }
+        // 已读过的文件：只有「缓存没歌词、且还没重读确认过」才再排一次 ——
+        // 旧快照可能把内嵌歌词读丢，重扫之前靠这里补一次重读（v0.1.93）。
+        if (e.metaLoaded && !com.dsh.musicorganizer.core.Scanner.lyricsNeedProbe(e.file)) {
             return;
         }
         if (metaQueue.size() > 400) {
