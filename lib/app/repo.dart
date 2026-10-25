@@ -212,6 +212,23 @@ class Repo extends ChangeNotifier {
     return true;
   }
 
+  /// 直接把某个目录设为曲库根（桌面拖放用；等价于「选择目录」）。
+  ///
+  /// 会持久化，下次启动自动恢复。
+  Future<bool> useDirectory(String path) async {
+    final String p = path.trim();
+    if (p.isEmpty) return false;
+    if (!Directory(p).existsSync()) return false;
+    root = TreeRef(treeUri: 'file://$p', rootDocId: p);
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString('root_tree_uri', root!.treeUri);
+    await prefs.setString('root_doc_id', p);
+    files = <VFile>[];
+    index.clear();
+    notifyListeners();
+    return true;
+  }
+
   /// 扫描目录。
   ///
   /// 增量：上一次扫到的文件 size / lastModified 都没变，就直接沿用上次读到的标签

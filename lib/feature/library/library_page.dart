@@ -1,8 +1,9 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../../app/app_focus.dart';
 import '../../app/cover_cache.dart';
 import '../../app/repo.dart';
 import '../../app/ui_kit.dart';
@@ -189,6 +190,47 @@ class _LibraryPageState extends State<LibraryPage> {
 
   @override
   Widget build(BuildContext context) {
+    return CallbackShortcuts(
+      bindings: <ShortcutActivator, VoidCallback>{
+        // Ctrl+F 聚焦搜索；Ctrl+A 全选（先进多选态）；Esc 退多选 / 清空搜索
+        const SingleActivator(LogicalKeyboardKey.keyF, control: true): AppFocus.focusSearch,
+        const SingleActivator(LogicalKeyboardKey.keyA, control: true): _selectAll,
+        const SingleActivator(LogicalKeyboardKey.escape): _escape,
+      },
+      // 整页先接住焦点，快捷键才能在没点任何控件时生效（点搜索框后仍向上冒泡）
+      child: Focus(autofocus: true, child: _build(context)),
+    );
+  }
+
+  /// Ctrl+A：没进多选就先进入，然后把当前筛选结果全选。
+  void _selectAll() {
+    if (_shown.isEmpty) return;
+    setState(() {
+      _selectMode = true;
+      _selected
+        ..clear()
+        ..addAll(_shown.map((Entry e) => e.docId));
+    });
+  }
+
+  /// Esc：优先退多选，其次清空搜索。
+  void _escape() {
+    if (_selectMode) {
+      setState(() {
+        _selectMode = false;
+        _selected.clear();
+      });
+      return;
+    }
+    if (_query.isNotEmpty) {
+      _search.clear();
+      _query = '';
+      _applyFilter();
+      AppFocus.unfocusAll();
+    }
+  }
+
+  Widget _build(BuildContext context) {
     final Repo repo = Repo.instance;
     return Column(
       children: <Widget>[
@@ -233,6 +275,7 @@ class _LibraryPageState extends State<LibraryPage> {
             Expanded(
               child: TextField(
                 controller: _search,
+                focusNode: AppFocus.search,
                 style: TextStyle(fontSize: MoKit.fsBody, color: MoKit.text(context)),
                 decoration: InputDecoration(
                   isDense: true,

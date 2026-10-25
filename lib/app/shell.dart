@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'repo.dart';
 import 'ui_kit.dart';
 import '../core/tx/journal.dart';
+import '../platform/drop_channel.dart';
 import '../core/tx/journal_history.dart';
 import '../feature/library/preview_sheet.dart';
 import '../feature/library/library_page.dart';
@@ -29,6 +30,8 @@ class _MoShellState extends State<MoShell> {
   @override
   void initState() {
     super.initState();
+    // 拖放只在桌面生效（其他平台没有对端，注册是空操作）
+    DropChannel.listen(_onDrop);
     _boot();
   }
 
@@ -65,12 +68,40 @@ class _MoShellState extends State<MoShell> {
         const SingleActivator(LogicalKeyboardKey.keyO, control: true): _pickRoot,
         const SingleActivator(LogicalKeyboardKey.keyZ, control: true): _undoLast,
         const SingleActivator(LogicalKeyboardKey.f5): _rescan,
+        // Ctrl+1/2/3 切页：桌面上比去点底部更顺手
+        const SingleActivator(LogicalKeyboardKey.digit1, control: true): () => _go(0),
+        const SingleActivator(LogicalKeyboardKey.digit2, control: true): () => _go(1),
+        const SingleActivator(LogicalKeyboardKey.digit3, control: true): () => _go(2),
       },
       child: Focus(
         autofocus: true,
         child: _scaffold(),
       ),
     );
+  }
+
+  void _go(int tab) {
+    if (_tab == tab) return;
+    setState(() => _tab = tab);
+  }
+
+  /// 拖放：桌面把文件夹（或文件）拖进来就切到那个目录。
+  Future<void> _onDrop(List<String> paths) async {
+    final DropResult? r = DropAction.resolve(paths);
+    if (r == null) {
+      if (mounted) moSnack(context, '这些路径里没有可用的目录');
+      return;
+    }
+    final bool ok = await Repo.instance.useDirectory(r.rootPath);
+    if (!mounted) return;
+    if (!ok) {
+      moSnack(context, '目录不存在：${r.rootPath}');
+      return;
+    }
+    _go(0);
+    moSnack(context, r.describe());
+    await Repo.instance.rescan();
+    await Repo.instance.loadMeta();
   }
 
   Future<void> _pickRoot() async {

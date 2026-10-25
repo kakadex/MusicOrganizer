@@ -1,8 +1,14 @@
 #include "flutter_window.h"
 
+#include <flutter/standard_method_codec.h>
+#include <shellapi.h>
+
 #include <optional>
+#include <string>
+#include <vector>
 
 #include "flutter/generated_plugin_registrant.h"
+#include "utils.h"
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -26,6 +32,15 @@ bool FlutterWindow::OnCreate() {
   }
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
+
+  // 拖放通道：Windows 侧只负责把路径送过去，怎么用由 Dart 决定。
+  drop_channel_ = std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+      flutter_controller_->engine()->messenger(),
+      "com.dsh.musicorganizer/drop",
+      &flutter::StandardMethodCodec::GetInstance());
+
+  // 允许把文件 / 文件夹拖进窗口（收 WM_DROPFILES）。
+  DragAcceptFiles(GetHandle(), TRUE);
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();
@@ -51,6 +66,33 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  // 拖进来的东西：取全部路径 → 交给 Dart → 结束拖放。
+  if (message == WM_DROPFILES) {
+    auto drop = reinterpret_cast<HDROP>(wparam);
+    const UINT count = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
+    flutter::EncodableList paths;
+    for (UINT i = 0; i < count; ++i) {
+      const UINT len = DragQueryFileW(drop, i, nullptr, 0);
+      if (len == 0) {
+        continue;
+      }
+      std::wstring buf(len + 1, L'\0');
+      const UINT copied = DragQueryFileW(drop, i, buf.data(), len + 1);
+      if (copied == 0) {
+        continue;
+      }
+      buf.resize(copied);
+      paths.push_back(flutter::EncodableValue(Utf8FromUtf16(buf.c_str())));
+    }
+    DragFinish(drop);
+    if (drop_channel_ && !paths.empty()) {
+      drop_channel_->InvokeMethod(
+          "onDrop",
+          std::make_unique<flutter::EncodableValue>(paths));
+    }
+    return 0;
+  }
+
   // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_) {
     std::optional<LRESULT> result =

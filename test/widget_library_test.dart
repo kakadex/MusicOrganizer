@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart' hide Tags;
 import 'package:musicorganizer/app/repo.dart';
 import 'package:musicorganizer/app/theme/mo_theme.dart';
@@ -116,6 +117,46 @@ void main() {
     expect(find.textContaining('已选'), findsOneWidget);
     expect(find.text('全选'), findsOneWidget);
     expect(find.text('匹配标签'), findsOneWidget);
+  });
+
+  testWidgets('Ctrl+A 全选并进入多选，Esc 退出多选', (WidgetTester tester) async {
+    final Repo repo = Repo.instance;
+    repo.resetForTest();
+    seed(repo);
+    await pumpPage(tester);
+
+    // 先把焦点交给页面（真实使用里焦点在页面/输入框上）
+    await tester.tap(find.text('示例歌名'));
+    await tester.pumpAndSettle();
+    // 详情面板会弹出，先关掉
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyA);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+
+    expect(find.text('已选 3'), findsOneWidget);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('已选'), findsNothing);
+  });
+
+  testWidgets('Ctrl+F 聚焦搜索框', (WidgetTester tester) async {
+    final Repo repo = Repo.instance;
+    repo.resetForTest();
+    seed(repo);
+    await pumpPage(tester);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyF);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+
+    final EditableText field = tester.widget<EditableText>(find.byType(EditableText));
+    expect(field.focusNode.hasFocus, isTrue);
   });
 
   testWidgets('搜索能过滤（按歌手）', (WidgetTester tester) async {
