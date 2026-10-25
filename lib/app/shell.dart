@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'repo.dart';
 import 'ui_kit.dart';
+import '../core/tx/journal.dart';
+import '../core/tx/journal_history.dart';
+import '../feature/library/preview_sheet.dart';
 import '../feature/library/library_page.dart';
 import '../feature/organize/organize_page.dart';
 import '../feature/settings/settings_page.dart';
@@ -55,6 +59,43 @@ class _MoShellState extends State<MoShell> {
         ),
       );
     }
+    return CallbackShortcuts(
+      // 桌面快捷键：与「设置」「整理」里的同名动作走同一套代码，不另开分支
+      bindings: <ShortcutActivator, VoidCallback>{
+        const SingleActivator(LogicalKeyboardKey.keyO, control: true): _pickRoot,
+        const SingleActivator(LogicalKeyboardKey.keyZ, control: true): _undoLast,
+        const SingleActivator(LogicalKeyboardKey.f5): _rescan,
+      },
+      child: Focus(
+        autofocus: true,
+        child: _scaffold(),
+      ),
+    );
+  }
+
+  Future<void> _pickRoot() async {
+    if (await Repo.instance.pickRoot() && mounted) setState(() {});
+  }
+
+  Future<void> _rescan() async {
+    await Repo.instance.rescan();
+    await Repo.instance.loadMeta();
+  }
+
+  /// 撤销最近一批（Ctrl+Z）：找不到批次就提示，不静默。
+  Future<void> _undoLast() async {
+    final Journal? journal = Repo.instance.journal;
+    if (journal == null) return;
+    final List<JournalBatch> batches = await journal.batches(1);
+    if (batches.isEmpty) {
+      if (mounted) moSnack(context, '没有可撤销的写入记录');
+      return;
+    }
+    final int n = await undoBatch(batches.first.key);
+    if (mounted) moSnack(context, '已撤销 $n 处改动');
+  }
+
+  Widget _scaffold() {
     return Scaffold(
       body: SafeArea(
         bottom: false,
