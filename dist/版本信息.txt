@@ -1,10 +1,10 @@
-音乐整理工具 · 安卓版 v0.1.79-k8xent (versionCode 89)
-构建时间: 2026-10-24 21:48:09
+音乐整理工具 · 安卓版 v0.1.80-32ouli (versionCode 90)
+构建时间: 2026-10-25 08:46:17
 包名: com.dsh.musicorganizer
 SDK: minSdk 24 / targetSdk 34
 签名: v2/v3（本地证书，别名 musicorganizer）
-SHA-256: 0ae5737b9cac799cc3581e37660278e1a97a48fb97719157032feb37acbe5891
-大小: 361935 字节
+SHA-256: 32c943f55b69c3d58c7d593e12173ca109455f128c1a80898b2b3a882cb7adcf
+大小: 370127 字节
 
 安装说明：直接覆盖安装即可（versionCode 递增、证书与 0.1.x 各版一致，不会丢偏好设置）。
           仅当从旧的 2.x 内部开发版（或其它证书签名的包）升级时，才需要先卸载。
