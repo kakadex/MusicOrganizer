@@ -1,12 +1,12 @@
 # 版本清单（App 检查更新时优先读它：国内 Gitee 优先，GitHub 兜底）
 # 格式见 AppUpdate.parseManifest：每行 key=value
-version=0.1.82-sexwov
-code=92
-tag=v0.1.82-sexwov
+version=0.1.83-cfhvci
+code=93
+tag=v0.1.83-cfhvci
 apk=dist/musicorganizer-latest.apk
 size=382415
-sha256=7ee5543f35532cbf280259a4ba5d3a6e9bf4282b1a2d1cb3f4a14828c1508bcf
-summary=v0.1.82-sexwov — 并发与超时可以自己调了
+sha256=213711aeee42a7c43bdd44581aab312168610b5c139dee335bf2215b63ccabf7
+summary=v0.1.83-cfhvci — 多选操作条挪到搜索框下；「+」弹层改成贴着按钮的半屏面板
 page=https://gitee.com/kakadex/MusicOrganizer/releases
 github=https://github.com/kakadex/MusicOrganizer/releases
 date=2026-10-25

@@ -1,9 +1,9 @@
-音乐整理工具 · 安卓版 v0.1.82-sexwov (versionCode 92)
-构建时间: 2026-10-25 10:15:28
+音乐整理工具 · 安卓版 v0.1.83-cfhvci (versionCode 93)
+构建时间: 2026-10-25 10:30:48
 包名: com.dsh.musicorganizer
 SDK: minSdk 24 / targetSdk 34
 签名: v2/v3（本地证书，别名 musicorganizer）
-SHA-256: 7ee5543f35532cbf280259a4ba5d3a6e9bf4282b1a2d1cb3f4a14828c1508bcf
+SHA-256: 213711aeee42a7c43bdd44581aab312168610b5c139dee335bf2215b63ccabf7
 大小: 382415 字节
 
 安装说明：直接覆盖安装即可（versionCode 递增、证书与 0.1.x 各版一致，不会丢偏好设置）。
