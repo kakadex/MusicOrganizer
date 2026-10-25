@@ -2324,6 +2324,21 @@ public final class BrowsePage extends LinearLayout {
                                 Double d = Scanner.durationOf(st, host.getContentResolver(), file);
                                 return d == null ? 0 : d.doubleValue();
                             }
+
+                            /**
+                             * 文件名不带艺人时（「歌名(1)」这种）读一眼内嵌标签 ——
+                             * 同名不同歌手的翻唱版本靠这一步区分，不然会被当成重复。
+                             */
+                            @Override
+                            public String tagArtist(VFile file) {
+                                try {
+                                    Tags tags = Scanner.readTagsCheap(st,
+                                            host.getContentResolver(), file);
+                                    return tags == null ? "" : tags.get("artist");
+                                } catch (Exception e) {
+                                    return "";
+                                }
+                            }
                         });
             }
         }, new Tasks.Callback() {

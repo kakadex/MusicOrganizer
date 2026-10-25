@@ -146,6 +146,33 @@ public final class DuplicatesTest {
                 file("Music/示例歌手甲-示例歌名.mp3", 3_000_000),
                 file("Music/示例歌手乙-示例歌名.mp3", 3_000_000)).isEmpty());
 
+        section("文件名没写艺人时读标签（翻唱不能算重复）");
+        java.util.Map<String, String> tagA = new java.util.HashMap<String, String>();
+        tagA.put("示例歌名(1).mp3", "示例歌手甲");
+        java.util.Map<String, Double> durSame = new java.util.HashMap<String, Double>();
+        durSame.put("示例歌名(1).mp3", 240.0);
+        durSame.put("示例歌手乙-示例歌名.mp3", 241.0);
+        check("标签艺人不同则不并组（即便时长接近）",
+                runMeta(durSame, tagA,
+                        file("Music/示例歌名(1).mp3", 5_700_000),
+                        file("Music/示例歌手乙-示例歌名.mp3", 6_700_000)).isEmpty());
+
+        java.util.Map<String, String> tagB = new java.util.HashMap<String, String>();
+        tagB.put("示例歌名(1).mp3", "示例歌手乙");
+        check("标签艺人一致则并组", runMeta(durSame, tagB,
+                file("Music/示例歌名(1).mp3", 5_700_000),
+                file("Music/示例歌手乙-示例歌名.mp3", 6_700_000)).size() == 1);
+
+        java.util.Map<String, String> tagPlaceholder = new java.util.HashMap<String, String>();
+        tagPlaceholder.put("示例歌名(1).mp3", "群星");
+        java.util.Map<String, Double> durFar = new java.util.HashMap<String, Double>();
+        durFar.put("示例歌名(1).mp3", 180.0);
+        durFar.put("示例歌手乙-示例歌名.mp3", 240.0);
+        check("「群星」当未知处理，靠时长判定（差 60s 不并组）",
+                runMeta(durFar, tagPlaceholder,
+                        file("Music/示例歌名(1).mp3", 5_700_000),
+                        file("Music/示例歌手乙-示例歌名.mp3", 6_700_000)).isEmpty());
+
         section("前缀延长但时长不符（必须挡住）");
         java.util.Map<String, Double> dur2 = new java.util.HashMap<String, Double>();
         dur2.put("示例歌名.mp3", 245.0);
@@ -284,6 +311,13 @@ public final class DuplicatesTest {
     /** 带时长来源的跑法：按文件名查时长，缺省视为「读不到」。 */
     private static List<Duplicates.Group> runDur(final java.util.Map<String, Double> durations,
                                                  VFile... files) {
+        return runMeta(durations, new java.util.HashMap<String, String>(), files);
+    }
+
+    /** 时长 + 内嵌标签艺人都给的跑法。 */
+    private static List<Duplicates.Group> runMeta(final java.util.Map<String, Double> durations,
+                                                  final java.util.Map<String, String> tagArtists,
+                                                  VFile... files) {
         List<VFile> list = new ArrayList<VFile>();
         for (VFile f : files) {
             list.add(f);
@@ -294,6 +328,11 @@ public final class DuplicatesTest {
                     public double durationOf(VFile file) {
                         Double d = durations.get(file.name);
                         return d == null ? 0 : d.doubleValue();
+                    }
+
+                    @Override
+                    public String tagArtist(VFile file) {
+                        return tagArtists.get(file.name);
                     }
                 });
     }

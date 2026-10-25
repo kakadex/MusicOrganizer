@@ -31,6 +31,17 @@ public final class Duplicates {
      */
     public interface DurationSource {
         double durationOf(VFile file);
+
+        /**
+         * 内嵌标签里的艺人（v0.1.86）；返回空串表示读不到/没有标签。
+         *
+         * <p>为什么要它：文件名常常是「歌名(1)」「歌名」这种不带艺人的写法，
+         * 而同一首歌有无数翻唱版本。只看文件名会把「不同歌手唱同名歌」判成重复，
+         * 读一眼内嵌标签就能区分。默认实现返回空串，纯逻辑测试不必实现。
+         */
+        default String tagArtist(VFile file) {
+            return "";
+        }
     }
 
     private static final Pattern COPY_SUFFIX_RE = Pattern.compile(
@@ -46,6 +57,8 @@ public final class Duplicates {
     private static final double THRESHOLD = 0.90;
     /** 整串比较前的长度比门槛：差太多根本不必算相似度（省时间，也避免长串包含短串误判）。 */
     private static final double MIN_LEN_RATIO = 0.58;
+    /** 两个艺人名算「同一个人」的门槛：低于它视为不同歌手（含翻唱）。 */
+    private static final double ARTIST_SAME = 0.80;
 
     public static String normalizeDuplicateKey(String stem) {
         String text = TextUtil.stripTrailingNumericSuffix(stem == null ? "" : stem);
@@ -319,6 +332,7 @@ public final class Duplicates {
         // 靠「包含度」命中但没读到时长的文件：成组后整组标「疑似」
         final boolean[] unknownDuration = new boolean[total];
         final Map<String, Double> durCache = new HashMap<String, Double>();
+        final Map<String, String> artistCache = new HashMap<String, String>();
         for (int i = 0; i < total; i++) {
             if (cancel != null && cancel.isCancelled()) {
                 return new ArrayList<Group>();
@@ -365,17 +379,26 @@ public final class Duplicates {
                 // 名字证据「强」：归一后完全相同（复制尾巴）或歌名一致（艺人前缀）。
                 // 这类即使时长对不上也仍然列出来，但标疑似 —— 可能是同一首的剪辑版。
                 boolean strongName = false;
+                // 艺人信息不全（文件名没写、内嵌标签也没有）时，名字不足以定论，必须靠时长
+                boolean needDuration = false;
                 if (key.equals(otherKey)) {
                     matched = true;                       // 归一后完全相同：复制件
                     strongName = true;
                 } else if (bothTitles && t1.equals(t2)) {
-                    // 标题一致、只差艺人前缀 —— 通常就是「艺人-歌名 / 歌名」这种同一首。
-                    // 但两边都写了艺人且明显不是一个人时，多半是翻唱或重名曲，别自动并组。
-                    String a1 = artistKeys.get(i);
-                    String a2 = artistKeys.get(other);
+                    // 歌名一致：先看是谁唱的。文件名没写就去读内嵌标签 ——
+                    // 同名不同歌手（翻唱）不是重复，这一步就是为它们准备的。
+                    String a1 = artistOf(i, artistKeys, artistCache, durations, audioFiles);
+                    String a2 = artistOf(other, artistKeys, artistCache, durations, audioFiles);
                     boolean bothArtists = !a1.isEmpty() && !a2.isEmpty();
-                    matched = !(bothArtists && TextUtil.smartSimilarity(a1, a2) < 0.80);
-                    strongName = matched;
+                    if (bothArtists) {
+                        matched = TextUtil.smartSimilarity(a1, a2) >= ARTIST_SAME;
+                        strongName = matched;
+                    } else {
+                        // 有一边不知道是谁：名字不作数，交给时长；读不到时长则列出来标疑似
+                        matched = true;
+                        strongName = true;
+                        needDuration = true;
+                    }
                 } else {
                     double fullScore = 0;
                     double fullContains = 0;
@@ -400,10 +423,10 @@ public final class Duplicates {
                     }
                 }
 
-                if (matched && (strongName || containsDriven)) {
+                if (matched && (strongName || containsDriven || needDuration)) {
                     // 同名同大小的，基本就是一份副本，不做 IO；其余都要拿时长复核 ——
                     // 「歌名 (1)」完全可能是「前后各切掉一段」的剪辑版，光看名字分不出来。
-                    boolean identicalCopy = strongName
+                    boolean identicalCopy = strongName && !needDuration
                             && rawStems.get(i).equals(rawStems.get(other))
                             && audioFiles.get(i).size == audioFiles.get(other).size;
                     if (!identicalCopy) {
@@ -412,7 +435,10 @@ public final class Duplicates {
                         if (d1 > 0 && d2 > 0) {
                             double tol = Math.max(3.0, Math.max(d1, d2) * 0.02);
                             if (Math.abs(d1 - d2) > tol) {
-                                if (strongName) {
+                                if (needDuration) {
+                                    // 艺人信息不全，音频长度又不同 → 大概率是别人翻唱的同一首
+                                    matched = false;
+                                } else if (strongName) {
                                     // 名字证据强但时长差很多：多半是剪辑版/不同版本，列出但标疑似
                                     unknownDuration[i] = true;
                                     unknownDuration[other] = true;
@@ -566,6 +592,53 @@ public final class Duplicates {
             }
         }
         return best;
+    }
+
+    /**
+     * 取「这首歌是谁唱的」：文件名里的艺人优先，没有就读内嵌标签。
+     *
+     * <p>返回已归一的键；空串表示确实不知道。结果按 docId 缓存，同一首只读一次。
+     */
+    private static String artistOf(int index, List<String> nameArtists, Map<String, String> cache,
+                                   DurationSource src, List<VFile> files) {
+        String byName = nameArtists.get(index);
+        if (byName != null && !byName.isEmpty()) {
+            return byName;
+        }
+        VFile file = files.get(index);
+        String key = (file.docId == null || file.docId.isEmpty()) ? file.name : file.docId;
+        String cached = cache.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        String tag = "";
+        try {
+            tag = src == null ? "" : TextUtil.safeStr(src.tagArtist(file));
+        } catch (Exception ignored) {
+            tag = "";
+        }
+        tag = normalizeDuplicateKey(tag);
+        if (isUnknownArtist(tag)) {
+            tag = "";
+        }
+        cache.put(key, tag);
+        return tag;
+    }
+
+    /** 「群星 / Various Artists / 未知」这类占位艺人等于没写，不能当成一个人去比对。 */
+    private static boolean isUnknownArtist(String normalized) {
+        if (normalized.isEmpty()) {
+            return true;
+        }
+        String[] placeholders = {
+                "群星", "合辑", "未知", "未知艺人", "佚名",
+                "various", "variousartists", "unknown", "unknownartist", "va", "ost"};
+        for (String p : placeholders) {
+            if (p.equals(normalized)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** 取时长（带缓存）；来源为 null 或读失败都按「未知」返回 0。 */
