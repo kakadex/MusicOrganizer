@@ -1,12 +1,12 @@
 # 版本清单（App 检查更新时优先读它：国内 Gitee 优先，GitHub 兜底）
 # 格式见 AppUpdate.parseManifest：每行 key=value
-version=0.1.81-574x89
-code=91
-tag=v0.1.81-574x89
+version=0.1.82-sexwov
+code=92
+tag=v0.1.82-sexwov
 apk=dist/musicorganizer-latest.apk
-size=378319
-sha256=edd105e588255b47df2876024a86a559333e3b565009d9ee2f12d9903bd58ee8
-summary=v0.1.81-574x89 — 批量匹配可中断续跑；多选支持滑动选择；候选卡片带封面
+size=382415
+sha256=7ee5543f35532cbf280259a4ba5d3a6e9bf4282b1a2d1cb3f4a14828c1508bcf
+summary=v0.1.82-sexwov — 并发与超时可以自己调了
 page=https://gitee.com/kakadex/MusicOrganizer/releases
 github=https://github.com/kakadex/MusicOrganizer/releases
 date=2026-10-25
