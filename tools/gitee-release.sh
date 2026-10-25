@@ -76,11 +76,15 @@ upload() {
         *.exe) name="MusicOrganizer-desktop-$TAG.exe" ;;
         *.md|*.txt) name="notes${name##*.}" ;;
     esac
-    local out
-    out="$(curl -s -X POST -H "Authorization: token $TOKEN" \
-        -F "file=@$file;filename=$name" "$API/releases/$RELEASE_ID/attach_files")"
-    local url
-    url="$(printf '%s' "$out" | pyjson browser_download_url)"
+    local out url attempt
+    url=""
+    for attempt in 1 2 3; do
+        out="$(curl -s -X POST -H "Authorization: token $TOKEN" \
+            -F "file=@$file;filename=$name" "$API/releases/$RELEASE_ID/attach_files")"
+        url="$(printf '%s' "$out" | pyjson browser_download_url)"
+        [ -n "$url" ] && break
+        sleep 3
+    done
     if [ -n "$url" ]; then
         echo "   已上传 $(basename "$file") → $url"
     else
