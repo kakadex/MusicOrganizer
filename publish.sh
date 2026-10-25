@@ -37,6 +37,19 @@ TAG="v$VER_NAME"
 VER_DIR="$PKG/release/$TAG"
 APK="$VER_DIR/音乐整理工具-$TAG.apk"
 
+# --- 同基版本检查（v0.1.87 起）---
+# 后缀是内容哈希，同一数字版本在源码变化后会得到不同后缀 —— 少了这道检查，
+# 「忘了升数字版号」也能发出去，线上就会同时存在两个 0.1.87。
+# 同一份源码重发（后缀相同）不算冲突；确实要覆盖时用 MO_ALLOW_SAME_BASE=1。
+BASE_VER="${VER_NAME%%-*}"
+SAME_BASE="$(git tag -l "v${BASE_VER}-*" | grep -v "^${TAG}$" || true)"
+if [ -n "$SAME_BASE" ] && [ "${MO_ALLOW_SAME_BASE:-0}" != "1" ]; then
+    echo "[错误] 已存在同一数字版本的其他 tag，请先把 ${BASE_VER} 升一位：" >&2
+    echo "$SAME_BASE" | sed 's/^/        /' >&2
+    echo "        （如确需同基版本再发，设 MO_ALLOW_SAME_BASE=1）" >&2
+    exit 1
+fi
+
 cd "$PKG"
 
 # --- 0. 收尾存档：刷新 START-HERE.md（本地文件，已被 .gitignore 忽略）---
