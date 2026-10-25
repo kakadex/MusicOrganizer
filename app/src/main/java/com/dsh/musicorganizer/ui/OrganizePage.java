@@ -149,19 +149,18 @@ public final class OrganizePage extends ScrollView {
             }
         });
         body.addView(btnEmptyDirs);
-        // 查重：同一首歌可能因为「另存为」「换文件夹」留了好几份，这里一次挑出来
-        Button btnDup = UiKit.button(ctx, "文件名查重（相似度 ≥ 90%）", false);
+        // 查重：按内容（大小 + 头尾各 64KB）比对，找出重复文件，勾选后删除
+        Button btnDup = UiKit.button(ctx, "查重（重复文件）", false);
         UiKit.margin(btnDup, 0, 8, 0, 0);
         btnDup.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                host.findDuplicates();
+                DupFilesDialog.show(host);
             }
         });
         body.addView(btnDup);
         body.addView(UiKit.caption(ctx,
-                "递归扫描整个目录，把文件名相似度 ≥ 90%（含「(1)」「副本」这类复制痕迹）"
-                        + "的文件分组列出，勾选后删除。"));
+                "按内容（大小 + 头尾各 64KB）比对，找出重复文件，勾选后删除。"));
         // 扁平化：Windows 版一直有的功能，把嵌套子文件夹里的文件全部拉到当前这一层
         Button btnFlatten = UiKit.button(ctx, "扁平化文件夹（子文件夹 → 当前目录）", false);
         UiKit.margin(btnFlatten, 0, 8, 0, 0);

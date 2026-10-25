@@ -275,34 +275,18 @@ public final class SettingsPage extends ScrollView {
         cardTools.addView(UiKit.caption(ctx,
                 "整理工具内含全部参数：整理选项 / 批量写入策略 / 字段写入策略 / 数据源。"));
 
-        // 文件名查重 / 重复文件（v0.1.74 起从音乐库页的筛选条移到这里，主界面只留筛选）
-        LinearLayout rowDedup = UiKit.horizontal(ctx);
-        Button btnDupName = UiKit.button(ctx, "文件名查重", false);
-        btnDupName.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                // 不切页：结果对话框直接盖在设置页上
-                host.runFileNameDedup();
-            }
-        });
-        Button btnDupContent = UiKit.button(ctx, "重复文件", false);
-        btnDupContent.setOnClickListener(new View.OnClickListener() {
+        // 查重：按内容（大小 + 头尾各 64KB）比对，找出重复文件（v0.1.97 起合并为单一入口）
+        Button btnDup = UiKit.button(ctx, "查重（重复文件）", false);
+        btnDup.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 DupFilesDialog.show(host);
             }
         });
-        rowDedup.addView(btnDupName, new LinearLayout.LayoutParams(0,
-                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        LinearLayout.LayoutParams pDup = new LinearLayout.LayoutParams(0,
-                LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-        pDup.setMargins(UiKit.dp(ctx, 8), 0, 0, 0);
-        rowDedup.addView(btnDupContent, pDup);
-        UiKit.margin(rowDedup, 0, 8, 0, 0);
-        cardTools.addView(rowDedup);
+        UiKit.margin(btnDup, 0, 8, 0, 0);
+        cardTools.addView(btnDup);
         cardTools.addView(UiKit.caption(ctx,
-                "文件名查重：按文件名相似度 ≥90% 分组；重复文件：按内容（大小 + 头部 64KB）比对，"
-                        + "保留一份、删掉多余的。"));
+                "按内容（大小 + 头尾各 64KB）比对，找出重复文件，保留一份、删掉多余的。"));
         root.addView(cardTools);
 
         // ---- 设置备份 ----
