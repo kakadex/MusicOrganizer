@@ -335,7 +335,8 @@ public final class BrowsePage extends LinearLayout {
                     filter = filter == which ? FILTER_ALL : which;
                     host.repo.setInt("browse_filter", filter);
                     syncChips();
-                    if (filter == FILTER_NO_TAG || filter == FILTER_NO_COVER) {
+                    if (filter == FILTER_NO_TAG || filter == FILTER_NO_COVER
+                            || filter == FILTER_NO_LYRIC) {
                         ensureBulkMeta();
                     }
                     applyFilter();
@@ -942,7 +943,8 @@ public final class BrowsePage extends LinearLayout {
             return e.metaLoaded && !e.hasCover;
         }
         if (filter == FILTER_NO_LYRIC) {
-            return !e.hasLyrics;
+            // 元数据还没读到前不能下「无歌词」结论（嵌入标签里的歌词只有读盘才知道）
+            return e.metaLoaded && !e.hasLyrics;
         }
         return true;
     }
@@ -1919,6 +1921,16 @@ public final class BrowsePage extends LinearLayout {
             coverWrap.setBackground(coverBg);
             cover = new ImageView(ctx);
             cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            // 圆角裁切：背景已经是圆角矩形，但位图本身是直角，必须把 ImageView 也裁圆，
+            // 否则图片会盖住圆角、四角露直角（v0.1.91）
+            cover.setClipToOutline(true);
+            final float coverRadius = UiKit.dp(ctx, 6);
+            cover.setOutlineProvider(new android.view.ViewOutlineProvider() {
+                @Override
+                public void getOutline(android.view.View v, android.graphics.Outline o) {
+                    o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), coverRadius);
+                }
+            });
             coverWrap.addView(cover, new FrameLayout.LayoutParams(
                     coverSize, coverSize));
             ext = new TextView(ctx);
@@ -2363,8 +2375,8 @@ public final class BrowsePage extends LinearLayout {
             @Override
             public Object run() throws Exception {
                 final Storage st = host.safeStorage();
-                List<VFile> files = Scanner.walkMusic(st, host.root(), true,
-                        host.progressCallback(), host.cancelToken());
+                List<VFile> files = host.scanMusicAll(true, host.progressCallback(),
+                        host.cancelToken(), null);
                 List<VFile> audio = new ArrayList<VFile>();
                 for (VFile f : files) {
                     if (f.audio()) {

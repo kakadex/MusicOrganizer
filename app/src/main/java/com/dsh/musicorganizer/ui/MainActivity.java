@@ -1048,6 +1048,25 @@ public class MainActivity extends Activity implements Logger {
         toast("已移除音乐库文件夹");
     }
 
+    /** 移除某一个目录（多根，v0.1.91）。 */
+    public void removeFolder(Uri uri) {
+        repo.removeRoot(uri);
+        repo.lastGroups.clear();
+        repo.lastFiles.clear();
+        if (browsePage != null) {
+            browsePage.reload();
+        }
+        refreshPath();
+        toast("已移除该目录");
+    }
+
+    /** 设置整理目标目录（移动/归位的落点）。 */
+    public void setOrganizeFolder(Uri uri) {
+        repo.setOrganizeRoot(uri);
+        refreshPath();
+        toast("整理目标已更新");
+    }
+
     /** 两个 SAF 目录是否指向同一棵树（比较 tree docId + authority，避免 URI 编码差异误判）。 */
     private static boolean sameTree(Uri a, Uri b) {
         if (a == null || b == null) {
@@ -1089,11 +1108,16 @@ public class MainActivity extends Activity implements Logger {
         }
         Uri uri = data.getData();
         if (requestCode == REQ_PICK_TREE) {
-            // 本次选的还是上次那个目录：不重扫、不清空，保留现有列表（含已读标签/封面）。
-            // 以前无条件 clear + scan，用户只是想确认一下目录，就把整库列表和缓存冲掉了。
-            Uri current = repo.treeUri();
-            if (current != null && sameTree(current, uri)) {
-                toast("目录没有变化，继续使用当前列表");
+            // 已经在音乐库里（含多根）：不重扫、不清空，保留现有列表（含已读标签/封面）。
+            boolean already = false;
+            for (Uri r : repo.roots()) {
+                if (sameTree(r, uri)) {
+                    already = true;
+                    break;
+                }
+            }
+            if (already) {
+                toast("目录已在音乐库里，继续使用当前列表");
                 return;
             }
             try {
@@ -1102,7 +1126,7 @@ public class MainActivity extends Activity implements Logger {
                                 | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
             } catch (Exception ignored) {
             }
-            repo.saveTreeUri(uri);
+            repo.addRoot(uri);   // v0.1.91：多根追加，而不是替换
             repo.storage = null;
             // 换了目录：旧快照属于另一个目录树，留着只会让人以为文件还在
             com.dsh.musicorganizer.core.ScanSnapshot.clear(scanDir());
@@ -1466,6 +1490,55 @@ public class MainActivity extends Activity implements Logger {
 
     public VFile root() throws Exception {
         return repo.openStorage().root();
+    }
+
+    /** 遍历全部已授权目录，按歌手归组（v0.1.91）：整理据此把各目录的歌归位到整理目标。 */
+    private List<TrackGroup> scanGroupsAll(boolean recursive, boolean skipArtist,
+                                           Scanner.Stats stats) throws Exception {
+        List<TrackGroup> out = new ArrayList<TrackGroup>();
+        for (Uri uri : repo.roots()) {
+            if (cancelToken().isCancelled()) {
+                break;
+            }
+            Storage st = repo.openStorage(uri);
+            Scanner.Stats part = new Scanner.Stats();
+            out.addAll(Scanner.scanGroups(st, st.root(), recursive, skipArtist, false,
+                    getContentResolver(), part, progressCallback(), cancelToken()));
+            stats.audio += part.audio;
+            stats.lyrics += part.lyrics;
+            stats.files += part.files;
+            stats.groups += part.groups;
+            stats.skippedArtist += part.skippedArtist;
+            stats.skippedUnrecognized += part.skippedUnrecognized;
+            stats.ignored += part.ignored;
+        }
+        return out;
+    }
+
+    /** 遍历全部已授权目录合并成一个列表（v0.1.91）：浏览/查重/歌词/标签用；整理仍走 root()。 */
+    public List<VFile> scanMusicAll(boolean recursive, com.dsh.musicorganizer.core.Progress progress,
+                                    com.dsh.musicorganizer.core.CancelToken cancel,
+                                    int[] dupOut) throws Exception {
+        List<VFile> out = new ArrayList<VFile>();
+        java.util.Set<String> seen = new java.util.HashSet<String>();
+        for (Uri uri : repo.roots()) {
+            if (cancel != null && cancel.isCancelled()) {
+                break;
+            }
+            Storage st = repo.openStorage(uri);
+            int[] localDup = new int[]{0};
+            List<VFile> part = Scanner.walkMusic(st, st.root(), recursive, progress, cancel,
+                    localDup);
+            for (VFile f : part) {
+                if (seen.add(f.docId)) {
+                    out.add(f);
+                }
+            }
+            if (dupOut != null && dupOut.length > 0) {
+                dupOut[0] += localDup[0];
+            }
+        }
+        return out;
     }
 
     public Progress progressCallback() {
@@ -1931,15 +2004,13 @@ public class MainActivity extends Activity implements Logger {
                 Storage st = safeStorage();
                 boolean recursive = repo.bool("recursive", true);
                 Scanner.Stats stats = new Scanner.Stats();
-                List<TrackGroup> groups = Scanner.scanGroups(st, root(), recursive,
-                        repo.bool("skip_artist", true), false,
-                        getContentResolver(), stats,
-                        progressCallback(), cancelToken());
+                List<TrackGroup> groups = scanGroupsAll(recursive,
+                        repo.bool("skip_artist", true), stats);
                 // 去重计数：某些系统会把同一文档返回多次，报出来便于用户判断
                 // 「本机曲目数」和播放器不一致到底是重复条目还是真有两份文件
                 final int[] dups = new int[]{0};
-                List<VFile> files = Scanner.walkMusic(st, root(), recursive,
-                        progressCallback(), cancelToken(), dups);
+                List<VFile> files = scanMusicAll(recursive, progressCallback(),
+                        cancelToken(), dups);
                 // 根目录下没有音频、只有子文件夹时，非递归会扫出 0 个文件 ——
                 // 用户看到的就是「扫描完成，共 0 个文件」，以为扫描坏了。
                 // 这里自动改成递归重扫一遍，并把开关同步过去，让设置和结果一致。
@@ -1948,12 +2019,8 @@ public class MainActivity extends Activity implements Logger {
                     autoRecursive = true;
                     recursive = true;
                     stats = new Scanner.Stats();
-                    groups = Scanner.scanGroups(st, root(), true,
-                            repo.bool("skip_artist", true), false,
-                            getContentResolver(), stats,
-                            progressCallback(), cancelToken());
-                    files = Scanner.walkMusic(st, root(), true,
-                            progressCallback(), cancelToken(), dups);
+                    groups = scanGroupsAll(true, repo.bool("skip_artist", true), stats);
+                    files = scanMusicAll(true, progressCallback(), cancelToken(), dups);
                 }
                 // 扫描过滤（v0.1.80）：按路径关键字剔除、按需忽略视频文件。
                 // 放在增量合并之前 —— 被过滤掉的文件不该进 lastFiles，否则列表里一直有它们。

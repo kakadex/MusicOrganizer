@@ -44,6 +44,17 @@ public final class Storage {
     private final Uri treeUri;
     private final String rootDocId;
 
+    /** 按 docId 反查它属于哪棵树（多根分派，v0.1.91）。由 Repo 注入。 */
+    public interface TreeLookup {
+        Uri treeFor(String docId);
+    }
+
+    private static volatile TreeLookup treeLookup;
+
+    public static void setTreeLookup(TreeLookup lookup) {
+        treeLookup = lookup;
+    }
+
     /** 当前活动的实例（供 Cleaner 等静态工具便捷调用）。 */
     private static volatile Storage active;
 
@@ -75,7 +86,20 @@ public final class Storage {
     }
 
     public Uri documentUri(String docId) {
-        return DocumentsContract.buildDocumentUriUsingTree(treeUri, docId);
+        Uri tree = treeUri;
+        TreeLookup lookup = treeLookup;
+        if (lookup != null && docId != null) {
+            Uri resolved = lookup.treeFor(docId);
+            if (resolved != null) {
+                tree = resolved;
+            }
+        }
+        return DocumentsContract.buildDocumentUriUsingTree(tree, docId);
+    }
+
+    /** 这棵树对应的授权 uri（多根分派用，v0.1.91）。 */
+    public Uri treeUri() {
+        return treeUri;
     }
 
     public Uri documentUri(VFile f) {

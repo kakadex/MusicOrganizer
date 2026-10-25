@@ -13,6 +13,7 @@ import com.dsh.musicorganizer.net.Endpoints;
 import com.dsh.musicorganizer.net.MbClient;
 
 import java.io.IOException;
+import org.json.JSONArray;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,6 +30,7 @@ public final class Repo implements Endpoints.Config {
 
     public MbClient mb = new MbClient();
     public Storage storage = null;
+    private final Map<Uri, Storage> storageCache = new java.util.HashMap<Uri, Storage>();
     public List<TrackGroup> lastGroups = new ArrayList<TrackGroup>();
     public List<VFile> lastFiles = new ArrayList<VFile>();
     /** 最近一次扫描的统计（曲目 / 歌词 / 跳过数），整理页的提示文案要用。 */
@@ -52,6 +54,13 @@ public final class Repo implements Endpoints.Config {
             instance = new Repo();
         }
         instance.appContext = ctx.getApplicationContext();
+        // 多根分派：让 Storage 能按 docId 反查所属目录树（v0.1.91）
+        Storage.setTreeLookup(new Storage.TreeLookup() {
+            @Override
+            public Uri treeFor(String docId) {
+                return instance.treeFor(docId);
+            }
+        });
         return instance;
     }
 
@@ -69,6 +78,159 @@ public final class Repo implements Endpoints.Config {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    // =========================================================================
+    // 多根目录（v0.1.91）：浏览/查重/歌词/标签覆盖所有已授权目录，整理只作用于「整理目标」。
+    // =========================================================================
+    private static final String KEY_ROOTS = "roots";
+    private static final String KEY_ORGANIZE_ROOT = "organize_root";
+
+    /** 全部已授权目录；老版本只有一个 tree_uri，这里自动兼容成单元素列表。 */
+    public List<Uri> roots() {
+        List<Uri> out = new ArrayList<Uri>();
+        String json = prefs().getString(KEY_ROOTS, "");
+        if (!json.isEmpty()) {
+            try {
+                JSONArray arr = new JSONArray(json);
+                for (int i = 0; i < arr.length(); i++) {
+                    String s = arr.optString(i, "");
+                    if (!s.isEmpty()) {
+                        out.add(Uri.parse(s));
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        if (out.isEmpty()) {
+            Uri legacy = treeUri();
+            if (legacy != null) {
+                out.add(legacy);
+            }
+        }
+        return out;
+    }
+
+    public void saveRoots(List<Uri> list) {
+        JSONArray arr = new JSONArray();
+        if (list != null) {
+            for (Uri u : list) {
+                if (u != null) {
+                    arr.put(u.toString());
+                }
+            }
+        }
+        prefs().edit().putString(KEY_ROOTS, arr.toString()).apply();
+        // 同步回单值键，老逻辑读 tree_uri 时不至于读空
+        if (arr.length() > 0) {
+            prefs().edit().putString("tree_uri", list.get(0).toString()).apply();
+        }
+    }
+
+    /** 添加一个目录（不重复添加），并默认把第一个目录设为整理目标。 */
+    public void addRoot(Uri uri) {
+        List<Uri> roots = roots();
+        for (Uri u : roots) {
+            if (u.equals(uri)) {
+                return;
+            }
+        }
+        roots.add(uri);
+        saveRoots(roots);
+        if (organizeRootUri() == null) {
+            setOrganizeRoot(uri);
+        }
+        storage = null;
+        storageCache.clear();
+    }
+
+    public void removeRoot(Uri uri) {
+        List<Uri> roots = roots();
+        roots.remove(uri);
+        saveRoots(roots);
+        Uri org = organizeRootUri();
+        if (org != null && org.equals(uri)) {
+            setOrganizeRoot(roots.isEmpty() ? null : roots.get(0));
+        }
+        storage = null;
+        storageCache.clear();
+    }
+
+    /** 整理的目标目录（移动/归位的落点）；没设就用第一个目录。 */
+    public Uri organizeRootUri() {
+        String s = prefs().getString(KEY_ORGANIZE_ROOT, "");
+        if (!s.isEmpty()) {
+            try {
+                Uri u = Uri.parse(s);
+                if (roots().contains(u)) {
+                    return u;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        List<Uri> roots = roots();
+        return roots.isEmpty() ? null : roots.get(0);
+    }
+
+    public void setOrganizeRoot(Uri uri) {
+        if (uri == null) {
+            prefs().edit().remove(KEY_ORGANIZE_ROOT).apply();
+        } else {
+            prefs().edit().putString(KEY_ORGANIZE_ROOT, uri.toString()).apply();
+        }
+    }
+
+    /** 打开某个目录对应的 Storage（按 uri 缓存，不共用单例）。 */
+    public Storage openStorage(Uri uri) throws IOException {
+        if (uri == null) {
+            throw new IOException("尚未选择音乐目录");
+        }
+        Storage cached = storageCache.get(uri);
+        if (cached != null) {
+            storage = cached;
+            return cached;
+        }
+        Storage s = new Storage(appContext.getContentResolver(), uri);
+        storageCache.put(uri, s);
+        storage = s;   // 最近使用的作为「当前」，老代码 host.safeStorage() 仍能工作
+        return s;
+    }
+
+    /** 按 docId 前缀匹配到所属目录树（给 Storage.TreeLookup 用）。 */
+    private Uri treeFor(String docId) {
+        if (docId == null) {
+            return null;
+        }
+        for (Uri uri : roots()) {
+            try {
+                Storage s = openStorage(uri);
+                String prefix = s.rootDocId();
+                if (prefix != null && !prefix.isEmpty() && docId.startsWith(prefix)) {
+                    return uri;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return null;
+    }
+
+    /** 按 docId 前缀把文件分派到它所属的那棵树。 */
+    public Storage storageFor(String docId) throws IOException {
+        List<Uri> roots = roots();
+        Storage best = null;
+        String bestPrefix = "";
+        for (Uri uri : roots) {
+            Storage s = openStorage(uri);
+            String prefix = s.root().docId;
+            if (docId != null && docId.startsWith(prefix) && prefix.length() > bestPrefix.length()) {
+                best = s;
+                bestPrefix = prefix;
+            }
+        }
+        if (best == null) {
+            best = openStorage(organizeRootUri());
+        }
+        return best;
     }
 
     public void saveTreeUri(Uri uri) {
