@@ -9,6 +9,7 @@ library;
 import '../json/json.dart';
 import '../match/name_weight.dart';
 import '../match/tag_fill.dart';
+import '../net/net_tuning.dart';
 import '../source/endpoints.dart';
 
 /// 键的类别（决定校验方式与写回类型）。
@@ -99,11 +100,6 @@ abstract final class SettingsBackup {
   static const String prefixSourceOn = 'ep_on:';
   static const String prefixFieldMode = 'fp:';
 
-  // 等价旧 NetTuning 常量（T05 落位 core/net/net_tuning.dart 后改为引用）。
-  static const int _netFilesMin = 1;
-  static const int _netFilesMax = 5;
-  static const int _netTimeoutMin = 50;
-  static const int _netTimeoutMax = 300;
   // 等价旧 Theme.NAMES.length（主题枚举在 app/theme 层，core 不依赖 UI）。
   static const int _themeCount = 3;
 
@@ -155,8 +151,8 @@ abstract final class SettingsBackup {
       keyThemeId: 1,
       keyWeight: 20,
       keyLayout: 0,
-      keyNetFiles: 3, // 等价 NetTuning.DEFAULT_FILE_CONCURRENCY
-      keyNetTimeout: 100, // 等价 NetTuning.DEFAULT_TIMEOUT_PERCENT
+      keyNetFiles: NetTuning.defaultFileConcurrency,
+      keyNetTimeout: NetTuning.defaultTimeoutPercent,
     };
   }
 
@@ -256,7 +252,7 @@ abstract final class SettingsBackup {
         out.ignored.add(key);
         continue;
       }
-      final Object? clean = _sanitize(key, e.value, out.warnings);
+      final Object? clean = sanitize(key, e.value, out.warnings);
       if (clean != null) out.values[key] = clean;
     }
     out.ok = true;
@@ -264,7 +260,7 @@ abstract final class SettingsBackup {
   }
 
   /// 逐类校验单个值；返回 null 表示这一项丢弃。
-  static Object? _sanitize(String key, Object? raw, List<String> warnings) {
+  static Object? sanitize(String key, Object? raw, List<String> warnings) {
     final SettingsKind kind = kindOf(key)!;
     if (kind == SettingsKind.boolKey || kind == SettingsKind.sourceOn) {
       final bool? b = _asBool(raw);
@@ -280,11 +276,11 @@ abstract final class SettingsBackup {
       int max = key == keyThemeId ? _themeCount - 1 : NameWeight.maxPercent;
       int min = 0;
       if (key == keyNetFiles) {
-        min = _netFilesMin;
-        max = _netFilesMax;
+        min = NetTuning.minFileConcurrency;
+        max = NetTuning.maxFileConcurrency;
       } else if (key == keyNetTimeout) {
-        min = _netTimeoutMin;
-        max = _netTimeoutMax;
+        min = NetTuning.minTimeoutPercent;
+        max = NetTuning.maxTimeoutPercent;
       }
       if (v < min || v > max) {
         final int fixed = v < min ? min : (v > max ? max : v);
