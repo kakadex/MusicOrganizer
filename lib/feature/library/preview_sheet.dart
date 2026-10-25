@@ -254,9 +254,11 @@ Future<int> undoBatch(String batchId) async {
   if (journal == null || tx == null) return 0;
   int ok = 0;
   await journal.revertBatch(batchId, revertOne: (JournalEntry entry) async {
+    // 旧日志只写了 uri（同一份 docId），这里两个都认，否则撤销会静默 0 条
+    final String key = entry.targetId.isNotEmpty ? entry.targetId : entry.uri;
     VFile? target;
     for (final VFile f in repo.files) {
-      if (f.docId == entry.targetId) {
+      if (f.docId == key) {
         target = f;
         break;
       }

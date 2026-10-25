@@ -110,6 +110,7 @@ class TagTransaction {
           ..id = '${DateTime.now().millisecondsSinceEpoch}-${f.name}'
           ..timestamp = journalTimestamp()
           ..uri = f.docId
+          ..targetId = f.docId
           ..name = f.name
           ..batchId = batchId;
         for (final String k in Tags.keys) {

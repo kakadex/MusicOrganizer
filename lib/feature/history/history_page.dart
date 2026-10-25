@@ -87,7 +87,8 @@ class _HistoryPageState extends State<HistoryPage> {
     try {
       result = await journal.revertBatch(batch.key,
           revertOne: (JournalEntry entry) async {
-        final VFile? f = byId[entry.targetId];
+        final String key = entry.targetId.isNotEmpty ? entry.targetId : entry.uri;
+        final VFile? f = byId[key];
         if (f == null) return false;
         final String err = await tx.apply(
           f,
