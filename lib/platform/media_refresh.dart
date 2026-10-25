@@ -1,10 +1,11 @@
 /// 媒体库刷新 —— 写完标签后通知系统媒体库（v0.1.80）。
 ///
-/// - 桌面：无需刷新（文件系统直读），保留 no-op 实现统一上层调用；
-/// - 安卓：MediaScannerConnection.scanFile 单文件 / 批量，实现留 T08。
+/// - 桌面：无需刷新（文件系统直读），no-op 实现统一上层调用；
+/// - 安卓：MediaScannerConnection.scanFile（等价旧 MediaRefresh.scan）。
 library;
 
 import '../core/model/vfile.dart';
+import 'saf_channel.dart';
 
 /// 媒体库刷新接口。
 abstract class MediaRefresh {
@@ -35,4 +36,25 @@ class DesktopMediaRefresh implements MediaRefresh {
 
   @override
   Future<void> scanAll(List<VFile> files) async {}
+}
+
+/// 安卓实现（经 SAF 通道通知 MediaScannerConnection）。
+class AndroidMediaRefresh implements MediaRefresh {
+  @override
+  Future<void> scan(VFile f) async {
+    final String? path = MediaRefresh.pathOf(f);
+    if (path == null) return;
+    await SafChannel().mediaScan(<String>[path]);
+  }
+
+  @override
+  Future<void> scanAll(List<VFile> files) async {
+    final List<String> paths = <String>[];
+    for (final VFile f in files) {
+      final String? p = MediaRefresh.pathOf(f);
+      if (p != null) paths.add(p);
+    }
+    if (paths.isEmpty) return;
+    await SafChannel().mediaScan(paths);
+  }
 }

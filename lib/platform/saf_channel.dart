@@ -1,8 +1,6 @@
 /// SAF MethodChannel 封装（channel `com.dsh.musicorganizer/saf`）。
 ///
-/// T03 落地 pickTree / listRoots / stat / listChildren 四个方法（Kotlin SafPlugin 实现），
-/// 其余方法（copy/write/readHead/readTail/create/delete/rename/move）T08 补齐，
-/// 当前调用会抛 FileStoreException(E_IO)。
+/// 契约见架构设计 §2.2；Kotlin SafPlugin 实现全部 12 个方法。
 library;
 
 import 'package:flutter/services.dart';
@@ -92,48 +90,136 @@ class SafChannel {
     }
   }
 
-  // ------------------------------------------------------------------
-  // T08 补齐（当前占位，调用抛 E_IO）
-  // ------------------------------------------------------------------
-
-  Future<int> copyDocToCache(String treeUri, String docId, String cachePath,
-      int maxBytes) {
-    throw FileStoreException('E_IO', '通道方法未实现（T08 补齐）');
+  /// 把文档复制到本地缓存；maxBytes<=0 整文件。返回字节数。
+  Future<int> copyDocToCache(
+      String treeUri, String docId, String cachePath, int maxBytes) async {
+    try {
+      final Object? r = await safChannel.invokeMethod('copyDocToCache',
+          <String, Object?>{
+            'treeUri': treeUri,
+            'docId': docId,
+            'cachePath': cachePath,
+            'maxBytes': maxBytes,
+          });
+      return (r as num?)?.toInt() ?? 0;
+    } catch (e) {
+      throw _mapError(e);
+    }
   }
 
-  Future<bool> writeCacheToDoc(String treeUri, String docId, String cachePath) {
-    throw FileStoreException('E_IO', '通道方法未实现（T08 补齐）');
+  /// 用本地缓存覆盖写回文档（"wt" 截断写）。
+  Future<bool> writeCacheToDoc(
+      String treeUri, String docId, String cachePath) async {
+    try {
+      final Object? r = await safChannel.invokeMethod('writeCacheToDoc',
+          <String, Object?>{
+            'treeUri': treeUri,
+            'docId': docId,
+            'cachePath': cachePath,
+          });
+      return r == true;
+    } catch (e) {
+      throw _mapError(e);
+    }
   }
 
-  Future<Uint8List> readHead(String treeUri, String docId, int maxBytes) {
-    throw FileStoreException('E_IO', '通道方法未实现（T08 补齐）');
+  /// 读文件头。
+  Future<Uint8List?> readHead(String treeUri, String docId, int maxBytes) async {
+    try {
+      final Object? r = await safChannel.invokeMethod('readHead',
+          <String, Object?>{'treeUri': treeUri, 'docId': docId, 'maxBytes': maxBytes});
+      return r as Uint8List?;
+    } catch (e) {
+      throw _mapError(e);
+    }
   }
 
-  Future<Uint8List> readTail(String treeUri, String docId, int maxBytes) {
-    throw FileStoreException('E_IO', '通道方法未实现（T08 补齐）');
+  /// 读文件尾。
+  Future<Uint8List?> readTail(String treeUri, String docId, int maxBytes) async {
+    try {
+      final Object? r = await safChannel.invokeMethod('readTail',
+          <String, Object?>{'treeUri': treeUri, 'docId': docId, 'maxBytes': maxBytes});
+      return r as Uint8List?;
+    } catch (e) {
+      throw _mapError(e);
+    }
   }
 
   Future<Map<String, Object?>> createDocument(
-      String treeUri, String parentDocId, String name, String mime) {
-    throw FileStoreException('E_IO', '通道方法未实现（T08 补齐）');
+      String treeUri, String parentDocId, String name, String mime) async {
+    try {
+      final Object? r = await safChannel.invokeMethod('createDocument',
+          <String, Object?>{
+            'treeUri': treeUri,
+            'parentDocId': parentDocId,
+            'name': name,
+            'mime': mime,
+          });
+      return Map<String, Object?>.from(r as Map);
+    } catch (e) {
+      throw _mapError(e);
+    }
   }
 
   Future<Map<String, Object?>> createDir(
-      String treeUri, String parentDocId, String name) {
-    throw FileStoreException('E_IO', '通道方法未实现（T08 补齐）');
+      String treeUri, String parentDocId, String name) async {
+    try {
+      final Object? r = await safChannel.invokeMethod('createDir',
+          <String, Object?>{
+            'treeUri': treeUri,
+            'parentDocId': parentDocId,
+            'name': name,
+          });
+      return Map<String, Object?>.from(r as Map);
+    } catch (e) {
+      throw _mapError(e);
+    }
   }
 
-  Future<bool> deleteDocument(String treeUri, String docId) {
-    throw FileStoreException('E_IO', '通道方法未实现（T08 补齐）');
+  Future<bool> deleteDocument(String treeUri, String docId) async {
+    try {
+      final Object? r = await safChannel.invokeMethod('deleteDocument',
+          <String, Object?>{'treeUri': treeUri, 'docId': docId});
+      return r == true;
+    } catch (e) {
+      throw _mapError(e);
+    }
   }
 
-  Future<Map<String, Object?>> renameDocument(
-      String treeUri, String docId, String newName) {
-    throw FileStoreException('E_IO', '通道方法未实现（T08 补齐）');
+  Future<Map<String, Object?>?> renameDocument(
+      String treeUri, String docId, String newName) async {
+    try {
+      final Object? r = await safChannel.invokeMethod('renameDocument',
+          <String, Object?>{'treeUri': treeUri, 'docId': docId, 'newName': newName});
+      if (r == null) return null;
+      return Map<String, Object?>.from(r as Map);
+    } catch (e) {
+      throw _mapError(e);
+    }
   }
 
-  Future<bool> moveDocument(
-      String treeUri, String docId, String targetParentDocId) {
-    throw FileStoreException('E_IO', '通道方法未实现（T08 补齐）');
+  Future<bool> moveDocument(String treeUri, String docId,
+      String sourceParentDocId, String targetParentDocId) async {
+    try {
+      final Object? r = await safChannel.invokeMethod('moveDocument',
+          <String, Object?>{
+            'treeUri': treeUri,
+            'docId': docId,
+            'sourceParentDocId': sourceParentDocId,
+            'targetParentDocId': targetParentDocId,
+          });
+      return r == true;
+    } catch (e) {
+      throw _mapError(e);
+    }
+  }
+
+  /// 通知系统媒体库重扫（安卓 MediaScannerConnection）。
+  Future<void> mediaScan(List<String> paths) async {
+    try {
+      await safChannel.invokeMethod('mediaScan', <String, Object?>{'paths': paths});
+    } catch (_) {
+      // 媒体库刷新失败不影响主流程
+    }
   }
 }
