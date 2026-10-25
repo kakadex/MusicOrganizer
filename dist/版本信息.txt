@@ -1,10 +1,10 @@
-音乐整理工具 · 安卓版 v0.1.99-cd9380 (versionCode 110)
-构建时间: 2026-10-25 18:36:44
+音乐整理工具 · 安卓版 v0.1.100-84f89b (versionCode 111)
+构建时间: 2026-10-25 20:12:52
 包名: com.dsh.musicorganizer
 SDK: minSdk 24 / targetSdk 34
 签名: v2/v3（本地证书，别名 musicorganizer）
-SHA-256: 5d996ac2d879db3729c3487a0c7d50242051fab90c9c5555cd3169683ec1a8ba
-大小: 398799 字节
+SHA-256: 3937c9cab0268cf3997739788ec662da329a55ea9f96eab2ed66c2c0611bfd4a
+大小: 402895 字节
 
 安装说明：直接覆盖安装即可（versionCode 递增、证书与 0.1.x 各版一致，不会丢偏好设置）。
           仅当从旧的 2.x 内部开发版（或其它证书签名的包）升级时，才需要先卸载。
