@@ -153,8 +153,14 @@ trap cleanup EXIT
     # 桌面版（Windows）产物：存在就一起放进素材分支，Actions 会把它作为 Release 附件上传
     DESKTOP_EXE="$PKG/../MusicOrganizerWIN64/dist/MusicOrganizer.exe"
     if [ -f "$DESKTOP_EXE" ]; then
+        # 防呆：exe 里的版本必须和本次发布一致，否则会把旧桌面版挂到新版号下
+        EXE_VER="$("$DESKTOP_EXE" --version 2>/dev/null | tr -d '\r' | awk '{print $NF}')"
+        if [ -n "$EXE_VER" ] && [ "$EXE_VER" != "$VER_NAME" ]; then
+            echo "[错误] 桌面版 exe 是 $EXE_VER，与 $VER_NAME 不一致；先重打包再发布" >&2
+            exit 1
+        fi
         cp -f "$DESKTOP_EXE" ./MusicOrganizer-desktop.exe
-        echo "       桌面版 $(stat -c %s ./MusicOrganizer-desktop.exe) 字节 已加入素材"
+        echo "       桌面版 $EXE_VER $(stat -c %s ./MusicOrganizer-desktop.exe) 字节 已加入素材"
     else
         echo "       （未找到桌面版 exe，跳过）"
     fi
