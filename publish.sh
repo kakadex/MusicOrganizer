@@ -220,6 +220,12 @@ if git remote get-url gitee >/dev/null 2>&1; then
     done
     if [ "$OK" = 1 ]; then
         echo "       Gitee 已更新 -> $(git rev-parse --short HEAD)"
+        # Gitee 没有 Actions 那套自动挂附件，走 API 建 Release 并上传 APK + 桌面版 exe
+        if [ "$DO_TAG" = 1 ] && [ -x "$PKG/tools/gitee-release.sh" ]; then
+            DESKTOP_EXE="$PKG/../MusicOrganizerWIN64/dist/MusicOrganizer.exe"
+            "$PKG/tools/gitee-release.sh" "$TAG" "$NOTES" "$APK" "$DESKTOP_EXE" \
+                || echo "[警告] Gitee Release 附件上传失败，稍后可重跑 tools/gitee-release.sh" >&2
+        fi
     else
         echo "[警告] Gitee 推送失败（不影响 GitHub 发布），稍后可手动补推：" >&2
         echo "       git push gitee main && git push gitee $TAG" >&2
