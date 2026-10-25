@@ -150,6 +150,14 @@ trap cleanup EXIT
     cp -f "$APK" .
     cp -f "$NOTES" notes.md
     cp -f "$INFO" .
+    # 桌面版（Windows）产物：存在就一起放进素材分支，Actions 会把它作为 Release 附件上传
+    DESKTOP_EXE="$PKG/../MusicOrganizerWIN64/dist/MusicOrganizer.exe"
+    if [ -f "$DESKTOP_EXE" ]; then
+        cp -f "$DESKTOP_EXE" ./MusicOrganizer-desktop.exe
+        echo "       桌面版 $(stat -c %s ./MusicOrganizer-desktop.exe) 字节 已加入素材"
+    else
+        echo "       （未找到桌面版 exe，跳过）"
+    fi
     # 分支首页说明：优先沿用上一版（自动替换版本号），没有再生成一个简版
     if git show origin/release-assets:README.md > README.md 2>/dev/null; then
         sed -i "s|release/v[0-9A-Za-z.-]*|release/$TAG|g; s|\"v[0-9A-Za-z.-]* 发布素材\"|\"$TAG 发布素材\"|g" README.md
@@ -159,7 +167,8 @@ trap cleanup EXIT
             echo
             echo "本分支只放发布产物，供 GitHub Actions 建 Release 使用，也作为下载兜底入口。"
             echo
-            echo "- 安装包：\`音乐整理工具-$TAG.apk\`"
+            echo "- 安卓安装包：\`音乐整理工具-$TAG.apk\`"
+            echo "- Windows 桌面版：\`MusicOrganizer-desktop.exe\`"
             echo "- 说明：\`notes.md\`（首行即 Release 标题）"
             echo "- 构建信息：\`版本信息.txt\`"
             echo

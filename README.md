@@ -23,6 +23,13 @@ GitHub（备用）：
 
 要求 Android 7.0（API 24）及以上；`0.1.x` 各版可直接覆盖安装。
 
+**Windows 桌面版**（Win10/11 64 位，免安装单文件 exe，无需 Python）：
+
+- **Gitee Releases**：[gitee.com/kakadex/MusicOrganizer/releases](https://gitee.com/kakadex/MusicOrganizer/releases) —— 附件名形如 `MusicOrganizer-desktop-v0.1.x.exe`
+- **GitHub Releases**：[github.com/kakadex/MusicOrganizer/releases](https://github.com/kakadex/MusicOrganizer/releases) —— 同一个 Release 里同时挂 APK 与桌面版 exe
+
+> 桌面版与安卓版共用同一个版本号（例如 `0.1.89-236781`），功能与标签逻辑保持同步。
+
 > App 内的「检查更新」也是**国内优先**：先读 Gitee 上的 `dist/latest.txt`，
 > 连不上再退到 GitHub（清单 → Release API），下载同样优先给 Gitee 的直链。
 

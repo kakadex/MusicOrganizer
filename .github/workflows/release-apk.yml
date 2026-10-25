@@ -115,6 +115,24 @@ jobs:
           # 上一步是全新 Release，不带历史资产，直接传即可
           gh release upload "$TAG" "/tmp/$NAME" --repo "$REPO" --clobber
 
+      - name: 上传桌面版附件（有则传，无则跳过）
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          EXE=$(find assets -maxdepth 1 -iname 'MusicOrganizer-desktop.exe' -print -quit)
+          if [ -z "$EXE" ]; then
+            echo "release-assets 分支上没有桌面版 exe，跳过"
+            exit 0
+          fi
+          echo "EXE = $EXE"
+          # 与 APK 同理：上传前改成纯 ASCII 名，避免中文被剥掉
+          NAME="MusicOrganizer-desktop-${TAG}.exe"
+          cp -f "$EXE" "/tmp/$NAME"
+          gh release upload "$TAG" "/tmp/$NAME" --repo "$REPO" --clobber
+
       - name: 结果汇总
         if: always()
         env:
