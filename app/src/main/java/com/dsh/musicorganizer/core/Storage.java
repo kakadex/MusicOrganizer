@@ -238,6 +238,60 @@ public final class Storage {
         }
     }
 
+    /**
+     * 直接读文件尾部若干字节（v0.1.88）：给「采样指纹」用。
+     *
+     * <p>用 ParcelFileDescriptor 的 fd 建 FileChannel 后直接 position 到
+     * {@code size - maxBytes}，不靠 InputStream.skip() —— SAF 的实现里 skip 经常
+     * 退化成逐字节读，几十 MB 的文件能卡好几秒。
+     */
+    public byte[] tailBytes(VFile f, int maxBytes) {
+        if (maxBytes <= 0) {
+            return null;
+        }
+        android.os.ParcelFileDescriptor pfd = null;
+        java.io.FileInputStream in = null;
+        try {
+            pfd = resolver.openFileDescriptor(documentUri(f), "r");
+            if (pfd == null) {
+                return null;
+            }
+            long size = pfd.getStatSize();
+            if (size <= 0) {
+                return null;
+            }
+            long start = Math.max(0, size - maxBytes);
+            int want = (int) Math.min(maxBytes, size - start);
+            in = new java.io.FileInputStream(pfd.getFileDescriptor());
+            java.nio.channels.FileChannel channel = in.getChannel();
+            channel.position(start);
+            byte[] out = new byte[want];
+            java.nio.ByteBuffer buffer = java.nio.ByteBuffer.wrap(out);
+            while (buffer.hasRemaining()) {
+                if (channel.read(buffer) <= 0) {
+                    break;
+                }
+            }
+            int got = buffer.position();
+            if (got == out.length) {
+                return out;
+            }
+            byte[] trimmed = new byte[Math.max(0, got)];
+            System.arraycopy(out, 0, trimmed, 0, trimmed.length);
+            return trimmed;
+        } catch (Throwable t) {
+            return null;
+        } finally {
+            closeQuietly(in);
+            if (pfd != null) {
+                try {
+                    pfd.close();
+                } catch (Exception ignored) {
+                }
+            }
+        }
+    }
+
     public int copyHeadToLocal(VFile f, File target, int maxBytes) throws IOException {
         InputStream in = null;
         OutputStream out = null;

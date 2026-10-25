@@ -226,6 +226,34 @@ public final class DuplicatesTest {
         check("概览含两个时长", durLine.contains("4:35") && durLine.contains("2:35"));
         check("概览含相差", durLine.contains("相差") && durLine.contains("2:00"));
 
+        section("疑似组的内容核验（采样指纹）");
+        java.util.Map<String, Double> durEq = new java.util.HashMap<String, Double>();
+        durEq.put("示例歌名.mp3", 245.0);
+        durEq.put("示例歌名加长版.mp3", 245.5);
+        java.util.Map<String, String> sameHash = new java.util.HashMap<String, String>();
+        sameHash.put("示例歌名.mp3", "aaaaaa");
+        sameHash.put("示例歌名加长版.mp3", "aaaaaa");
+        List<Duplicates.Group> verified = runAll(durEq, new java.util.HashMap<String, String>(),
+                sameHash,
+                file("Music/示例歌名.mp3", 3_000_000),
+                file("Music/示例歌名加长版.mp3", 3_000_000));
+        check("采样一致 → 升为确证", verified.size() == 1 && !verified.get(0).suspect);
+        check("记录内容状态为「一致」",
+                verified.size() == 1 && verified.get(0).content == Duplicates.CONTENT_SAME);
+
+        java.util.Map<String, String> diffHash = new java.util.HashMap<String, String>();
+        diffHash.put("示例歌名.mp3", "aaaaaa");
+        diffHash.put("示例歌名加长版.mp3", "bbbbbb");
+        List<Duplicates.Group> differed = runAll(durEq, new java.util.HashMap<String, String>(),
+                diffHash,
+                file("Music/示例歌名.mp3", 3_000_000),
+                file("Music/示例歌名加长版.mp3", 3_000_000));
+        check("采样不同 → 仍是疑似", differed.size() == 1 && differed.get(0).suspect);
+        check("记录内容状态为「不同」",
+                differed.size() == 1 && differed.get(0).content == Duplicates.CONTENT_DIFF);
+        check("摘要点出内容不同", Duplicates.summary(differed).contains("内容不同"));
+        check("内容状态文案", Duplicates.contentLabel(differed.get(0)).contains("名字像"));
+
         section("确证档不标疑似");
         java.util.Map<String, Double> dur4 = new java.util.HashMap<String, Double>();
         dur4.put("示例歌名 (1).mp3", 245.0);
@@ -318,6 +346,14 @@ public final class DuplicatesTest {
     private static List<Duplicates.Group> runMeta(final java.util.Map<String, Double> durations,
                                                   final java.util.Map<String, String> tagArtists,
                                                   VFile... files) {
+        return runAll(durations, tagArtists, new java.util.HashMap<String, String>(), files);
+    }
+
+    /** 时长 + 标签艺人 + 内容采样哈希全给。 */
+    private static List<Duplicates.Group> runAll(final java.util.Map<String, Double> durations,
+                                                 final java.util.Map<String, String> tagArtists,
+                                                 final java.util.Map<String, String> contentHashes,
+                                                 VFile... files) {
         List<VFile> list = new ArrayList<VFile>();
         for (VFile f : files) {
             list.add(f);
@@ -333,6 +369,11 @@ public final class DuplicatesTest {
                     @Override
                     public String tagArtist(VFile file) {
                         return tagArtists.get(file.name);
+                    }
+
+                    @Override
+                    public String contentHash(VFile file) {
+                        return contentHashes.get(file.name);
                     }
                 });
     }

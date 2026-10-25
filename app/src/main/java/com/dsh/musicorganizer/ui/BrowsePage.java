@@ -2339,6 +2339,24 @@ public final class BrowsePage extends LinearLayout {
                                     return "";
                                 }
                             }
+
+                            /**
+                             * 疑似组的内容核验：大小 + 头 64KB + 尾 64KB 的采样指纹。
+                             * 只读 128KB/文件，比全量哈希便宜两个数量级，足够把
+                             * 「同一份内容」和「只是名字像」区分开。
+                             */
+                            @Override
+                            public String contentHash(VFile file) {
+                                byte[] head = st.headBytes(file,
+                                        com.dsh.musicorganizer.core.DupFiles.HEAD_BYTES);
+                                if (head == null || head.length == 0) {
+                                    return "";
+                                }
+                                byte[] tail = st.tailBytes(file,
+                                        com.dsh.musicorganizer.core.DupFiles.TAIL_BYTES);
+                                return com.dsh.musicorganizer.core.DupFiles.sampleHash(
+                                        head, tail, file.size);
+                            }
                         });
             }
         }, new Tasks.Callback() {

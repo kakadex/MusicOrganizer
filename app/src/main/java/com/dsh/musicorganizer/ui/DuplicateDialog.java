@@ -55,7 +55,8 @@ public final class DuplicateDialog {
         root.addView(UiKit.caption(ctx,
                 "同一条歌可能因为「另存为」「复制到别的文件夹」留下多份，也可能只是文件名写法不同"
                         + "（带艺人前缀、带 (1) 尾巴）。下面是按文件名相似度 ≥ 90% 归出的分组；"
-                        + "标「疑似」的组相似度偏低或读不到时长，默认不勾选，建议先试听确认再删。"));
+                        + "拿不准的组会再比对首尾各 64KB 的内容：一致的升为确证，不一致的标「内容不同」，"
+                        + "都不会默认勾选。"));
 
         // 「建议保留」的不给勾，避免手滑把唯一一份删了
         for (int i = 0; i < groups.size(); i++) {
@@ -66,14 +67,21 @@ public final class DuplicateDialog {
 
             String head = "组 " + (i + 1) + " · " + group.files.size() + " 个文件 · 相似度 "
                     + Math.round(group.score * 100) + "%"
-                    + (group.suspect ? " · 疑似" : "");
+                    + (group.suspect ? " · 疑似" : "")
+                    + (group.content == Duplicates.CONTENT_SAME ? " · 内容一致"
+                    : (group.content == Duplicates.CONTENT_DIFF ? " · 内容不同" : ""));
             card.addView(UiKit.text(ctx, head, 14, UiKit.textColor(), true));
             // 时长对比：同曲不同码率时长应基本一致；差得多就是剪辑版/不同版本，先看这里
             String durLine = Duplicates.durationSummary(group);
             if (!durLine.isEmpty()) {
                 card.addView(UiKit.text(ctx, "时长 " + durLine, 12.5f, UiKit.subColor(), false));
             }
-            if (group.suspect) {
+            if (group.content == Duplicates.CONTENT_DIFF) {
+                card.addView(UiKit.caption(ctx,
+                        "首尾采样对不上 —— 名字像，但不是同一份内容（可能是不同版本或别人的翻唱）。"));
+            } else if (group.content == Duplicates.CONTENT_SAME) {
+                card.addView(UiKit.caption(ctx, "已比对大小与首尾各 64KB，内容相同。"));
+            } else if (group.suspect) {
                 card.addView(UiKit.caption(ctx,
                         "疑似同一首的不同命名或不同版本。默认不勾选，确认无误后再勾。"));
             }
@@ -87,8 +95,9 @@ public final class DuplicateDialog {
                         + (item.duration != null && item.duration.doubleValue() > 0
                         ? "  ·  " + TextUtil.formatDuration(item.duration) : "")
                         + (isKeep ? "  ·  建议保留" : "");
-                // 疑似组默认不勾：查重是提示，误删不可逆
-                final CheckBox box = UiKit.checkbox(ctx, label, !isKeep && !group.suspect);
+                // 疑似组、以及「名字像但内容不同」的组默认不勾：查重是提示，误删不可逆
+                final CheckBox box = UiKit.checkbox(ctx, label,
+                        !isKeep && !group.suspect && group.content != Duplicates.CONTENT_DIFF);
                 UiKit.margin(box, 0, 6, 0, 0);
                 // 保留项不再强制锁定：用户可能想删掉被推荐保留的那一份。
                 // 校验阶段保证「每组至少留一个」，避免误删唯一副本。

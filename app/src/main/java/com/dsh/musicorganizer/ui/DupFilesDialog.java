@@ -68,7 +68,14 @@ public final class DupFilesDialog {
                         break;
                     }
                     for (DupFiles.Item it : bucket) {
-                        it.hash = DupFiles.hash(readHead(st, host.repo.lastFiles, it.docId));
+                        // v0.1.88：大小 + 头 + 尾采样。老实现只看头 64KB，
+                        // 「同一编码器批量导出、头部一致、后面不同」的文件会被误判成同一份。
+                        VFile target = findFile(host.repo.lastFiles, it.docId);
+                        if (target != null) {
+                            byte[] head = st.headBytes(target, DupFiles.HEAD_BYTES);
+                            byte[] tail = st.tailBytes(target, DupFiles.TAIL_BYTES);
+                            it.hash = DupFiles.sampleHash(head, tail, it.size);
+                        }
                         candidates.add(it);
                     }
                 }
@@ -85,7 +92,7 @@ public final class DupFilesDialog {
                 List<DupFiles.Group> groups = (List<DupFiles.Group>) result;
                 if (groups == null || groups.isEmpty()) {
                     host.message("没有发现重复文件",
-                            "按「大小相同 + 文件头 64KB 内容相同」比对，没有找到重复的音频。\n\n"
+                            "按「大小相同 + 头尾各 64KB 内容相同」比对，没有找到重复的音频。\n\n"
                                     + "如果曲目数仍比播放器多，可能是这些歌名字不同、内容也略有差别"
                                     + "（不同码率 / 不同版本），可以再用「文件名查重」看看。");
                     return;
@@ -96,48 +103,17 @@ public final class DupFilesDialog {
         });
     }
 
-    /** 读文件头 64KB（不整文件复制，几百首也就几十 MB 的读）。 */
-    private static byte[] readHead(Storage st, List<VFile> files, String docId) {
-        VFile target = null;
+    /** 按 docId 找当前扫描结果里的文件对象（读头尾采样用）。 */
+    private static VFile findFile(List<VFile> files, String docId) {
+        if (files == null || docId == null) {
+            return null;
+        }
         for (VFile f : files) {
             if (f != null && docId.equals(f.docId)) {
-                target = f;
-                break;
+                return f;
             }
         }
-        if (target == null) {
-            return null;
-        }
-        File tmp = null;
-        try {
-            tmp = File.createTempFile("mo_dup_", ".head");
-            int copied = st.copyHeadToLocal(target, tmp, DupFiles.HEAD_BYTES);
-            if (copied <= 0) {
-                return null;
-            }
-            byte[] out = new byte[copied];
-            FileInputStream in = new FileInputStream(tmp);
-            try {
-                int read = 0;
-                while (read < out.length) {
-                    int n = in.read(out, read, out.length - read);
-                    if (n <= 0) {
-                        break;
-                    }
-                    read += n;
-                }
-            } finally {
-                in.close();
-            }
-            return out;
-        } catch (Throwable t) {
-            return null;
-        } finally {
-            if (tmp != null) {
-                //noinspection ResultOfMethodCallIgnored
-                tmp.delete();
-            }
-        }
+        return null;
     }
 
     private static void openPanel(final MainActivity host, final List<DupFiles.Group> groups) {

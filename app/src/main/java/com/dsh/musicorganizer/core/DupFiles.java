@@ -16,14 +16,17 @@ import java.util.Map;
  * 但**内容完全一样**。这里先用大小分桶（几乎不花 IO），只对同大小的文件算哈希，
  * 1024 首的量级通常只有几十个候选，成本可以忽略。
  *
- * <p>哈希只取文件头 64KB：一首歌的头部（含标签、封面、第一帧音频）足以区分不同版本，
- * 又不必把几 MB 的文件整个读一遍。两个文件如果「头 64KB 相同但整体不同」，
- * 那基本是同一首歌的不同片段 —— 这种情况宁可漏判，也不要误删。
+ * <p>哈希口径（v0.1.88）：**大小 + 头 64KB + 尾 64KB** 一起算 SHA-256。
+ * 老实现只看头 64KB，遇到「同一编码器批量导出、头部完全一致、后面内容不同」的文件
+ * 会误判成同一份；补上尾部采样后，这种误判基本消失，而代价仍然只有 128KB/文件。
+ * 仍然可能出现「头尾相同、中间不同」的构造样本，属于极端情况 —— 宁可漏判也不要误删。
  */
 public final class DupFiles {
 
     /** 参与比较的头部字节数。 */
     public static final int HEAD_BYTES = 64 * 1024;
+    /** 参与比较的尾部字节数（v0.1.88）。 */
+    public static final int TAIL_BYTES = 64 * 1024;
 
     private DupFiles() {
     }
@@ -173,16 +176,44 @@ public final class DupFiles {
         }
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] d = md.digest(head);
-            StringBuilder sb = new StringBuilder(d.length * 2);
-            for (byte b : d) {
-                sb.append(Character.forDigit((b >> 4) & 0xF, 16));
-                sb.append(Character.forDigit(b & 0xF, 16));
-            }
-            return sb.toString();
+            return hex(md.digest(head));
         } catch (Exception e) {
             return "";
         }
+    }
+
+    /**
+     * 采样指纹：大小 + 头 + 尾的 SHA-256（v0.1.88）。
+     *
+     * <p>把大小也写进摘要：只有头尾相同、中间长度不同（例如中间剪掉一段，
+     * 但头尾各 64KB 恰好一致）时，也能靠大小立刻区分开。
+     */
+    public static String sampleHash(byte[] head, byte[] tail, long size) {
+        if (head == null || head.length == 0) {
+            return "";
+        }
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            md.update(String.valueOf(size).getBytes("US-ASCII"));
+            md.update((byte) 0);
+            md.update(head);
+            if (tail != null && tail.length > 0) {
+                md.update((byte) 0);
+                md.update(tail);
+            }
+            return hex(md.digest());
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private static String hex(byte[] data) {
+        StringBuilder sb = new StringBuilder(data.length * 2);
+        for (byte b : data) {
+            sb.append(Character.forDigit((b >> 4) & 0xF, 16));
+            sb.append(Character.forDigit(b & 0xF, 16));
+        }
+        return sb.toString();
     }
 
     /** 一句话汇总：「3 组 · 7 个多余副本 · 可省 82.3 MB」。 */

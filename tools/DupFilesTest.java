@@ -20,6 +20,7 @@ public class DupFilesTest {
         wastedAndOrder();
         summaryText();
         hashOfBytes();
+        sampleHashTailMatters();
 
         System.out.println();
         System.out.println("结果：通过 " + passed + "，失败 " + failed);
@@ -130,6 +131,22 @@ public class DupFilesTest {
         check("不同内容不同哈希", !DupFiles.hash(a).equals(DupFiles.hash(c)));
         check("空数据返回空串", DupFiles.hash(new byte[0]).isEmpty());
         check("哈希是 64 位十六进制", DupFiles.hash(a).length() == 64);
+    }
+
+    /** 2b. 采样指纹：头相同但尾不同必须区分开（v0.1.88 的核心修复）。 */
+    static void sampleHashTailMatters() {
+        byte[] head = new byte[]{1, 2, 3, 4};
+        byte[] tailSame = new byte[]{9, 9};
+        byte[] tailOther = new byte[]{9, 8};
+        String base = DupFiles.sampleHash(head, tailSame, 1000);
+        check("头尾都同 → 指纹相同",
+                base.equals(DupFiles.sampleHash(head, tailSame, 1000)));
+        check("头同尾不同 → 指纹不同",
+                !base.equals(DupFiles.sampleHash(head, tailOther, 1000)));
+        check("头尾同但大小不同 → 指纹不同",
+                !base.equals(DupFiles.sampleHash(head, tailSame, 1001)));
+        check("尾部读不到（null）也能出指纹", !DupFiles.sampleHash(head, null, 1000).isEmpty());
+        check("头部为空返回空串", DupFiles.sampleHash(new byte[0], tailSame, 10).isEmpty());
     }
 
     private static void check(String label, boolean ok) {

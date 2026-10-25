@@ -42,7 +42,24 @@ public final class Duplicates {
         default String tagArtist(VFile file) {
             return "";
         }
+
+        /**
+         * 内容采样指纹（大小 + 头 64KB + 尾 64KB 的 SHA-256），v0.1.88；空串表示取不到。
+         *
+         * <p>只对「疑似」组调用：名字像但拿不准的两三个文件，比一下首尾采样就能定性 ——
+         * 全同说明是同一份内容（可以放心勾选），不同说明只是名字像（绝不能默认勾选）。
+         */
+        default String contentHash(VFile file) {
+            return "";
+        }
     }
+
+    /** 内容尚未核验（没调用来源，或读取失败）。 */
+    public static final int CONTENT_UNKNOWN = 0;
+    /** 采样指纹一致：内容确实是同一份。 */
+    public static final int CONTENT_SAME = 1;
+    /** 采样指纹不同：名字像，内容不是同一份。 */
+    public static final int CONTENT_DIFF = 2;
 
     private static final Pattern COPY_SUFFIX_RE = Pattern.compile(
             "(?:\\s*[（(]\\s*\\d+\\s*[)）]|\\s*[-_ ]\\s*(?:副本|拷贝|copy|複製|复制)\\s*\\d*)*$",
@@ -138,6 +155,11 @@ public final class Duplicates {
          * <p>界面据此默认不勾选，让用户先确认再删。
          */
         public boolean suspect;
+        /**
+         * 内容核验结果（v0.1.88）：{@link #CONTENT_UNKNOWN} / {@link #CONTENT_SAME} /
+         * {@link #CONTENT_DIFF}。只对疑似组做过采样指纹比对。
+         */
+        public int content = CONTENT_UNKNOWN;
 
         public Group(String key) {
             this.key = key;
@@ -188,6 +210,20 @@ public final class Duplicates {
         return best;
     }
 
+    /** 内容核验结果的一句话说明；未核验返回空串。 */
+    public static String contentLabel(Group group) {
+        if (group == null) {
+            return "";
+        }
+        if (group.content == CONTENT_SAME) {
+            return "内容一致（首尾采样相同）";
+        }
+        if (group.content == CONTENT_DIFF) {
+            return "内容不同（只是名字像）";
+        }
+        return "";
+    }
+
     /** 摘要文案：「3 组 · 5 个多余文件 · 约 12.3 MB」，有疑似组时一并说明。 */
     public static String summary(List<Group> groups) {
         if (groups == null || groups.isEmpty()) {
@@ -196,17 +232,31 @@ public final class Duplicates {
         long wasted = 0;
         int extra = 0;
         int suspect = 0;
+        int verified = 0;
+        int differs = 0;
         for (Group g : groups) {
             extra += Math.max(0, g.files.size() - 1);
             wasted += g.wastedBytes();
             if (g.suspect) {
                 suspect++;
             }
+            if (g.content == CONTENT_SAME) {
+                verified++;
+            } else if (g.content == CONTENT_DIFF) {
+                differs++;
+            }
         }
         String head = suspect > 0
                 ? groups.size() + " 组（其中 " + suspect + " 组疑似）"
                 : groups.size() + " 组";
-        return head + " · " + extra + " 个多余文件 · 约 " + TextUtil.formatSize(wasted);
+        String tail = "";
+        if (verified > 0) {
+            tail += " · " + verified + " 组已核验内容一致";
+        }
+        if (differs > 0) {
+            tail += " · " + differs + " 组名字像但内容不同";
+        }
+        return head + " · " + extra + " 个多余文件 · 约 " + TextUtil.formatSize(wasted) + tail;
     }
 
     private static class UnionFind {
@@ -493,6 +543,13 @@ public final class Duplicates {
                 group.score = groupScore(group);
                 // 相似度没到「确证」档的也标疑似：0.90~0.95 之间确实可能是不同版本
                 group.suspect = group.suspect || group.score < HIGH_CONFIDENCE;
+                if (group.suspect) {
+                    // 疑似组再比一次首尾采样：能定性的就别让用户猜
+                    group.content = verifyContent(group, durations);
+                    if (group.content == CONTENT_SAME) {
+                        group.suspect = false;      // 内容逐字节一致 → 确证
+                    }
+                }
                 out.add(group);
             }
         }
@@ -639,6 +696,36 @@ public final class Duplicates {
             }
         }
         return false;
+    }
+
+    /** 疑似组的采样指纹核对：全部一致才算「内容一致」，有读不到的就当未知。 */
+    private static int verifyContent(Group group, DurationSource source) {
+        if (source == null) {
+            return CONTENT_UNKNOWN;
+        }
+        String first = null;
+        boolean anyMissing = false;
+        for (Item item : group.files) {
+            String hash = "";
+            try {
+                hash = source.contentHash(item.file);
+            } catch (Exception ignored) {
+                hash = "";
+            }
+            if (hash == null || hash.isEmpty()) {
+                anyMissing = true;
+                continue;
+            }
+            if (first == null) {
+                first = hash;
+            } else if (!first.equals(hash)) {
+                return CONTENT_DIFF;
+            }
+        }
+        if (first == null || anyMissing) {
+            return CONTENT_UNKNOWN;
+        }
+        return CONTENT_SAME;
     }
 
     /** 取时长（带缓存）；来源为 null 或读失败都按「未知」返回 0。 */
