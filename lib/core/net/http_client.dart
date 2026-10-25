@@ -69,6 +69,11 @@ abstract final class Http {
   /// 连接（握手）超时：卡住就尽快判定这个源不可用。
   static const int connectTimeoutMs = 3500;
 
+  /// 读取超时（海外源 8s / 国内源 5s：跨境链路本来就慢，给得太紧会整片超时）。
+  static const int readTimeoutOverseasMs = 8000;
+
+  static const int readTimeoutCnMs = 5000;
+
   static const int textMaxBytes = 4 * 1024 * 1024;
 
   /// 全局熔断器。
