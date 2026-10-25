@@ -1,5 +1,38 @@
-/// 媒体库刷新（T07 落位）。
+/// 媒体库刷新 —— 写完标签后通知系统媒体库（v0.1.80）。
 ///
-/// - 安卓：MediaScannerConnection.scanFile 单文件 / 批量刷新；
-/// - 桌面：无需刷新（文件系统直读），保留空实现占位以统一上层调用。
+/// - 桌面：无需刷新（文件系统直读），保留 no-op 实现统一上层调用；
+/// - 安卓：MediaScannerConnection.scanFile 单文件 / 批量，实现留 T08。
 library;
+
+import '../core/model/vfile.dart';
+
+/// 媒体库刷新接口。
+abstract class MediaRefresh {
+  /// 通知系统媒体库：这个文件变了。失败静默。
+  Future<void> scan(VFile f);
+
+  /// 批量刷新。
+  Future<void> scanAll(List<VFile> files);
+
+  /// document id → 文件路径（安卓 MediaScanner 用）；还原不出来返回 null。
+  static String? pathOf(VFile f) {
+    final String docId = f.docId;
+    final int colon = docId.indexOf(':');
+    if (colon <= 0 || colon == docId.length - 1) return null;
+    final String volume = docId.substring(0, colon);
+    String rel = docId.substring(colon + 1);
+    if (rel.startsWith('/')) rel = rel.substring(1);
+    if (volume.isEmpty || rel.isEmpty) return null;
+    if (volume.toLowerCase() == 'primary') return '/storage/emulated/0/$rel';
+    return '/storage/$volume/$rel';
+  }
+}
+
+/// 桌面 no-op 实现。
+class DesktopMediaRefresh implements MediaRefresh {
+  @override
+  Future<void> scan(VFile f) async {}
+
+  @override
+  Future<void> scanAll(List<VFile> files) async {}
+}
