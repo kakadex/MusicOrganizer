@@ -41,6 +41,10 @@ public final class Flac {
         READ_KEYS.put("COMMENT", "comment");
         READ_KEYS.put("LYRICS", "lyrics");
         READ_KEYS.put("UNSYNCEDLYRICS", "lyrics");
+        // 不同工具写法不统一，这几种都见过（v0.1.90）
+        READ_KEYS.put("LYRIC", "lyrics");
+        READ_KEYS.put("UNSYNCED LYRICS", "lyrics");
+        READ_KEYS.put("UNSYNCED_LYRICS", "lyrics");
     }
 
     private static final Map<String, String> WRITE_KEYS = new java.util.HashMap<String, String>();

@@ -10,8 +10,8 @@ android {
         applicationId "com.dsh.musicorganizer"
         minSdk 24
         targetSdk 34
-        versionCode 100
-        versionName "0.1.89-236781"
+        versionCode 101
+        versionName "0.1.90-f2855c"
         // 纯 Java 工程，不启用任何注解处理器
     }
 

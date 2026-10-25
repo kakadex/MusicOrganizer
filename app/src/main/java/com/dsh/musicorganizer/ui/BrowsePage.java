@@ -664,12 +664,30 @@ public final class BrowsePage extends LinearLayout {
         bulkTotal = 0;
         handler.removeCallbacks(metaRetry);
         List<VFile> files = host.repo.lastFiles;
-        // 先收集歌词文件，给同名音频打「有歌词」标记（不需要读盘）
-        Map<String, Boolean> lrcStems = new HashMap<String, Boolean>();
+        // 先收集歌词文件，给同名音频打「有歌词」标记（不需要读盘）。
+        // v0.1.90：不再要求基名逐字相同 —— 播放器普遍按「归一化后的歌名」匹配，
+        // 「南山南.lrc」能配「马頔-南山南.mp3」。这里放宽成：归一后相等，或一方包含另一方。
+        Map<String, List<String>> lrcByDir = new HashMap<String, List<String>>();
         for (VFile f : files) {
             if (f.lyric()) {
-                lrcStems.put(dirKey(f) + "/" + f.stem().toLowerCase(Locale.ROOT),
-                        Boolean.TRUE);
+                String key = dirKey(f);
+                List<String> bucket = lrcByDir.get(key);
+                if (bucket == null) {
+                    bucket = new ArrayList<String>();
+                    lrcByDir.put(key, bucket);
+                }
+                bucket.add(lyricKey(f.stem()));
+                // 歌词放在 Lyrics/ 或 歌词/ 子目录里也算（很多播放器就是按这个约定找的）
+                if (isLyricFolder(key)) {
+                    int slash = key.lastIndexOf('/');
+                    String parent = slash >= 0 ? key.substring(0, slash) : "";
+                    List<String> parentBucket = lrcByDir.get(parent);
+                    if (parentBucket == null) {
+                        parentBucket = new ArrayList<String>();
+                        lrcByDir.put(parent, parentBucket);
+                    }
+                    parentBucket.add(lyricKey(f.stem()));
+                }
             }
         }
         for (VFile f : files) {
@@ -678,8 +696,7 @@ public final class BrowsePage extends LinearLayout {
             }
             SearchIndex.Entry e = new SearchIndex.Entry(f.docId, f.name,
                     f.pathAfterRoot(), f.size, f.lastModified, f);
-            boolean hasLrc =
-                    lrcStems.containsKey(dirKey(f) + "/" + f.stem().toLowerCase(Locale.ROOT));
+            boolean hasLrc = hasLyricSidecar(lrcByDir.get(dirKey(f)), lyricKey(f.stem()));
             if (hasLrc) {
                 e.hasLyrics = true;
             }
@@ -772,6 +789,46 @@ public final class BrowsePage extends LinearLayout {
                 });
             }
         });
+    }
+
+    /** 歌词侧车匹配用的归一键：小写、去空白与标点，便于跨「艺人-歌名」写法对齐。 */
+    private static String lyricKey(String stem) {
+        return com.dsh.musicorganizer.core.TextUtil.normCompare(stem);
+    }
+
+    /**
+     * 同目录下是否有这首歌的 .lrc：归一后相等，或一方包含另一方（长度 ≥3 才认）。
+     * 之前的实现要求基名完全相同，「南山南.lrc」配不上「马頔-南山南.mp3」，
+     * 于是播放器有歌词、本应用显示没有。
+     */
+    private static boolean hasLyricSidecar(List<String> lrcKeys, String audioKey) {
+        if (lrcKeys == null || audioKey.isEmpty()) {
+            return false;
+        }
+        for (String key : lrcKeys) {
+            if (key.isEmpty()) {
+                continue;
+            }
+            if (key.equals(audioKey)) {
+                return true;
+            }
+            if (audioKey.length() >= 3 && key.contains(audioKey)) {
+                return true;
+            }
+            if (key.length() >= 3 && audioKey.contains(key)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 目录名是不是「专门放歌词」的（Lyrics / 歌词 / lrc …）。 */
+    private static boolean isLyricFolder(String dirPath) {
+        int slash = dirPath.lastIndexOf('/');
+        String name = (slash >= 0 ? dirPath.substring(slash + 1) : dirPath)
+                .trim().toLowerCase(Locale.ROOT);
+        return name.equals("lyrics") || name.equals("lyric") || name.equals("lrc")
+                || name.equals("歌词") || name.equals("歌詞") || name.equals("lyrics-files");
     }
 
     private static String dirKey(VFile f) {

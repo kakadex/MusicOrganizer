@@ -167,6 +167,36 @@ public final class Id3 {
     }
 
     private static void applyFrame(Tags tags, String id, byte[] data) {
+        // SYLT 是「同步歌词」帧（带时间戳），播放器能显示、但 USLT 为空时旧实现读不到，
+        // 于是「播放器有歌词、本应用说没有」。这里转成 LRC 文本补进 lyrics 字段。
+        if ("SYLT".equals(id)) {
+            if (tags.get("lyrics").isEmpty()) {
+                String sylt = decodeSylt(data);
+                if (!sylt.isEmpty()) {
+                    tags.put("lyrics", sylt);
+                }
+            }
+            return;
+        }
+        // 有些写词工具把歌词塞进 TXXX（描述里带 LYRICS），USLT 是空的 —— 播放器能读，
+        // 旧实现读不到。这里补一条：描述含 LYRIC 就当成歌词正文。
+        if ("TXXX".equals(id)) {
+            if (tags.get("lyrics").isEmpty() && data.length > 1) {
+                int enc = data[0] & 0xFF;
+                int[] pos = new int[]{1};
+                String desc = readTerminated(data, pos, enc);
+                if (desc != null && desc.toUpperCase(java.util.Locale.ROOT).contains("LYRIC")) {
+                    int start = Math.min(pos[0], data.length);
+                    byte[] payload = new byte[data.length - start];
+                    System.arraycopy(data, start, payload, 0, payload.length);
+                    String value = stripNul(decodePayload(payload, enc)).trim();
+                    if (!value.isEmpty()) {
+                        tags.put("lyrics", value);
+                    }
+                }
+            }
+            return;
+        }
         String field = READ_FIELDS.get(id);
         if (field == null) {
             return;
@@ -183,6 +213,68 @@ public final class Id3 {
                 tags.put(field, v);
             }
         }
+    }
+
+    /**
+     * 解析 SYLT（同步歌词）：enc(1) + lang(3) + timeFormat(1) + contentType(1) + 描述 + 重复的
+     * 「文本 + 4 字节毫秒时间戳」。转成 `[mm:ss.xx]文本` 的 LRC 形式，和其它来源保持同一种表示。
+     */
+    static String decodeSylt(byte[] data) {
+        if (data == null || data.length < 6) {
+            return "";
+        }
+        int enc = data[0] & 0xFF;
+        int[] pos = new int[]{6};
+        readTerminated(data, pos, enc);          // 描述字段，丢弃
+        int p = pos[0];
+        StringBuilder out = new StringBuilder();
+        while (p + 4 <= data.length) {
+            pos[0] = p;
+            String text = readTerminated(data, pos, enc);
+            p = pos[0];
+            if (p + 4 > data.length) {
+                break;
+            }
+            long ms = ((long) (data[p] & 0xFF) << 24) | ((long) (data[p + 1] & 0xFF) << 16)
+                    | ((long) (data[p + 2] & 0xFF) << 8) | (data[p + 3] & 0xFF);
+            p += 4;
+            if (text == null || text.trim().isEmpty()) {
+                continue;
+            }
+            long totalSeconds = ms / 1000;
+            if (out.length() > 0) {
+                out.append('\n');
+            }
+            out.append(String.format(java.util.Locale.US, "[%02d:%02d.%02d]%s",
+                    totalSeconds / 60, totalSeconds % 60, (ms % 1000) / 10, text.trim()));
+        }
+        return out.toString();
+    }
+
+    /** 按编码读一个以 NUL 结尾的字符串，pos[0] 前进到结尾之后。 */
+    private static String readTerminated(byte[] data, int[] pos, int enc) {
+        int start = pos[0];
+        int p = start;
+        if (enc == 1 || enc == 2) {
+            while (p + 1 < data.length) {
+                if (data[p] == 0 && data[p + 1] == 0) {
+                    break;
+                }
+                p += 2;
+            }
+            int end = Math.min(p, data.length);
+            byte[] payload = new byte[Math.max(0, end - start)];
+            System.arraycopy(data, start, payload, 0, payload.length);
+            pos[0] = Math.min(data.length, end + 2);
+            return stripNul(decodePayload(payload, enc));
+        }
+        while (p < data.length && data[p] != 0) {
+            p++;
+        }
+        byte[] payload = new byte[Math.max(0, p - start)];
+        System.arraycopy(data, start, payload, 0, payload.length);
+        pos[0] = Math.min(data.length, p + 1);
+        return stripNul(decodePayload(payload, enc));
     }
 
     static String decodeText(byte[] data) {

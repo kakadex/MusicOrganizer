@@ -681,8 +681,23 @@ public final class TagEditorDialog {
                     }
                     q.useCnSources = host.repo.bool("cn", true);
                     q.filenameWeight = NameWeight.fromPercent(weightBar.getProgress());
-                    return Sources.aggregate(host.repo.mb, q, host.progressCallback(),
-                            host.cancelToken());
+                    // 把进度同时反映到对话框里的状态行（之前只进了任务中心，界面上一动不动）
+                    final com.dsh.musicorganizer.core.Progress uiProgress =
+                            new com.dsh.musicorganizer.core.Progress() {
+                                @Override
+                                public void onProgress(final int done, final int total,
+                                                       final String message) {
+                                    host.progressCallback().onProgress(done, total, message);
+                                    host.runOnUiThread(new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            status.setText("在线获取 " + done + "/" + total
+                                                    + "：" + message);
+                                        }
+                                    });
+                                }
+                            };
+                    return Sources.aggregate(host.repo.mb, q, uiProgress, host.cancelToken());
                 }
             }, new Tasks.Callback() {
                 @Override

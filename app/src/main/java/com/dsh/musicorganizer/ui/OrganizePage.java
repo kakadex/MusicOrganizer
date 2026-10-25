@@ -292,6 +292,23 @@ public final class OrganizePage extends ScrollView {
         scanSummary.setText(text);
     }
 
+    /** 把任务进度同时反映到页面上（之前只进任务中心/通知，页面一动不动）。 */
+    private com.dsh.musicorganizer.core.Progress uiProgress() {
+        final com.dsh.musicorganizer.core.Progress base = host.progressCallback();
+        return new com.dsh.musicorganizer.core.Progress() {
+            @Override
+            public void onProgress(final int done, final int total, final String message) {
+                base.onProgress(done, total, message);
+                host.runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        setScanSummary((total > 0 ? done + "/" + total + " · " : "") + message);
+                    }
+                });
+            }
+        };
+    }
+
     /**
      * 扫描时发现根目录没有音频会自动改递归，这里把开关同步过去（v0.1.50 起设置项
      * 全部收敛到设置页，所以直接写偏好，不再有本地控件可同步）。
@@ -776,7 +793,7 @@ public final class OrganizePage extends ScrollView {
                                         host.repo.mb, files, fieldModes,
                                         NameWeight.fromPercent(host.repo.intVal("fn_weight",
                                                 NameWeight.DEFAULT_PERCENT)),
-                                        cn, sink, host.progressCallback(),
+                                        cn, sink, uiProgress(),
                                         host.cancelToken(), host, memory, null,
                                         host.batchQueue("tags"));
                             }
@@ -897,7 +914,7 @@ public final class OrganizePage extends ScrollView {
             public Object run() throws Exception {
                 Storage st = host.safeStorage();
                 return TagBatch.writeMatches(st, host.getContentResolver(), host, selected,
-                        host.progressCallback(), host.cancelToken(), host, errors, memory,
+                        uiProgress(), host.cancelToken(), host, errors, memory,
                         host.batchQueue("tags"));
             }
         };
