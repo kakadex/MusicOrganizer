@@ -50,6 +50,21 @@ if [ -n "$SAME_BASE" ] && [ "${MO_ALLOW_SAME_BASE:-0}" != "1" ]; then
     exit 1
 fi
 
+# --- 双平台版本一致性检查（v1.4.0 起）---
+# 安卓与 Win64 是两套代码、同一版本号；只升一边就发出去，用户会看到
+# 「安卓 1.4.0 / 桌面 1.3.0」对不上。工作区里没有 Win64 时跳过（单独 clone 的场景）。
+WIN_CORE="$PKG/../MusicOrganizerWIN64/core.py"
+if [ -f "$WIN_CORE" ] && [ "${MO_SKIP_VERSION_SYNC:-0}" != "1" ]; then
+    WIN_VER="$(grep -oE 'APP_VERSION[[:space:]]*=[[:space:]]*"[^"]+"' "$WIN_CORE" | head -1 \
+        | sed -E 's/.*"([^"]+)".*/\1/')"
+    if [ -n "$WIN_VER" ] && [ "$WIN_VER" != "$BASE_VER" ]; then
+        echo "[错误] 双平台版本不一致：安卓 ${BASE_VER} / Win64 ${WIN_VER}" >&2
+        echo "        先执行：../sync-version.sh ${BASE_VER}" >&2
+        echo "        （确需只发安卓，设 MO_SKIP_VERSION_SYNC=1）" >&2
+        exit 1
+    fi
+fi
+
 cd "$PKG"
 
 # --- 0. 收尾存档：刷新 START-HERE.md（本地文件，已被 .gitignore 忽略）---
