@@ -1,0 +1,29 @@
+import 'package:flutter/material.dart';
+
+import 'router.dart';
+import 'theme/theme_controller.dart';
+
+/// 应用根组件（Phase 0 骨架）：主题源 + 路由表。
+class MoApp extends StatelessWidget {
+  const MoApp({super.key, required this.themeController});
+
+  /// 主题状态源（持久化接入后下沉到 Repo 设置槽位）。
+  final ThemeController themeController;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: themeController,
+      builder: (BuildContext context, Widget? child) {
+        return MaterialApp(
+          title: 'MusicOrganizer',
+          debugShowCheckedModeBanner: false,
+          theme: themeController.themeData,
+          initialRoute: MoRoutes.home,
+          onGenerateRoute: (RouteSettings settings) =>
+              MoRouter.onGenerateRoute(settings, themeController),
+        );
+      },
+    );
+  }
+}

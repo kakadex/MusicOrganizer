@@ -1,0 +1,27 @@
+name: musicorganizer
+description: MusicOrganizer —— 本地音乐标签 / 歌词整理工具（Flutter 重构版）。
+publish_to: 'none'
+
+# version: X.Y.Z+NNN（build 号 = versionCode，须为整数）。
+# 内容哈希后缀不进本行，由 tools/stamp-version.dart 写入 lib/core/version.dart。
+version: 0.2.0+112
+
+environment:
+  sdk: ^3.13.7
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # —— 依赖白名单（架构设计 §0）：新增须经架构评审 ——
+  path_provider: ^2.1.5
+  file_selector: ^1.0.3
+  shared_preferences: ^2.3.4
+  url_launcher: ^6.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
