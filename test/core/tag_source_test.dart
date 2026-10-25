@@ -165,8 +165,14 @@ void main() {
       expect(SourceRegistry.get(null), isNull);
       expect(SourceRegistry.supportsCover('deezer'), isTrue);
       expect(SourceRegistry.supportsLyrics('deezer'), isFalse);
-      expect(SourceRegistry.keys().length, 2);
-      expect(SourceRegistry.all().length, 2);
+      // 8 家标签源（国内五家 + MusicBrainz/Deezer/iTunes）
+      expect(SourceRegistry.keys().length, 8);
+      expect(SourceRegistry.all().length, 8);
+      // 歌词源 5 家单独登记
+      expect(SourceRegistry.lyricKeys().length, 5);
+      expect(SourceRegistry.lyric('lrclib'), isNotNull);
+      expect(SourceRegistry.lyric('没有这个源'), isNull);
+      expect(SourceRegistry.lyrics(only: <String>['lrclib']).length, 1);
     });
 
     test('源声明的 key 与 Endpoints 登记的 key 一致', () {
