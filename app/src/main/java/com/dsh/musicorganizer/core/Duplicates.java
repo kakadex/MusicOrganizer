@@ -272,10 +272,13 @@ public final class Duplicates {
         // 0.58 的长度门槛刷掉 —— 这是「带艺人前缀就查不出重复」的另一半原因。
         List<String> titleKeys = new ArrayList<String>(total);
         List<String> artistKeys = new ArrayList<String>(total);
+        List<String> rawStems = new ArrayList<String>(total);
         for (int i = 0; i < total; i++) {
-            keys.add(normalizeDuplicateKey(audioFiles.get(i).stem()));
-            titleKeys.add(titleKeyOf(audioFiles.get(i).stem()));
-            artistKeys.add(artistKeyOf(audioFiles.get(i).stem()));
+            String stem = audioFiles.get(i).stem();
+            rawStems.add(stem == null ? "" : stem);
+            keys.add(normalizeDuplicateKey(stem));
+            titleKeys.add(titleKeyOf(stem));
+            artistKeys.add(artistKeyOf(stem));
         }
 
         UnionFind uf = new UnionFind(total);
@@ -359,8 +362,12 @@ public final class Duplicates {
 
                 boolean matched;
                 boolean containsDriven = false;
+                // 名字证据「强」：归一后完全相同（复制尾巴）或歌名一致（艺人前缀）。
+                // 这类即使时长对不上也仍然列出来，但标疑似 —— 可能是同一首的剪辑版。
+                boolean strongName = false;
                 if (key.equals(otherKey)) {
                     matched = true;                       // 归一后完全相同：复制件
+                    strongName = true;
                 } else if (bothTitles && t1.equals(t2)) {
                     // 标题一致、只差艺人前缀 —— 通常就是「艺人-歌名 / 歌名」这种同一首。
                     // 但两边都写了艺人且明显不是一个人时，多半是翻唱或重名曲，别自动并组。
@@ -368,6 +375,7 @@ public final class Duplicates {
                     String a2 = artistKeys.get(other);
                     boolean bothArtists = !a1.isEmpty() && !a2.isEmpty();
                     matched = !(bothArtists && TextUtil.smartSimilarity(a1, a2) < 0.80);
+                    strongName = matched;
                 } else {
                     double fullScore = 0;
                     double fullContains = 0;
@@ -392,19 +400,31 @@ public final class Duplicates {
                     }
                 }
 
-                if (matched && containsDriven) {
-                    // 包含度单独就够 0.90 时最容易误判（短名整个落在长名里），
-                    // 必须再拿时长确认一次；读不到就并组但打「疑似」标记。
-                    double d1 = durationOf(durations, durCache, audioFiles.get(i));
-                    double d2 = durationOf(durations, durCache, audioFiles.get(other));
-                    if (d1 > 0 && d2 > 0) {
-                        double tol = Math.max(3.0, Math.max(d1, d2) * 0.02);
-                        if (Math.abs(d1 - d2) > tol) {
-                            matched = false;              // 时长差太多：不是同一首
+                if (matched && (strongName || containsDriven)) {
+                    // 同名同大小的，基本就是一份副本，不做 IO；其余都要拿时长复核 ——
+                    // 「歌名 (1)」完全可能是「前后各切掉一段」的剪辑版，光看名字分不出来。
+                    boolean identicalCopy = strongName
+                            && rawStems.get(i).equals(rawStems.get(other))
+                            && audioFiles.get(i).size == audioFiles.get(other).size;
+                    if (!identicalCopy) {
+                        double d1 = durationOf(durations, durCache, audioFiles.get(i));
+                        double d2 = durationOf(durations, durCache, audioFiles.get(other));
+                        if (d1 > 0 && d2 > 0) {
+                            double tol = Math.max(3.0, Math.max(d1, d2) * 0.02);
+                            if (Math.abs(d1 - d2) > tol) {
+                                if (strongName) {
+                                    // 名字证据强但时长差很多：多半是剪辑版/不同版本，列出但标疑似
+                                    unknownDuration[i] = true;
+                                    unknownDuration[other] = true;
+                                } else {
+                                    matched = false;      // 弱证据（包含度）：不同曲，不列
+                                }
+                            }
+                        } else {
+                            // 读不到时长：列出来，但不敢默认勾选
+                            unknownDuration[i] = true;
+                            unknownDuration[other] = true;
                         }
-                    } else {
-                        unknownDuration[i] = true;
-                        unknownDuration[other] = true;
                     }
                 }
                 if (matched) {
@@ -434,6 +454,16 @@ public final class Duplicates {
         List<Group> out = new ArrayList<Group>();
         for (Group group : clusters.values()) {
             if (group.files.size() >= 2) {
+                // 结果里要显示每个文件的时长，这里统一补齐（能读到的都填上）；
+                // 同一首可能已经在判定阶段读过，durCache 会直接命中，不会重复 IO。
+                for (Item item : group.files) {
+                    if (item.duration == null || item.duration.doubleValue() <= 0) {
+                        double d = durationOf(durations, durCache, item.file);
+                        if (d > 0) {
+                            item.duration = Double.valueOf(d);
+                        }
+                    }
+                }
                 group.score = groupScore(group);
                 // 相似度没到「确证」档的也标疑似：0.90~0.95 之间确实可能是不同版本
                 group.suspect = group.suspect || group.score < HIGH_CONFIDENCE;
@@ -459,6 +489,50 @@ public final class Duplicates {
             progress.onProgress(1, 1, "扫描完成：发现 " + out.size() + " 个相似组");
         }
         return out;
+    }
+
+    /** 组内时长概览：「4:35 / 1:55 · 相差 2:40」；全都读不到时返回空串。 */
+    public static String durationSummary(Group group) {
+        if (group == null || group.files.isEmpty()) {
+            return "";
+        }
+        StringBuilder text = new StringBuilder();
+        double min = Double.MAX_VALUE;
+        double max = -1;
+        for (Item it : group.files) {
+            if (it.duration == null || it.duration.doubleValue() <= 0) {
+                continue;
+            }
+            String one = TextUtil.formatDuration(it.duration.doubleValue());
+            if (one.isEmpty()) {
+                continue;
+            }
+            if (text.length() > 0) {
+                text.append(" / ");
+            }
+            text.append(one);
+            min = Math.min(min, it.duration.doubleValue());
+            max = Math.max(max, it.duration.doubleValue());
+        }
+        if (text.length() == 0) {
+            return "";
+        }
+        if (max > min) {
+            long diff = Math.round(max - min);
+            if (diff >= 1) {
+                text.append(" · 相差 ").append(TextUtil.formatDuration(Double.valueOf(diff)));
+            }
+        }
+        int known = 0;
+        for (Item it : group.files) {
+            if (it.duration != null && it.duration.doubleValue() > 0) {
+                known++;
+            }
+        }
+        if (known < group.files.size()) {
+            text.append("（部分未知）");
+        }
+        return text.toString();
     }
 
     /** 组内最高相似度（两两比较，组一般只有两三个文件，代价可忽略）。 */

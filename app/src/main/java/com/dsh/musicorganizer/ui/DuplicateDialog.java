@@ -68,6 +68,11 @@ public final class DuplicateDialog {
                     + Math.round(group.score * 100) + "%"
                     + (group.suspect ? " · 疑似" : "");
             card.addView(UiKit.text(ctx, head, 14, UiKit.textColor(), true));
+            // 时长对比：同曲不同码率时长应基本一致；差得多就是剪辑版/不同版本，先看这里
+            String durLine = Duplicates.durationSummary(group);
+            if (!durLine.isEmpty()) {
+                card.addView(UiKit.text(ctx, "时长 " + durLine, 12.5f, UiKit.subColor(), false));
+            }
             if (group.suspect) {
                 card.addView(UiKit.caption(ctx,
                         "疑似同一首的不同命名或不同版本。默认不勾选，确认无误后再勾。"));
@@ -79,6 +84,8 @@ public final class DuplicateDialog {
                 Duplicates.Item item = group.files.get(j);
                 boolean isKeep = j == keep;
                 String label = item.relative + "\n" + TextUtil.formatSize(item.size)
+                        + (item.duration != null && item.duration.doubleValue() > 0
+                        ? "  ·  " + TextUtil.formatDuration(item.duration) : "")
                         + (isKeep ? "  ·  建议保留" : "");
                 // 疑似组默认不勾：查重是提示，误删不可逆
                 final CheckBox box = UiKit.checkbox(ctx, label, !isKeep && !group.suspect);

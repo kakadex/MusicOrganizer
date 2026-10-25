@@ -168,6 +168,37 @@ public final class DuplicatesTest {
         check("时长未知仍并组", unknown.size() == 1);
         check("但标疑似（默认不勾选）", unknown.size() == 1 && unknown.get(0).suspect);
 
+        section("复制尾巴其实是剪辑版（不能默认勾选）");
+        java.util.Map<String, Double> cut = new java.util.HashMap<String, Double>();
+        cut.put("示例歌名 (1).mp3", 275.0);
+        cut.put("示例歌名.mp3", 155.0);          // 前后各切 60s
+        List<Duplicates.Group> cutGroup = runDur(cut,
+                file("Music/示例歌名 (1).mp3", 4_000_000),
+                file("Music/示例歌名.mp3", 6_800_000));
+        check("仍列出（让人能看见）", cutGroup.size() == 1);
+        check("但标疑似、默认不勾", cutGroup.size() == 1 && cutGroup.get(0).suspect);
+
+        section("同名同大小视为副本（不做时长 IO）");
+        List<Duplicates.Group> same = runDur(new java.util.HashMap<String, Double>(),
+                file("Music/a/示例歌名.mp3", 6_800_000),
+                file("Music/b/示例歌名.mp3", 6_800_000));
+        check("无时长来源也能确证", same.size() == 1);
+        check("且不标疑似", same.size() == 1 && !same.get(0).suspect);
+
+        section("结果里带时长对比");
+        java.util.Map<String, Double> durD = new java.util.HashMap<String, Double>();
+        durD.put("示例歌名.mp3", 275.0);
+        durD.put("示例歌名 (1).mp3", 155.0);
+        List<Duplicates.Group> dg = runDur(durD,
+                file("Music/示例歌名.mp3", 6_800_000),
+                file("Music/示例歌名 (1).mp3", 4_000_000));
+        check("每个文件都填了时长", dg.size() == 1
+                && dg.get(0).files.get(0).duration != null
+                && dg.get(0).files.get(1).duration != null);
+        String durLine = Duplicates.durationSummary(dg.get(0));
+        check("概览含两个时长", durLine.contains("4:35") && durLine.contains("2:35"));
+        check("概览含相差", durLine.contains("相差") && durLine.contains("2:00"));
+
         section("确证档不标疑似");
         java.util.Map<String, Double> dur4 = new java.util.HashMap<String, Double>();
         dur4.put("示例歌名 (1).mp3", 245.0);
