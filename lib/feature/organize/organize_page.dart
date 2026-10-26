@@ -291,35 +291,116 @@ class _OrganizePageState extends State<OrganizePage> {
       moSnack(context, '没有发现重复文件');
       return;
     }
-    await showMoSheet<void>(
+    // 默认勾选：确证重复里「不是建议保留那份」的；疑似与「内容不同」的一律不勾
+    // （查重是提示，误删不可逆）。
+    final Map<String, bool> picked = <String, bool>{};
+    for (final DuplicateGroup g in dups) {
+      final int keep = DuplicateGroup.recommendKeep(g);
+      for (int i = 0; i < g.files.length; i++) {
+        final DuplicateItem it = g.files[i];
+        picked[it.file.docId] = i != keep &&
+            !g.suspect &&
+            g.content != DuplicateGroup.contentDiff;
+      }
+    }
+    for (final DuplicateGroup g in lookalikes) {
+      for (final DuplicateItem it in g.files) {
+        picked[it.file.docId] = false;
+      }
+    }
+    int pickedCount() => picked.values.where((bool b) => b).length;
+
+    final bool? go = await showMoSheet<bool>(
       context,
       title: dups.isEmpty
           ? '没有发现重复文件'
           : '重复 ${dups.length} 组'
               '${lookalikes.isEmpty ? '' : ' · 另有 ${lookalikes.length} 组只是名字像'}',
       children: <Widget>[
-        if (dups.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 0, MoKit.pagePad, 4),
-            child: Text('大小与首尾各 64KB 一致，确认为同一份文件：',
-                style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
-          ),
-        for (final DuplicateGroup g in dups.take(50)) _dupGroup(g, false),
-        if (lookalikes.isNotEmpty) ...<Widget>[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 14, MoKit.pagePad, 4),
-            child: Text('只是名字像，内容对不上，不是重复：',
-                style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
-          ),
-          for (final DuplicateGroup g in lookalikes.take(50)) _dupGroup(g, true),
-        ],
+        StatefulBuilder(builder: (BuildContext ctx, StateSetter setSheet) {
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              if (dups.isNotEmpty)
+                Padding(
+                  padding:
+                      const EdgeInsets.fromLTRB(MoKit.pagePad, 0, MoKit.pagePad, 4),
+                  child: Text('大小与首尾各 64KB 一致，确认为同一份文件：',
+                      style: TextStyle(
+                          fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
+                ),
+              for (final DuplicateGroup g in dups.take(50))
+                _dupGroup(g, false, picked, setSheet),
+              if (lookalikes.isNotEmpty) ...<Widget>[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                      MoKit.pagePad, 14, MoKit.pagePad, 4),
+                  child: Text('只是名字像，内容对不上，不是重复（不勾选）：',
+                      style: TextStyle(
+                          fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
+                ),
+                for (final DuplicateGroup g in lookalikes.take(50))
+                  _dupGroup(g, true, picked, setSheet),
+              ],
+              Padding(
+                padding: const EdgeInsets.all(MoKit.pagePad),
+                child: Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: Text('已勾选 ${pickedCount()} 个（每组至少留一个）',
+                          style: TextStyle(
+                              fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
+                    ),
+                    MoButton('删除勾选的 ${pickedCount()} 个',
+                        primary: false,
+                        onPressed: pickedCount() == 0
+                            ? null
+                            : () => Navigator.of(ctx).pop(true)),
+                  ],
+                ),
+              ),
+            ],
+          );
+        }),
       ],
     );
+    if (go != true) return;
+    if (!mounted) return;
+    // 校验：每组至少留一个，别把唯一一份删了
+    for (final DuplicateGroup g in groups) {
+      int remain = 0;
+      for (final DuplicateItem it in g.files) {
+        if (picked[it.file.docId] != true) remain++;
+      }
+      if (remain == 0) {
+        moSnack(context, '有整组都被勾上了，每组至少要留一个 —— 取消后重试');
+        return;
+      }
+    }
+    int ok = 0;
+    int fail = 0;
+    for (final DuplicateGroup g in groups) {
+      for (final DuplicateItem it in g.files) {
+        if (picked[it.file.docId] != true) continue;
+        if (await _repo.store!.delete(it.file)) {
+          ok++;
+        } else {
+          fail++;
+        }
+      }
+    }
+    if (!mounted) return;
+    await _repo.rescan();
+    if (!mounted) return;
+    moSnack(context, '已删除 $ok 个${fail > 0 ? '，失败 $fail 个' : ''}');
   }
 
   /// 查重结果里的一组。[lookalike] 为 true 表示「名字像但内容不同」。
-  Widget _dupGroup(DuplicateGroup g, bool lookalike) {
+  Widget _dupGroup(DuplicateGroup g, bool lookalike, Map<String, bool> picked,
+      StateSetter setSheet) {
     final Color tag = lookalike ? MoKit.sub(context) : MoKit.ok(context);
+    final int keep = DuplicateGroup.recommendKeep(g);
     return Padding(
       padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 6, MoKit.pagePad, 6),
       child: Column(
@@ -352,12 +433,8 @@ class _OrganizePageState extends State<OrganizePage> {
               ),
             ],
           ),
-          for (final DuplicateItem item in g.files)
-            Text('· ${item.relative}'
-                '${item.size > 0 ? '（${TextUtil.formatSize(item.size)}）' : ''}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: MoKit.fsBody, color: MoKit.text(context))),
+          for (int i = 0; i < g.files.length; i++)
+            _dupFileRow(g, i, keep, picked, setSheet),
           Padding(
             padding: const EdgeInsets.only(top: 2),
             child: Text(lookalike
@@ -367,6 +444,36 @@ class _OrganizePageState extends State<OrganizePage> {
           ),
         ],
       ),
+    );
+  }
+
+  /// 组里的一行（带勾选框）。
+  Widget _dupFileRow(DuplicateGroup g, int index, int keep,
+      Map<String, bool> picked, StateSetter setSheet) {
+    final DuplicateItem it = g.files[index];
+    final bool isKeep = index == keep;
+    final bool on = picked[it.file.docId] == true;
+    return Row(
+      children: <Widget>[
+        SizedBox(
+          width: 28,
+          height: 28,
+          child: Checkbox(
+            value: on,
+            onChanged: (bool? v) =>
+                setSheet(() => picked[it.file.docId] = v == true),
+            visualDensity: VisualDensity.compact,
+          ),
+        ),
+        Expanded(
+          child: Text('${it.relative}'
+              '${it.size > 0 ? '（${TextUtil.formatSize(it.size)}）' : ''}'
+              '${isKeep ? '  · 建议保留' : ''}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: MoKit.fsBody, color: MoKit.text(context))),
+        ),
+      ],
     );
   }
 

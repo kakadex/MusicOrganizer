@@ -11,6 +11,7 @@ import '../../core/match/match_queue.dart';
 import '../../core/match/tag_plan.dart';
 import '../../core/model/task_control.dart';
 import '../../core/model/vfile.dart';
+import '../../core/fs/file_store.dart';
 import '../../core/scan/search_index.dart';
 import '../../core/scan/search_query.dart';
 import '../../core/task/task_center.dart';
@@ -165,6 +166,76 @@ class _LibraryPageState extends State<LibraryPage> {
       if (!_selected.add(e.docId)) _selected.remove(e.docId);
       if (_selected.isEmpty) _selectMode = false;
     });
+  }
+
+  /// 删除选中的文件（不可撤销，先确认再删）。
+  Future<void> _deleteSelected(List<VFile> files) async {
+    if (files.isEmpty) return;
+    final bool? go = await showMoSheet<bool>(
+      context,
+      title: '删除 ${files.length} 个文件？',
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 0, MoKit.pagePad, 4),
+          child: Text('删除不可撤销，回收站也没有。要删的是这些：',
+              style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
+        ),
+        for (final VFile f in files.take(80))
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: MoKit.pagePad, vertical: 1),
+            child: Text(f.pathAfterRoot(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: MoKit.fsBody, color: MoKit.text(context))),
+          ),
+        if (files.length > 80)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: MoKit.pagePad, vertical: 2),
+            child: Text('……还有 ${files.length - 80} 个',
+                style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
+          ),
+        Padding(
+          padding: const EdgeInsets.all(MoKit.pagePad),
+          child: Row(
+            children: <Widget>[
+              Expanded(
+                child: MoButton('取消', primary: false,
+                    onPressed: () => Navigator.of(context).pop(false)),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: MoButton('确认删除 ${files.length} 个', primary: false,
+                    onPressed: () => Navigator.of(context).pop(true)),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+    if (go != true || !mounted) return;
+    final FileStore? store = Repo.instance.store;
+    if (store == null) {
+      moSnack(context, '还没有准备好文件访问');
+      return;
+    }
+    setState(() => _busy = true);
+    int ok = 0;
+    int fail = 0;
+    for (final VFile f in files) {
+      if (await store.delete(f)) {
+        ok++;
+      } else {
+        fail++;
+      }
+    }
+    await Repo.instance.rescan();
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _selected.clear();
+      _selectMode = false;
+    });
+    moSnack(context, '已删除 $ok 个${fail > 0 ? '，失败 $fail 个' : ''}');
   }
 
   Future<void> _matchSelected({bool ignoreMemory = false}) async {
@@ -487,6 +558,16 @@ class _LibraryPageState extends State<LibraryPage> {
           onTap: () {
             Navigator.of(context).pop();
             _matchSelected(ignoreMemory: true);
+          },
+        ),
+        MoTile(
+          title: '删除选中的文件',
+          subtitle: '不可撤销，删前会再确认一次',
+          icon: Icons.delete_outline,
+          danger: true,
+          onTap: () {
+            Navigator.of(context).pop();
+            _deleteSelected(files);
           },
         ),
         MoTile(
