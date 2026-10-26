@@ -11,6 +11,7 @@ import '../../core/match/match_queue.dart';
 import '../../core/match/tag_plan.dart';
 import '../../core/model/task_control.dart';
 import '../../core/model/vfile.dart';
+import '../../core/cover/folder_cover.dart';
 import '../../core/fs/file_store.dart';
 import '../../core/scan/search_index.dart';
 import '../../core/scan/search_query.dart';
@@ -745,8 +746,23 @@ class _CoverRowState extends State<_CoverRow> {
       setState(() => _cover = hit);
       return;
     }
-    if (CoverCache.instance.knownMiss(file)) return;
-    final Uint8List? art = await CoverCache.instance.load(file);
+    Uint8List? art;
+    if (!CoverCache.instance.knownMiss(file)) {
+      art = await CoverCache.instance.load(file);
+    }
+    // 自己没有封面就用专辑目录里的 cover.jpg 兜底
+    if (art == null) {
+      final String? parentId = file.parentId;
+      final FileStore? store = Repo.instance.store;
+      if (parentId != null && parentId.isNotEmpty && store != null) {
+        try {
+          art = await FolderCover.find(
+              store, VFile(docId: parentId, name: parentId, dir: true));
+        } catch (_) {
+          art = null;
+        }
+      }
+    }
     if (mounted && art != null) setState(() => _cover = art);
   }
 

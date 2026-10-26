@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/ui_kit.dart';
-import '../../core/net/http_client.dart';
 import '../../core/source/endpoints.dart';
 import '../../core/task/task_center.dart';
 import '../../core/update/app_update.dart';
+import '../../core/update/update_check.dart';
 import '../../core/version.dart';
 
 /// 检查更新面板：Gitee 清单 → GitHub 清单 → GitHub Release 接口，任一成功即用。
@@ -80,65 +80,18 @@ class _UpdateSheetState extends State<UpdateSheet> {
   ///
   /// 国内优先：Gitee 清单 → Gitee 接口 → GitHub 清单 → GitHub 接口。
   Future<void> _tryAll() async {
-    Release? r = await _manifest(
-        'Gitee 版本清单', Endpoints.urlOf('gitee', 0), Http.readTimeoutCnMs);
-    r ??= await _api('Gitee Release 接口', Endpoints.urlOf('gitee', 3));
-    r ??= await _manifest('GitHub 版本清单', Endpoints.urlOf('update', 3),
-        Http.readTimeoutOverseasMs);
-    r ??= await _api('GitHub Release 接口', Endpoints.urlOf('update', 0));
+    final UpdateOutcome out = await UpdateCheck.fetch(onStep: _report);
     if (!mounted) return;
-    if (r == null) {
-      setState(() => _error = '四个来源都没拿到版本信息');
-      return;
-    }
-    setState(() => _release = r);
-  }
-
-  Future<Release?> _manifest(String label, String url, int timeout) async {
-    if (url.isEmpty) {
-      _failures.add('$label：没有登记地址');
-      return null;
-    }
-    _report('正在读取$label…');
-    final String? text = await Http.getText(url, null, null, timeout);
-    if (text == null) {
-      final String why = Http.lastError.isEmpty ? '无响应' : Http.lastError;
-      _failures.add('$label：无法访问或超时（$why）');
-      return null;
-    }
-    final Release? r = AppUpdate.parseManifest(text, url);
-    if (r == null) {
-      _failures.add('$label：返回内容不是有效的版本清单');
-      return null;
-    }
-    _source = label;
-    return r;
-  }
-
-  Future<Release?> _api(String label, String url) async {
-    if (url.isEmpty) {
-      _failures.add('$label：没有登记地址');
-      return null;
-    }
-    _report('正在读取$label…');
-    final Object? json = await Http.getJson(
-      url,
-      null,
-      <String, String>{'Accept': 'application/vnd.github+json'},
-      Http.readTimeoutOverseasMs,
-    );
-    if (json == null) {
-      final String why = Http.lastError.isEmpty ? '无响应' : Http.lastError;
-      _failures.add('$label：无法访问、超时或返回为空（$why）');
-      return null;
-    }
-    final Release? r = AppUpdate.parseRelease(json);
-    if (r == null) {
-      _failures.add('$label：响应里没有 tag_name（可能被限流）');
-      return null;
-    }
-    _source = label;
-    return r;
+    setState(() {
+      _failures
+        ..clear()
+        ..addAll(out.failures);
+      _source = out.source;
+      _release = out.release;
+      if (out.release == null) {
+        _error = '四个来源都没拿到版本信息';
+      }
+    });
   }
 
   void _report(String step) {

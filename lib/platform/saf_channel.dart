@@ -145,6 +145,41 @@ class SafChannel {
     }
   }
 
+  /// 扫系统媒体库里的音频（需要读取音频权限）。
+  Future<List<Map<String, Object?>>> mediaStoreAudio(int minDurationMs) async {
+    try {
+      final Object? r = await safChannel.invokeMethod(
+          'mediaStoreAudio', <String, Object?>{'minDurationMs': minDurationMs});
+      if (r is! List) return <Map<String, Object?>>[];
+      return <Map<String, Object?>>[
+        for (final Object? e in r) Map<String, Object?>.from(e as Map),
+      ];
+    } catch (e) {
+      throw _mapError(e);
+    }
+  }
+
+  /// 把媒体库里的音频复制到本地缓存（导入用）；返回字节数。
+  Future<int> copyMediaToCache(String uri, String cachePath) async {
+    try {
+      final Object? r = await safChannel.invokeMethod('copyMediaToCache',
+          <String, Object?>{'uri': uri, 'cachePath': cachePath});
+      return (r as int?) ?? 0;
+    } catch (e) {
+      throw _mapError(e);
+    }
+  }
+
+  /// 申请读取音频的权限；已授权或用户同意返回 true。
+  Future<bool> requestAudioPermission() async {
+    try {
+      final Object? r = await safChannel.invokeMethod('requestAudioPermission');
+      return r == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<Map<String, Object?>> createDocument(
       String treeUri, String parentDocId, String name, String mime) async {
     try {

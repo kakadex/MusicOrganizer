@@ -8,6 +8,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../app/repo.dart';
 import '../../app/theme/palette.dart';
 import '../../app/ui_kit.dart';
+import '../../core/log/log.dart';
+import '../../core/media/media_import.dart';
 import '../../core/model/vfile.dart';
 import '../../core/net/http_client.dart';
 import '../../core/net/net_tuning.dart';
@@ -16,6 +18,7 @@ import '../../core/source/endpoints.dart';
 import '../../core/settings/settings_backup.dart';
 import '../../core/version.dart';
 import '../health/health_page.dart';
+import '../library/media_import_sheet.dart';
 import '../history/history_page.dart';
 import 'update_sheet.dart';
 
@@ -93,10 +96,54 @@ class _SettingsPageState extends State<SettingsPage> {
             overflow: TextOverflow.ellipsis,
             style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
         const SizedBox(height: 8),
-        MoButton(path.isEmpty ? '选择目录' : '更换目录',
-            primary: path.isEmpty, onPressed: _pickRoot),
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: MoButton(path.isEmpty ? '选择目录' : '更换目录',
+                  primary: path.isEmpty, onPressed: _pickRoot),
+            ),
+            if (path.isNotEmpty) ...<Widget>[
+              const SizedBox(width: 8),
+              Expanded(
+                child: MoButton('移除目录', primary: false, onPressed: _clearRoot),
+              ),
+            ],
+          ],
+        ),
+        if (MediaImport.supported) ...<Widget>[
+          const SizedBox(height: 8),
+          MoButton('从系统媒体库导入', primary: false,
+              onPressed: path.isEmpty ? null : () => runMediaImport(context)),
+          const SizedBox(height: 4),
+          Text('把设备媒体库里的歌复制进曲库的「导入/」目录；只在点这个按钮时才申请读取音频的权限。',
+              style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
+        ],
       ],
     );
+  }
+
+  /// 移除曲库目录（会释放安卓的系统授权）。
+  Future<void> _clearRoot() async {
+    final bool? ok = await showMoSheet<bool>(
+      context,
+      title: '移除曲库目录？',
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.all(MoKit.pagePad),
+          child: Text('只是从本应用里移除，不会删除任何文件。安卓上会同时放掉系统授权。',
+              style: TextStyle(fontSize: MoKit.fsBody, color: MoKit.text(context))),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(MoKit.pagePad),
+          child: MoButton('确认移除', primary: false,
+              onPressed: () => Navigator.of(context).pop(true)),
+        ),
+      ],
+    );
+    if (ok != true || !mounted) return;
+    await _repo.clearRoot();
+    if (!mounted) return;
+    moSnack(context, '已移除曲库目录');
   }
 
   Widget _matchCard() {
@@ -427,6 +474,18 @@ class _SettingsPageState extends State<SettingsPage> {
           onTap: () => UpdateSheet.show(context),
         ),
         MoTile(
+          title: '启动时静默检查更新',
+          subtitle: '每天最多一次，查到新版在底栏提示一句',
+          icon: Icons.notifications_none,
+          trailing: Switch(
+            value: _repo.settings.get<bool>('update_silent', fallback: true) ?? true,
+            onChanged: (bool v) {
+              _repo.setSetting('update_silent', v);
+              setState(() {});
+            },
+          ),
+        ),
+        MoTile(
           title: '撤销历史',
           subtitle: '按批次回退已写入的标签',
           icon: Icons.history,
@@ -438,8 +497,65 @@ class _SettingsPageState extends State<SettingsPage> {
           icon: Icons.monitor_heart_outlined,
           onTap: () => _push(const HealthPage()),
         ),
+        MoTile(
+          title: '运行日志',
+          subtitle: '看最近的日志，或导出成 txt（已去掉本机路径）',
+          icon: Icons.article_outlined,
+          onTap: _showLog,
+        ),
       ],
     );
+  }
+
+  /// 日志面板：看最近日志 + 导出 + 清空。
+  Future<void> _showLog() async {
+    final String text = await Log.readTail();
+    if (!mounted) return;
+    await showMoSheet<void>(
+      context,
+      title: '运行日志',
+      children: <Widget>[
+        Container(
+          constraints: const BoxConstraints(maxHeight: 260),
+          width: double.infinity,
+          padding: const EdgeInsets.all(MoKit.pagePad),
+          child: SingleChildScrollView(
+            child: SelectableText(
+              text.isEmpty ? '还没有日志' : text,
+              style: TextStyle(
+                  fontSize: MoKit.fsCaption, color: MoKit.text(context)),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(MoKit.pagePad),
+          child: Row(
+            children: <Widget>[
+              Expanded(
+                child: MoButton('导出日志', primary: false, onPressed: _exportLog),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: MoButton('清空', primary: false, onPressed: _clearLog),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _exportLog() async {
+    final String? path = await Log.export();
+    if (!mounted) return;
+    moSnack(context,
+        path == null ? '导出失败' : (Repo.isDesktop ? '已导出到 $path' : '已导出到应用私有目录（见文件名）'));
+  }
+
+  Future<void> _clearLog() async {
+    await Log.clear();
+    if (!mounted) return;
+    moSnack(context, '日志已清空');
   }
 
   Widget _backupCard() {

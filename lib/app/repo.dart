@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/cover/folder_cover.dart';
 import '../core/fs/desktop_file_store.dart';
 import '../core/fs/file_store.dart';
 import '../core/fs/saf_file_store.dart';
@@ -220,6 +221,28 @@ class Repo extends ChangeNotifier {
     return true;
   }
 
+  /// 移除当前曲库目录：释放授权、清空列表。
+  ///
+  /// 桌面没有「授权」概念，只是把记住的目录忘掉；安卓会连系统授权一起放掉。
+  Future<void> clearRoot() async {
+    final FileStore? st = store;
+    final TreeRef? old = root;
+    if (st != null && old != null) {
+      try {
+        await st.releaseTree(old);
+      } catch (_) {
+        // 释放失败不阻塞：至少把本地记住的目录清掉
+      }
+    }
+    root = null;
+    files = <VFile>[];
+    index.clear();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.remove('root_tree_uri');
+    await prefs.remove('root_doc_id');
+    notifyListeners();
+  }
+
   /// 让用户选目录；成功后持久化并返回 true。
   Future<bool> pickRoot() async {
     if (store == null) return false;
@@ -276,6 +299,7 @@ class Repo extends ChangeNotifier {
           await Scanner.scanMusicFiles(st, rootDir, cancel: cancel);
       final ScanMergeResult merge =
           ScanMerge.merge(incremental ? files : null, walk.files);
+      FolderCover.invalidate();
       files = merge.files;
       _rebuildIndex();
       notifyListeners();

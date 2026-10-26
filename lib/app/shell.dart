@@ -10,6 +10,8 @@ import '../feature/library/preview_sheet.dart';
 import '../feature/library/library_page.dart';
 import '../feature/organize/organize_page.dart';
 import '../feature/settings/settings_page.dart';
+import '../feature/settings/update_sheet.dart';
+import 'silent_update.dart';
 
 /// 主界面骨架：底部三项导航（音乐库 / 整理 / 设置）+ 任务条。
 ///
@@ -43,6 +45,15 @@ class _MoShellState extends State<MoShell> {
       _bootError = '$e';
     }
     if (mounted) setState(() => _booted = true);
+    // 静默查更新（每天最多一次）：查到新版本就在底栏提示一句，不打断。
+    _silentCheck();
+  }
+
+  Future<void> _silentCheck() async {
+    final release = await SilentUpdate.checkIfDue();
+    if (release == null || !mounted) return;
+    moSnack(context, '有新版本 ${release.version}',
+        actionLabel: '去看看', onAction: () => UpdateSheet.show(context));
   }
 
   @override

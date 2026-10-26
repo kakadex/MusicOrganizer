@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../feature/crash/crash_screen.dart';
 import 'shell.dart';
 import 'theme/theme_controller.dart';
 
@@ -18,6 +19,7 @@ class MoApp extends StatelessWidget {
         return MaterialApp(
           title: 'MusicOrganizer',
           debugShowCheckedModeBanner: false,
+          navigatorKey: CrashScreen.navigatorKey,
           theme: themeController.themeData,
           home: const MoShell(),
         );

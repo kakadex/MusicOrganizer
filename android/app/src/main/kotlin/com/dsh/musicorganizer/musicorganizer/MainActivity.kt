@@ -12,6 +12,7 @@ import java.io.FileNotFoundException
 class MainActivity : FlutterActivity() {
 
     private var pendingPickResult: MethodChannel.Result? = null
+    private var pendingPermissionResult: MethodChannel.Result? = null
     private lateinit var safPlugin: SafPlugin
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -115,6 +116,16 @@ class MainActivity : FlutterActivity() {
                         result.error("E_IO", e.message, null)
                     }
                 }
+                "mediaStoreAudio" -> safCall(result) {
+                    safPlugin.mediaStoreAudio(call.argument<Int>("minDurationMs") ?: 0)
+                }
+                "copyMediaToCache" -> safCall(result) {
+                    safPlugin.copyMediaToCache(
+                        call.argument<String>("uri") ?: "",
+                        call.argument<String>("cachePath") ?: ""
+                    )
+                }
+                "requestAudioPermission" -> requestAudioPermission(result)
                 else -> result.notImplemented()
             }
         }
@@ -142,6 +153,39 @@ class MainActivity : FlutterActivity() {
         result?.success(safPlugin.treeInfo(uri))
     }
 
+    /**
+     * 申请读取音频的权限（只在用户明确要导入系统媒体库时才申请）。
+     *
+     * 安卓 13+ 要 READ_MEDIA_AUDIO，更早的版本要 READ_EXTERNAL_STORAGE。
+     */
+    private fun requestAudioPermission(result: MethodChannel.Result) {
+        val permission = if (android.os.Build.VERSION.SDK_INT >= 33) {
+            "android.permission.READ_MEDIA_AUDIO"
+        } else {
+            "android.permission.READ_EXTERNAL_STORAGE"
+        }
+        if (checkSelfPermission(permission) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            result.success(true)
+            return
+        }
+        pendingPermissionResult = result
+        requestPermissions(arrayOf(permission), REQUEST_CODE_AUDIO_PERMISSION)
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REQUEST_CODE_AUDIO_PERMISSION) return
+        val result = pendingPermissionResult
+        pendingPermissionResult = null
+        val granted = grantResults.isNotEmpty() &&
+            grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED
+        result?.success(granted)
+    }
+
     private fun safCall(result: MethodChannel.Result, block: () -> Any?) {
         try {
             result.success(block())
@@ -156,5 +200,6 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         private const val REQUEST_CODE_OPEN_TREE = 4401
+        private const val REQUEST_CODE_AUDIO_PERMISSION = 4402
     }
 }

@@ -4,7 +4,9 @@ import android.content.ContentResolver
 import android.database.Cursor
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import android.content.ContentUris
 import android.provider.DocumentsContract
+import android.provider.MediaStore
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
@@ -289,6 +291,88 @@ class SafPlugin(private val resolver: ContentResolver) {
             "mtime" to mtime,
             "isDir" to isDir,
         )
+    }
+
+    // ------------------------------------------------------------------
+    // 系统媒体库（MediaStore）
+    // ------------------------------------------------------------------
+
+    /**
+     * 扫系统媒体库里的音频条目。
+     *
+     * 需要用户授权读取音频（READ_MEDIA_AUDIO / READ_EXTERNAL_STORAGE），
+     * 由上层在用户明确点「从系统媒体库导入」时才申请。
+     */
+    fun mediaStoreAudio(minDurationMs: Int): List<Map<String, Any?>> {
+        val projection = arrayOf(
+            MediaStore.Audio.Media._ID,
+            MediaStore.Audio.Media.DISPLAY_NAME,
+            MediaStore.Audio.Media.ARTIST,
+            MediaStore.Audio.Media.ALBUM,
+            MediaStore.Audio.Media.TITLE,
+            MediaStore.Audio.Media.DURATION,
+            MediaStore.Audio.Media.SIZE,
+            MediaStore.Audio.Media.MIME_TYPE,
+        )
+        val out = mutableListOf<Map<String, Any?>>()
+        resolver.query(
+            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+            projection, null, null, null
+        )?.use { cursor ->
+            val colId = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
+            val colName = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DISPLAY_NAME)
+            val colArtist = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
+            val colAlbum = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
+            val colTitle = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
+            val colDur = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
+            val colSize = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)
+            val colMime = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.MIME_TYPE)
+            while (cursor.moveToNext()) {
+                val dur = cursor.getLong(colDur)
+                if (dur < minDurationMs) continue
+                val id = cursor.getLong(colId)
+                val rawArtist = cursor.getString(colArtist) ?: ""
+                val rawAlbum = cursor.getString(colAlbum) ?: ""
+                out.add(
+                    mapOf(
+                        "id" to id,
+                        "uri" to ContentUris.withAppendedId(
+                            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id
+                        ).toString(),
+                        "name" to (cursor.getString(colName) ?: ""),
+                        // ARTIST 列经常是字面量 <unknown>，当空
+                        "artist" to rawArtist.trim().removePrefix("<unknown>").trim(),
+                        "album" to rawAlbum.trim().removePrefix("<unknown>").trim(),
+                        "title" to (cursor.getString(colTitle) ?: "").trim(),
+                        "durationMs" to dur,
+                        "size" to cursor.getLong(colSize),
+                        "mime" to (cursor.getString(colMime) ?: ""),
+                    )
+                )
+            }
+        }
+        out.sortBy { (it["name"] as String).lowercase() }
+        return out
+    }
+
+    /** 把媒体库里的一个音频复制到本地缓存（导入用）。返回字节数。 */
+    fun copyMediaToCache(contentUri: String, cachePath: String): Long {
+        val input = resolver.openInputStream(Uri.parse(contentUri))
+            ?: throw IOException("无法打开媒体库条目")
+        input.use { ins ->
+            FileOutputStream(cachePath).use { out ->
+                val buf = ByteArray(65536)
+                var total = 0L
+                while (true) {
+                    val n = ins.read(buf)
+                    if (n <= 0) break
+                    out.write(buf, 0, n)
+                    total += n
+                }
+                out.flush()
+                return total
+            }
+        }
     }
 
     private fun lastSegment(docId: String): String {
