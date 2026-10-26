@@ -42,7 +42,11 @@ Future<void> main(List<String> args) async {
   print('代理：${NetworkProxy.describe()}');
   print('');
 
-  final List<LyricHit> hits = await Aggregator.lyricCandidates(lq);
+  final LyricAggregateResult agg = await Aggregator.lyricCandidates(lq);
+  final List<LyricHit> hits = agg.hits;
+  if (agg.errors.isNotEmpty) {
+    print('源报错：${agg.errors}');
+  }
   print('候选 ${hits.length} 条');
   int pass = 0;
   for (final LyricHit h in hits) {
