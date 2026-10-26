@@ -1,8 +1,10 @@
 name: ci
 
+# 推到 main 或开 PR 时做质量门禁：依赖安装 + 静态分析 + 单元测试 + APK 构建。
+# Windows 桌面构建不在 CI 跑（跨平台无法在 Linux 上编），由 release.yml 在 windows-latest 上出包。
 on:
   push:
-    branches: [master]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -28,20 +30,3 @@ jobs:
 
       - name: Build APK (release, split per ABI)
         run: flutter build apk --split-per-abi --release
-
-      - name: Build Windows (release)
-        run: flutter build windows --release
-
-      - name: Package Windows zip
-        run: |
-          mkdir -p artifacts
-          (cd build/windows/x64/runner/Release && zip -qr "$GITHUB_WORKSPACE/artifacts/musicorganizer-windows-x64.zip" .)
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-artifacts
-          if-no-files-found: error
-          path: |
-            build/app/outputs/flutter-apk/*.apk
-            artifacts/musicorganizer-windows-x64.zip
