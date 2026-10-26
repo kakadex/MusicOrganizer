@@ -88,10 +88,15 @@ String sourceHash() {
     exitCode = 2;
     return '000000';
   }
+  // 排除生成文件自身：它包含上一次算出的哈希，混进输入会形成反馈环，
+  // 导致每次 stamp 都改变哈希、--check 永远失败。
+  final String outPath = File(kOutputFile).absolute.path.replaceAll('\\', '/');
   final List<File> files = <File>[];
   for (final FileSystemEntity entity
       in root.listSync(recursive: true, followLinks: false)) {
     if (entity is File && entity.path.endsWith('.dart')) {
+      final String p = entity.absolute.path.replaceAll('\\', '/');
+      if (p == outPath) continue;
       files.add(entity);
     }
   }
