@@ -18,6 +18,8 @@ import '../../core/model/tags.dart';
 import '../../core/model/vfile.dart';
 import '../../core/scan/scanner.dart';
 import 'editor_cover_card.dart';
+import 'editor_online_cover.dart';
+import 'editor_online_match.dart';
 import 'editor_encoding_sheet.dart';
 import 'editor_tag_fields.dart';
 import 'encoding_fix.dart';
@@ -42,6 +44,8 @@ class EditorPage extends StatefulWidget {
 class _EditorPageState extends State<EditorPage> {
   final Map<String, TextEditingController> _ctl =
       <String, TextEditingController>{};
+  /// 歌词单独一个控制器（歌词不进 [Tags.keys]：不进撤销日志、也不当普通字段处理）。
+  final TextEditingController _lyricsCtl = TextEditingController();
 
   Tags _initial = Tags();
   bool _loading = true;
@@ -55,17 +59,46 @@ class _EditorPageState extends State<EditorPage> {
   void initState() {
     super.initState();
     for (final String key in Tags.keys) {
-      _ctl[key] = TextEditingController();
+      final TextEditingController c = TextEditingController();
+      c.addListener(_onEdited);
+      _ctl[key] = c;
     }
+    _lyricsCtl.addListener(_onEdited);
     _load();
+  }
+
+  /// 任一输入框变了就重画：「已改」标记与「保存（N 项）」计数要跟着动。
+  void _onEdited() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
     for (final TextEditingController c in _ctl.values) {
+      c.removeListener(_onEdited);
       c.dispose();
     }
+    _lyricsCtl.removeListener(_onEdited);
+    _lyricsCtl.dispose();
     super.dispose();
+  }
+
+  /// 改过的字段数（含歌词与封面）。
+  int get _changedCount {
+    int n = 0;
+    for (final String key in Tags.keys) {
+      if (_ctl[key]!.text.trim() != _initial.get(key).trim()) n++;
+    }
+    if (_lyricsCtl.text.trim() != _initial.get(Tags.lyrics).trim()) n++;
+    if (_coverTouched) n++;
+    return n;
+  }
+
+  /// 单项回滚：把某个字段还原成打开时的值。
+  void _revert(String key) {
+    final TextEditingController? c = _ctl[key];
+    if (c == null) return;
+    c.text = _initial.get(key);
   }
 
   Future<void> _load() async {
@@ -89,6 +122,7 @@ class _EditorPageState extends State<EditorPage> {
         for (final String key in Tags.keys) {
           _ctl[key]!.text = head.tags.get(key);
         }
+        _lyricsCtl.text = head.tags.get(Tags.lyrics);
         _cover = head.cover;
         _hasCover = head.cover != null && head.cover!.isNotEmpty;
         _coverTouched = false;
@@ -120,7 +154,7 @@ class _EditorPageState extends State<EditorPage> {
                   icon: Icon(Icons.arrow_back,
                       size: 20, color: MoKit.text(context)),
                 ),
-                MoButton('保存',
+                MoButton(_changedCount == 0 ? '保存' : '保存（$_changedCount 项）',
                     busy: _saving,
                     onPressed: _loading || _error.isNotEmpty ? null : _save),
               ],
@@ -154,10 +188,18 @@ class _EditorPageState extends State<EditorPage> {
           cover: _cover,
           hasCover: _hasCover,
           onPick: _pickCover,
+          onOnline: _pickOnlineCover,
           onRemove: _hasCover ? _removeCover : null,
           onExport: _exportCover,
         ),
-        EditorTagFields(controllers: _ctl),
+        EditorTagFields(
+          controllers: _ctl,
+          initial: _initial,
+          lyricsController: _lyricsCtl,
+          onRevert: _revert,
+          onClearLyrics: () => setState(() => _lyricsCtl.clear()),
+        ),
+        _onlineMatchCard(),
         if (broken.isNotEmpty)
           EncodingFixHint(count: broken.length, onFix: _showFix),
       ],
@@ -213,6 +255,51 @@ class _EditorPageState extends State<EditorPage> {
     }
   }
 
+  /// 在线取封面：多源查候选，挑一张写进内存（保存时才落盘）。
+  Future<void> _pickOnlineCover() async {
+    final Uint8List? bytes =
+        await pickOnlineCover(context, widget.file, _currentTags());
+    if (bytes == null || !mounted) return;
+    setState(() {
+      _cover = bytes;
+      _hasCover = true;
+      _coverTouched = true;
+    });
+  }
+
+  /// 当前输入框里的标签（在线匹配按它去查）。
+  Tags _currentTags() {
+    final Tags t = Tags();
+    for (final String key in Tags.keys) {
+      t.put(key, _ctl[key]!.text.trim());
+    }
+    return t;
+  }
+
+  /// 在线匹配卡片：查候选，逐字段勾选后填回输入框。
+  Widget _onlineMatchCard() {
+    return SectionCard(
+      title: '在线匹配',
+      subtitle: '多源查候选，只填你勾中的字段',
+      children: <Widget>[
+        MoButton('在线匹配', primary: false, onPressed: _runOnlineMatch),
+      ],
+    );
+  }
+
+  Future<void> _runOnlineMatch() async {
+    final Map<String, String>? picked =
+        await showOnlineMatch(context, widget.file, _currentTags());
+    if (picked == null || !mounted) return;
+    setState(() {
+      for (final MapEntry<String, String> e in picked.entries) {
+        final TextEditingController? c = _ctl[e.key];
+        if (c != null) c.text = e.value;
+      }
+    });
+    moSnack(context, '已填入 ${picked.length} 个字段，确认后再保存');
+  }
+
   void _removeCover() {
     setState(() {
       _cover = null;
@@ -265,6 +352,10 @@ class _EditorPageState extends State<EditorPage> {
       // 年份只留四位（与 Tags.put / 读回校验口径一致）
       if (key == 'year' && now.length > 4) now = now.substring(0, 4);
       if (now != _initial.get(key)) updates[key] = now;
+    }
+    final String lyrics = _lyricsCtl.text.trim();
+    if (lyrics != _initial.get(Tags.lyrics).trim()) {
+      updates[Tags.lyrics] = lyrics;
     }
     final Uint8List? coverArg =
         _coverTouched ? (_cover ?? Uint8List(0)) : null;

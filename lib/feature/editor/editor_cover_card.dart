@@ -16,6 +16,7 @@ class EditorCoverCard extends StatelessWidget {
     required this.cover,
     required this.hasCover,
     required this.onPick,
+    required this.onOnline,
     required this.onRemove,
     required this.onExport,
   });
@@ -27,6 +28,9 @@ class EditorCoverCard extends StatelessWidget {
   final bool hasCover;
 
   final VoidCallback onPick;
+
+  /// 在线取封面（多源查候选后挑一张）。
+  final VoidCallback onOnline;
 
   /// 没有封面时为 null（按钮置灰）。
   final VoidCallback? onRemove;
@@ -50,6 +54,7 @@ class EditorCoverCard extends StatelessWidget {
                 runSpacing: 8,
                 children: <Widget>[
                   MoButton('选封面', primary: false, onPressed: onPick),
+                  MoButton('在线取', primary: false, onPressed: onOnline),
                   MoButton('移除',
                       primary: false, onPressed: hasCover ? onRemove : null),
                   MoButton('导出 cover.jpg',
