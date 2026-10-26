@@ -204,9 +204,14 @@ class DesktopFileStore implements FileStore {
   }
 
   VFile _fromStat(String path, FileStat s) {
+    // docId / parentId 统一用 `/`（Windows 上 `File('C:/a/b')` 一样能开）——
+    // 根目录本来就是归一过的，这里不归一会让 relativePath 匹配不上，
+    // 整理时「已经在目标目录里」就永远判不出来，已归位的文件会被反复重排。
+    final String id = _normalize(path);
+    final String parent = _dirname(path);
     return VFile(
-      docId: path,
-      parentId: _dirname(path).isEmpty ? null : _dirname(path),
+      docId: id,
+      parentId: parent.isEmpty ? null : parent,
       name: _basename(path),
       mime: '',
       size: s.size,

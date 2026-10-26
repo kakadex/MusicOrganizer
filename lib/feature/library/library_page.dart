@@ -32,7 +32,9 @@ class LibraryPage extends StatefulWidget {
 
 class _LibraryPageState extends State<LibraryPage> {
   static const List<String> _filters = <String>['全部', '无标签', '无封面', '无歌词'];
-  static const List<String> _sorts = <String>['文件名', '标题', '歌手', '专辑', '大小'];
+  static const List<String> _sorts = <String>[
+    '文件名', '标题', '歌手', '专辑', '大小', '修改时间', '标签完整度',
+  ];
 
   final TextEditingController _search = TextEditingController();
   List<Entry> _shown = <Entry>[];
@@ -140,10 +142,17 @@ class _LibraryPageState extends State<LibraryPage> {
           r = a.album.toLowerCase().compareTo(b.album.toLowerCase());
         case 4:
           r = a.size.compareTo(b.size);
+        case 5:
+          r = a.modified.compareTo(b.modified);
+        case 6:
+          // 标签不完整的排前面（先补齐再收工）
+          r = (a.tagComplete() ? 1 : 0) - (b.tagComplete() ? 1 : 0);
         default:
           r = a.name.toLowerCase().compareTo(b.name.toLowerCase());
       }
-      return _desc ? -r : r;
+      if (_desc) r = -r;
+      // 同分时按 docId 兜底，避免每次刷新顺序乱跳
+      return r != 0 ? r : a.docId.compareTo(b.docId);
     });
     setState(() => _shown = out);
   }

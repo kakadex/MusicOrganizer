@@ -84,9 +84,12 @@ abstract final class Organizer {
       bool byAlbum = true, bool onlyUnorganized = true}) {
     final List<MovePlan> out = <MovePlan>[];
     final Set<String> taken = <String>{};
+    // 曲库里已有的一级目录 = 已经确认过的歌手目录。用来纠正「歌名-歌手」这种
+    // 把歌手写在后面的命名：两侧候选里命中已有目录的那个才是歌手。
+    final Set<String> knownDirs = _knownArtistDirs(files, rootDocId);
     for (final VFile f in files) {
       if (f.dir || !f.music()) continue;
-      final String artistSeg = _segment(_artistOf(f));
+      final String artistSeg = _segment(_artistOf(f, knownDirs));
       if (artistSeg.isEmpty) continue;
       String path = artistSeg;
       String reason = '按歌手归位';
@@ -198,24 +201,54 @@ abstract final class Organizer {
     return cur;
   }
 
-  /// 歌手：标签优先，没有就拆文件名（两侧都过一遍合理性校验，兼容「歌名-歌手」）。
-  static String _artistOf(VFile f) {
+  /// 歌手：标签优先 → 文件名（命中已有歌手目录的优先）→ 认不出就留原位。
+  ///
+  /// 刻意**不**拿所在目录名当歌手：「收藏」「新歌」这类目录会变成歌手目录，
+  /// 把曲库结构搞乱。认不出歌手的文件留在原位（与 0.1.100 默认一致）。
+  static String _artistOf(VFile f, Set<String> knownDirs) {
     final String byTag =
         ArtistRules.normalizeCandidate(f.cachedTags?.get('artist') ?? '');
     if (byTag.isNotEmpty && !ArtistRules.isGenericArtist(byTag)) return byTag;
     final NameSplit? split = NameParser.splitArtistTitle(f.stem());
-    if (split == null) return '';
-    for (final List<String> side in <List<String>>[
-      <String>[split.left, split.right],
-      <String>[split.right, split.left],
-    ]) {
-      final String artist = ArtistRules.normalizeCandidate(side[0]);
-      if (ArtistRules.isGenericArtist(artist)) continue;
-      if (ArtistRules.isReasonableArtistReturn(artist, side[1], f.stem(), null)) {
-        return artist;
+    if (split != null) {
+      String fallback = '';
+      for (final List<String> side in <List<String>>[
+        <String>[split.left, split.right],
+        <String>[split.right, split.left],
+      ]) {
+        final String artist = ArtistRules.normalizeCandidate(side[0]);
+        if (ArtistRules.isGenericArtist(artist)) continue;
+        if (!ArtistRules.isReasonableArtistReturn(artist, side[1], f.stem(), null)) {
+          continue;
+        }
+        // 与曲库里已有的歌手目录对得上 → 更可信（「歌名-歌手」就靠这一步纠正方向）
+        if (knownDirs.contains(ArtistRules.folderKey(artist))) return artist;
+        if (fallback.isEmpty) fallback = artist;
       }
+      if (fallback.isNotEmpty) return fallback;
     }
     return '';
+  }
+
+  /// 曲库里已有的一级目录名（归一后的键），排除占位目录。
+  static Set<String> _knownArtistDirs(List<VFile> files, String rootDocId) {
+    final Set<String> out = <String>{};
+    for (final VFile f in files) {
+      if (f.dir) continue;
+      final String name = _topDirName(f, rootDocId);
+      if (name.isEmpty) continue;
+      if (ArtistRules.isGenericArtist(name)) continue;
+      out.add(ArtistRules.folderKey(name));
+    }
+    return out;
+  }
+
+  /// 文件所在的一级目录名（相对根目录的第一段）；不在一级目录里返回空串。
+  static String _topDirName(VFile f, String rootDocId) {
+    final String rel = f.relativePath(rootDocId);
+    final int slash = rel.indexOf('/');
+    if (slash <= 0) return '';
+    return rel.substring(0, slash);
   }
 
   /// 专辑：只读缓存标签（本模块不碰 IO）；占位专辑（未知专辑 / 群星合辑）当没有。
