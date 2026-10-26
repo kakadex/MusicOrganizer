@@ -6,6 +6,7 @@ import '../../core/cleanup/junk.dart';
 import '../../core/dedupe/content_reader.dart';
 import '../../core/dedupe/duplicates.dart';
 import '../../core/fs/file_store.dart';
+import '../../core/fs/tree_ref.dart';
 import '../../core/match/tag_fix.dart';
 import '../../core/match/text_util.dart';
 import '../../core/model/duplicate_group.dart';
@@ -35,15 +36,56 @@ class _OrganizePageState extends State<OrganizePage> {
   bool _busy = false;
   String _status = '';
 
+  /// 垃圾文件候选：走全量遍历（含非音频），不是曲库列表里挑。
+  List<VFile> _junkFiles = <VFile>[];
+  bool _junkScanning = false;
+  String _junkRootId = '';
+
   Repo get _repo => Repo.instance;
 
   @override
   Widget build(BuildContext context) {
+    _scheduleJunkScan();
     // 曲库页授权 / 扫描完成后要立刻反映到这里，所以页面自己监听 Repo。
     return ListenableBuilder(
       listenable: _repo,
       builder: (BuildContext context, Widget? _) => _body(context),
     );
+  }
+
+  /// 曲库根目录变了（首次授权 / 换目录 / 刚删完垃圾）就重扫一次垃圾候选。
+  void _scheduleJunkScan() {
+    final String id = _repo.root?.rootDocId ?? '';
+    if (id.isEmpty || _junkScanning || _junkRootId == id) return;
+    _junkRootId = id;
+    Future<void>.delayed(Duration.zero, _scanJunk);
+  }
+
+  /// 遍历整棵目录树找垃圾（Thumbs.db / .bak / .tmp 都不是音频，不在曲库列表里）。
+  Future<void> _scanJunk() async {
+    final FileStore? st = _repo.store;
+    final TreeRef? r = _repo.root;
+    if (st == null || r == null) return;
+    if (!mounted) return;
+    setState(() => _junkScanning = true);
+    try {
+      final VFile rootDir = VFile(docId: r.rootDocId, name: r.rootDocId, dir: true);
+      final List<VFile> all = await Scanner.walkAll(st, rootDir);
+      final List<VFile> junk = all.where(Junk.isJunk).toList();
+      if (!mounted) return;
+      setState(() {
+        _junkFiles = junk;
+        _junkScanning = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _junkScanning = false);
+    }
+  }
+
+  /// 删完垃圾或整理完让计数重新算一遍。
+  Future<void> _refreshJunk() async {
+    _junkRootId = '';
+    await _scanJunk();
   }
 
   Widget _body(BuildContext context) {
@@ -125,10 +167,7 @@ class _OrganizePageState extends State<OrganizePage> {
 
   Widget _cleanCard() {
     final List<VFile> all = _repo.files;
-    int junk = 0;
-    for (final VFile f in all) {
-      if (Junk.isJunk(f)) junk++;
-    }
+    final int junk = _junkFiles.length;
     return SectionCard(
       title: '清理与查重',
       subtitle: '只看不改，列出来再决定',
@@ -147,9 +186,11 @@ class _OrganizePageState extends State<OrganizePage> {
         ),
         MoTile(
           title: '垃圾文件',
-          subtitle: junk == 0 ? '没有发现' : '发现 $junk 个（.bak / Thumbs.db / 0 字节…）',
+          subtitle: _junkScanning
+              ? '正在扫描…'
+              : (junk == 0 ? '没有发现' : '发现 $junk 个（.bak / Thumbs.db / 0 字节…）'),
           icon: Icons.delete_outline,
-          onTap: junk == 0 ? null : () => _junk(all),
+          onTap: junk == 0 ? null : () => _junk(),
         ),
       ],
     );
@@ -513,8 +554,9 @@ class _OrganizePageState extends State<OrganizePage> {
     }
   }
 
-  Future<void> _junk(List<VFile> all) async {
-    final List<VFile> junk = all.where(Junk.isJunk).toList();
+  Future<void> _junk() async {
+    final List<VFile> junk = _junkFiles;
+    if (junk.isEmpty) return;
     final bool? go = await showMoSheet<bool>(
       context,
       title: '垃圾文件 ${junk.length} 个',
@@ -549,6 +591,7 @@ class _OrganizePageState extends State<OrganizePage> {
     }
     if (!mounted) return;
     await _repo.rescan();
+    await _refreshJunk();
     if (!mounted) return;
     moSnack(context, '已删除 $ok 个');
   }

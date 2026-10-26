@@ -5,6 +5,7 @@
 library;
 
 import '../../core/model/lyric_hit.dart';
+import '../../core/model/lyrics_doc.dart';
 import '../../core/model/query.dart';
 import '../../core/model/vfile.dart';
 import '../../core/lyrics/zh.dart';
@@ -26,6 +27,9 @@ class LyricChoice {
   /// 是否把歌词转成简体（时间轴 / 标点 / 译文原样保留，日文歌词自动跳过）。
   bool simplify = false;
 
+  /// 是否合成双语：把译文按时间轴就近插到原文行后面。
+  bool bilingual = false;
+
   /// 低于 [LyricPick.lowThreshold]。
   bool get low => score < LyricPick.lowThreshold;
 
@@ -38,17 +42,25 @@ class LyricChoice {
     return label.isEmpty ? '未知来源' : label;
   }
 
-  /// 供写入的歌词文本：有时间轴用时间轴版，否则用纯文本。
+  /// 有没有译文（译文来自网易 tlyric / QQ trans 这类翻译轨）。
+  bool get hasTranslation => hit.translation.trim().isNotEmpty;
+
+  /// 供写入的歌词文本：有时间轴用时间轴版，否则用纯文本；
+  /// 开了双语就把译文按时间轴并进去。
   String get text {
     final String raw = hasTiming ? hit.synced.trim() : hit.plain.trim();
-    return simplify ? Zh.toSimplified(raw) : raw;
+    final String merged = (bilingual && hasTranslation)
+        ? LyricsDoc.mergeTranslation(raw, hit.translation)
+        : raw;
+    return simplify ? Zh.toSimplified(merged) : merged;
   }
 
   /// 一行说明：来源 / 时间轴 / 置信度。
   String get note {
     final String timing = hasTiming ? '带时间轴' : '无时间轴';
     final int pct = (score * 100).round();
-    return '$sourceLabel · $timing · 置信度 $pct%';
+    final String trans = hasTranslation ? ' · 有译文' : '';
+    return '$sourceLabel · $timing · 置信度 $pct%$trans';
   }
 }
 

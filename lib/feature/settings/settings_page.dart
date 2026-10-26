@@ -18,6 +18,7 @@ import '../../core/source/endpoints.dart';
 import '../../core/settings/settings_backup.dart';
 import '../../core/version.dart';
 import '../health/health_page.dart';
+import 'data_source_page.dart';
 import '../library/media_import_sheet.dart';
 import '../history/history_page.dart';
 import 'update_sheet.dart';
@@ -503,6 +504,12 @@ class _SettingsPageState extends State<SettingsPage> {
           icon: Icons.article_outlined,
           onTap: _showLog,
         ),
+        MoTile(
+          title: '数据源设置',
+          subtitle: '单独停用某个源 / 改接口地址',
+          icon: Icons.cloud_outlined,
+          onTap: () => _push(const DataSourcePage()),
+        ),
       ],
     );
   }
@@ -572,8 +579,115 @@ class _SettingsPageState extends State<SettingsPage> {
             Expanded(child: MoButton('导入设置', primary: false, onPressed: _import)),
           ],
         ),
+        const SizedBox(height: 8),
+        MoTile(
+          title: '恢复默认设置',
+          subtitle: '只清偏好，不动曲库目录与写入历史',
+          icon: Icons.restart_alt,
+          onTap: _restoreDefaults,
+        ),
       ],
     );
+  }
+
+  /// 界面键名 → 备份键名。
+  ///
+  /// 界面用的是 `filename_weight` / `fill_overwrite` 这类名字，备份格式（与 Java 版
+  /// 兼容）用的是 `fn_weight` / `tag_overwrite`；不映射的话导出的 JSON 里
+  /// 一个设置都没有。
+  static const Map<String, String> _toBackupKey = <String, String>{
+    'filename_weight': 'fn_weight',
+    'fill_overwrite': 'tag_overwrite',
+    'update_silent': 'update_auto',
+    'net_files': 'net_files',
+    'net_timeout': 'net_timeout',
+    'theme_id': 'theme_id',
+    'theme_dark': 'theme_dark',
+    'lyrics_simplify': 'lyrics_simplify',
+    'proxy_mode': 'proxy_mode',
+    'proxy_host': 'proxy_host',
+    'proxy_port': 'proxy_port',
+  };
+
+  /// 备份键名 → 界面键名（导入时反向查回来）。
+  static Map<String, String> get _fromBackupKey {
+    return <String, String>{
+      for (final MapEntry<String, String> e in _toBackupKey.entries) e.value: e.key,
+    };
+  }
+
+  /// 备份键的中文名（「恢复默认设置」的确认清单里显示）。
+  static const Map<String, String> _keyLabels = <String, String>{
+    'fn_weight': '文件名权重',
+    'tag_overwrite': '覆盖已有标签',
+    'update_auto': '启动时检查更新',
+    'net_files': '同时处理（并发）',
+    'net_timeout': '超时倍率',
+    'theme_id': '配色',
+    'theme_dark': '夜间模式',
+    'lyrics_simplify': '歌词转简体',
+    'proxy_mode': '代理模式',
+    'proxy_host': '代理主机',
+    'proxy_port': '代理端口',
+  };
+
+  /// 当前设置（已换成备份键名）。
+  Map<String, Object?> _valuesAsBackupKeys() {
+    final Map<String, Object?> out = <String, Object?>{};
+    for (final MapEntry<String, String> e in _toBackupKey.entries) {
+      final Object? v = _repo.settings.get<Object>(e.key);
+      if (v != null) out[e.value] = v;
+    }
+    return out;
+  }
+
+  Future<void> _restoreDefaults() async {
+    final Map<String, Object?> current = _valuesAsBackupKeys();
+    final List<String> diff = SettingsBackup.diffFromDefaults(current);
+    if (diff.isEmpty) {
+      if (mounted) moSnack(context, '现在就是默认设置');
+      return;
+    }
+    final bool? go = await showMoSheet<bool>(
+      context,
+      title: '恢复默认设置',
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 4, MoKit.pagePad, 8),
+          child: Text('下面 ${diff.length} 项会回到默认值（曲库目录、写入历史、日志不受影响）：',
+              style: TextStyle(fontSize: MoKit.fsBody, color: MoKit.text(context))),
+        ),
+        for (final String k in diff.take(20))
+          Padding(
+            padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 4, MoKit.pagePad, 0),
+            child: Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(_keyLabels[k] ?? k,
+                      style: TextStyle(fontSize: MoKit.fsBody, color: MoKit.text(context))),
+                ),
+                Text('${current[k]} → ${SettingsBackup.defaults()[k]}',
+                    style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
+              ],
+            ),
+          ),
+        Padding(
+          padding: const EdgeInsets.all(MoKit.pagePad),
+          child: MoButton('恢复这 ${diff.length} 项', primary: false,
+              onPressed: () => Navigator.of(context).pop(true)),
+        ),
+      ],
+    );
+    if (go != true) return;
+    final Map<String, Object> defaults = SettingsBackup.defaults();
+    for (final String k in diff) {
+      final Object? v = defaults[k];
+      if (v == null) continue;
+      await _repo.setSetting(_fromBackupKey[k] ?? k, v);
+    }
+    if (!mounted) return;
+    setState(() {});
+    moSnack(context, '已恢复 ${diff.length} 项默认设置');
   }
 
   Widget _aboutCard() {
@@ -640,20 +754,7 @@ class _SettingsPageState extends State<SettingsPage> {
     moSnack(context, '已切换目录，回到「音乐库」会自动扫描');
   }
 
-  Map<String, Object?> _exportValues() {
-    final Map<String, Object?> out = <String, Object?>{};
-    for (final String key in <String>[
-      'filename_weight',
-      'fill_overwrite',
-      'net_files',
-      'net_timeout',
-      'theme_id',
-      'theme_dark',
-    ]) {
-      out[key] = _repo.settings.get<Object>(key);
-    }
-    return out;
-  }
+  Map<String, Object?> _exportValues() => _valuesAsBackupKeys();
 
   Future<void> _export() async {
     final String text = SettingsBackup.toJson(_exportValues(), null);
@@ -676,10 +777,24 @@ class _SettingsPageState extends State<SettingsPage> {
       return;
     }
     for (final MapEntry<String, Object> e in parsed.values.entries) {
-      await _repo.setSetting(e.key, e.value);
+      // 备份格式里的键名与界面键名不同名（fn_weight ↔ filename_weight），要换回来。
+      await _repo.setSetting(_fromBackupKey[e.key] ?? e.key, e.value);
     }
     if (!mounted) return;
     setState(() {});
     moSnack(context, '已导入 ${parsed.count} 项（重启应用后主题类设置完全生效）');
+    if (parsed.warnings.isNotEmpty || parsed.ignored.isNotEmpty) {
+      await showMoSheet<void>(
+        context,
+        title: '导入结果',
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.all(MoKit.pagePad),
+            child: Text(parsed.summary(),
+                style: TextStyle(fontSize: MoKit.fsBody, color: MoKit.text(context))),
+          ),
+        ],
+      );
+    }
   }
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -23,6 +24,7 @@ import '../core/scan/scan_stats.dart';
 import '../core/scan/scanner.dart';
 import '../core/scan/search_index.dart';
 import '../core/settings/settings.dart';
+import '../core/source/endpoints.dart';
 import '../core/task/match_runner.dart';
 import '../core/tx/journal.dart';
 import '../core/tx/tag_transaction.dart';
@@ -116,6 +118,7 @@ class Repo extends ChangeNotifier {
       memory: BatchMemory.open(dir, 'tags'),
     );
     await _loadSettings();
+    Endpoints.install(_RepoEndpoints(this));
     applyProxy();
     _initialized = true;
   }
@@ -142,6 +145,12 @@ class Repo extends ChangeNotifier {
       'proxy_host',
       'proxy_port',
     ]) {
+      final Object? v = prefs.get(key);
+      if (v != null) settings.set(key, v);
+    }
+    // 数据源：改过的接口地址（ep:）与源开关（ep_on:）不固定键名，按前缀捞。
+    for (final String key in prefs.getKeys()) {
+      if (!key.startsWith('ep:') && !key.startsWith('ep_on:')) continue;
       final Object? v = prefs.get(key);
       if (v != null) settings.set(key, v);
     }
@@ -408,5 +417,34 @@ class Repo extends ChangeNotifier {
     tx = null;
     runner = null;
     _initialized = false;
+  }
+}
+
+/// 数据源的用户设置（改过的接口地址 + 源开关），落在普通偏好里。
+///
+/// 键名与设置备份格式一致：`ep:<端点>` 存地址、`ep_on:<源>` 存开关，
+/// 这样「导出设置」能带上它们，换机也能还原。
+class _RepoEndpoints implements EndpointsConfig {
+  _RepoEndpoints(this.repo);
+
+  final Repo repo;
+
+  @override
+  String? overrideUrl(String endpointKey) =>
+      repo.settings.get<String>('ep:$endpointKey');
+
+  @override
+  bool enabled(String sourceKey) =>
+      repo.settings.get<bool>('ep_on:$sourceKey', fallback: true) ?? true;
+
+  @override
+  void setOverride(String endpointKey, String? url) {
+    // 留空 = 恢复默认地址（用默认值请求）。
+    unawaited(repo.setSetting('ep:$endpointKey', (url == null || url.isEmpty) ? null : url));
+  }
+
+  @override
+  void setEnabled(String sourceKey, bool enabled) {
+    unawaited(repo.setSetting('ep_on:$sourceKey', enabled));
   }
 }

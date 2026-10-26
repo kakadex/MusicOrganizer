@@ -41,11 +41,16 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
   /// 歌词是否转简体（设置项可记忆，默认开）。
   bool _simplify = true;
 
+  /// 是否合成双语（原文一行 + 译文一行；只有拿到译文的才生效）。
+  bool _bilingual = true;
+
   @override
   void initState() {
     super.initState();
     _rows = widget.files.map(LyricRow.new).toList();
     _simplify = Repo.instance.settings.get<bool>('lyrics_simplify', fallback: true) ?? true;
+    _bilingual =
+        Repo.instance.settings.get<bool>('lyrics_bilingual', fallback: true) ?? true;
   }
 
   int get _selectedCount =>
@@ -136,6 +141,18 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
               Repo.instance.setSetting('lyrics_simplify', _simplify);
             },
           ),
+          const SizedBox(width: 6),
+          MoChip(
+            label: '双语',
+            selected: _bilingual,
+            onTap: () {
+              setState(() => _bilingual = !_bilingual);
+              Repo.instance.setSetting('lyrics_bilingual', _bilingual);
+              for (final LyricRow r in _rows) {
+                if (r.choice != null) r.choice!.bilingual = _bilingual;
+              }
+            },
+          ),
           const Spacer(),
           MoButton('写入 $_selectedCount 首',
               busy: _writing,
@@ -192,7 +209,10 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
             LocalQuery.lyric(q, album: tags.get('album')));
         netErrors.addAll(agg.errors);
         final LyricChoice? best = LyricPick.best(q, agg.hits);
-        if (best != null) best.simplify = _simplify;
+        if (best != null) {
+          best.simplify = _simplify;
+          best.bilingual = _bilingual;
+        }
         row.choice = best;
         row.selected = best != null && !best.low;
         row.status = best == null
