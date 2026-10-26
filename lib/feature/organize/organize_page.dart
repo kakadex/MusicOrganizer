@@ -19,6 +19,7 @@ import '../../core/tx/tag_transaction.dart';
 import '../covers/covers_page.dart';
 import '../library/preview_sheet.dart';
 import '../lyrics_batch/lyrics_batch_page.dart';
+import 'rename_flow.dart';
 
 /// 整理页：**三张任务卡**（扫描与整理 / 批量处理 / 清理），而不是一长串平铺按钮。
 ///
@@ -133,6 +134,12 @@ class _OrganizePageState extends State<OrganizePage> {
       subtitle: '只看不改，列出来再决定',
       children: <Widget>[
         MoTile(
+          title: '文件名清理',
+          subtitle: '去污染后缀 / 重编码标记 / 多余空格，或按标签改名',
+          icon: Icons.drive_file_rename_outline,
+          onTap: all.isEmpty ? null : () => _renameFiles(all),
+        ),
+        MoTile(
           title: '文件名查重',
           subtitle: '相似度分组，标出「疑似」，默认不勾选',
           icon: Icons.copy_all_outlined,
@@ -238,6 +245,11 @@ class _OrganizePageState extends State<OrganizePage> {
     if (r.ok > 0) await _repo.rescan();
     if (!mounted) return;
     moSnack(context, r.summary());
+  }
+
+  /// 文件名清理 / 改名：先选规则或模板，出计划，确认后才动盘。
+  Future<void> _renameFiles(List<VFile> files) async {
+    await runRenameFlow(context, files);
   }
 
   Future<void> _dedupe(List<VFile> files) async {

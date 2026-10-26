@@ -18,6 +18,7 @@ import '../../core/task/task_center.dart';
 import '../covers/covers_page.dart';
 import '../editor/editor_page.dart';
 import '../lyrics_batch/lyrics_batch_page.dart';
+import '../organize/rename_flow.dart';
 import 'preview_sheet.dart';
 
 /// 曲库页：搜索 + 筛选 + 排序 + 多选 + 批量匹配。
@@ -558,6 +559,15 @@ class _LibraryPageState extends State<LibraryPage> {
           onTap: () {
             Navigator.of(context).pop();
             _matchSelected(ignoreMemory: true);
+          },
+        ),
+        MoTile(
+          title: '按标签改名',
+          subtitle: '用标签里的歌名 / 艺人拼文件名，先出计划再动手',
+          icon: Icons.drive_file_rename_outline,
+          onTap: () {
+            Navigator.of(context).pop();
+            runRenameFlow(context, files);
           },
         ),
         MoTile(
