@@ -15,6 +15,7 @@ import '../model/query.dart';
 import '../match/text_util.dart';
 import 'endpoints.dart';
 import 'mb_client.dart';
+import 'offer_score.dart';
 import 'tag_source.dart';
 import 'lyric_source.dart';
 import 'source_rank.dart';
@@ -86,20 +87,36 @@ abstract final class Aggregator {
     }
     final List<SourceResult> results = await Future.wait(tasks);
 
+    final String localTitle = TagQuery.title(q);
     final Map<String, String> errors = <String, String>{};
     final List<Candidate> all = <Candidate>[];
     for (final SourceResult r in results) {
       if (r.error.isNotEmpty) errors[r.source] = r.error;
       for (final Candidate c in r.items) {
-        if (_durationOk(c, q.localDuration)) all.add(c);
+        if (!_durationOk(c, q.localDuration)) continue;
+        // 变体词过滤：候选是「伴奏 / Remix / Live / 翻唱」而本地不是 → 不是同一版本。
+        // 不做这一步会把「记事本 (Remix)」写进普通曲目（真实数据实测踩到）。
+        if (isVariant(c.title, localTitle)) continue;
+        // 与本地标题 / 艺人的相似度，用于同分时排序（源置信度全是 0.60，光靠它分不出好坏）
+        c.filenameScore = localTitle.isEmpty
+            ? 0
+            : TextUtil.textSimilarity(localTitle, c.title);
+        c.merged = 1;
+        all.add(c);
       }
     }
 
     final int before = all.length;
     final List<Candidate> merged = _merge(all);
-    merged.sort((Candidate a, Candidate b) =>
-        SourceRank.compare(a.source, a.confidence, b.source, b.confidence,
-            chinese: isCn));
+    merged.sort((Candidate a, Candidate b) {
+      // 先看「像不像这首歌」：标题相似度差 0.02 以上就按相似度排，
+      // 差不多再用源优先级（中文曲目国内源优先）决定。
+      final double d = a.filenameScore - b.filenameScore;
+      if (d.abs() > 0.02) return d > 0 ? -1 : 1;
+      return SourceRank.compare(
+          a.source, a.confidence, b.source, b.confidence,
+          chinese: isCn);
+    });
     final List<Candidate> out =
         merged.length > maxCandidates ? merged.sublist(0, maxCandidates) : merged;
     return AggregateResult(out, errors, before);

@@ -186,6 +186,55 @@ void main() {
       expect(r.candidates, isEmpty);
     });
 
+    test('变体词候选被剔除（Remix / 伴奏不算同一首）', () async {
+      final AggregateResult r = await Aggregator.tagCandidates(
+        q(title: '示例歌名'),
+        only: <String>['deezer'],
+        fetch: (String url, Map<String, String>? params) async {
+          return <String, Object>{
+            'data': <Object>[
+              <String, Object>{
+                'title': '示例歌名 (Remix)',
+                'artist': <String, Object>{'name': '示例歌手'},
+              },
+              <String, Object>{
+                'title': '示例歌名 伴奏',
+                'artist': <String, Object>{'name': '示例歌手'},
+              },
+              <String, Object>{
+                'title': '示例歌名',
+                'artist': <String, Object>{'name': '示例歌手'},
+              },
+            ]
+          };
+        },
+      );
+      expect(r.candidates.length, 1);
+      expect(r.candidates.first.title, '示例歌名');
+    });
+
+    test('标题更像的候选排在前面（同源同分时）', () async {
+      final AggregateResult r = await Aggregator.tagCandidates(
+        q(title: '示例歌名'),
+        only: <String>['deezer'],
+        fetch: (String url, Map<String, String>? params) async {
+          return <String, Object>{
+            'data': <Object>[
+              <String, Object>{
+                'title': '示例歌名 加长版现场', // 相似度低
+                'artist': <String, Object>{'name': '示例歌手'},
+              },
+              <String, Object>{
+                'title': '示例歌名', // 完全一致
+                'artist': <String, Object>{'name': '示例歌手'},
+              },
+            ]
+          };
+        },
+      );
+      expect(r.candidates.first.title, '示例歌名');
+    });
+
     test('聚合结果最多 10 条', () async {
       final AggregateResult r = await Aggregator.tagCandidates(
         q(),

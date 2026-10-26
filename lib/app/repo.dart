@@ -136,6 +136,9 @@ class Repo extends ChangeNotifier {
       'sort_key',
       'sort_desc',
       'filter',
+      'proxy_mode',
+      'proxy_host',
+      'proxy_port',
     ]) {
       final Object? v = prefs.get(key);
       if (v != null) settings.set(key, v);

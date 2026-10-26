@@ -82,6 +82,14 @@ abstract final class Http {
 
   static HttpClient? _client;
 
+  /// 最近一次失败的原因（界面「测试连通」与日志用）。
+  ///
+  /// 为什么要它：请求失败一律返回 null，用户只看到「连不上」，
+  /// 分不清是代理没通、TLS 证书问题还是被限流。这里把最内层异常的前半段留下来。
+  static String lastError = '';
+
+  static void _note(String reason) => lastError = reason;
+
   static HttpClient client() {
     _client ??= HttpClient()
       ..connectionTimeout =
@@ -125,7 +133,11 @@ abstract final class Http {
   static Future<Uint8List?> getBytes(String url, Map<String, String>? params,
       Map<String, String>? headers, int timeoutMs, int maxBytes) async {
     final String host = _hostOf(url);
-    if (breaker.isCoolingDown(host)) return null;
+    lastError = '';
+    if (breaker.isCoolingDown(host)) {
+      _note('$host 冷却中（${breaker.cooldownSecondsLeft(host)}s）');
+      return null;
+    }
     try {
       final String full = buildUrl(url, params);
       final Uri uri = Uri.parse(full);
@@ -149,6 +161,7 @@ abstract final class Http {
           breaker.noteFail(host, 'HTTP $code');
         }
         await resp.drain<void>();
+        _note('HTTP $code ${resp.reasonPhrase}');
         return null;
       }
       final Uint8List body = await _readAll(resp, maxBytes).timeout(
@@ -158,8 +171,27 @@ abstract final class Http {
       return body;
     } catch (e) {
       breaker.noteFail(host, e.runtimeType.toString());
+      _note(_describe(e));
       return null;
     }
+  }
+
+  /// 把异常翻成一句能看懂的话（代理问题最常见）。
+  static String _describe(Object e) {
+    final String s = e.toString();
+    final String t = e.runtimeType.toString();
+    if (s.contains('Connection refused')) return '连接被拒绝（代理或端口没开）';
+    if (s.contains('Connection closed') || s.contains('Connection reset')) {
+      return '连接被对端关闭（代理拒绝或网络不稳）';
+    }
+    if (s.contains('HandshakeException') || s.contains('CERTIFICATE')) {
+      return 'TLS 证书校验失败（代理可能在做证书替换）';
+    }
+    if (t.contains('TimeoutException')) return '超时';
+    if (s.contains('Failed host lookup') || s.contains('nodename')) {
+      return '域名解析失败（DNS 或代理不可用）';
+    }
+    return s.length > 70 ? '$t: ${s.substring(0, 70)}' : '$t: $s';
   }
 
   /// 拼接查询串（编码后）。

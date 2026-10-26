@@ -349,7 +349,8 @@ class _SettingsPageState extends State<SettingsPage> {
       final String first = text.trim().split('\n').first;
       moSnack(context, '连通正常：${first.length > 40 ? first.substring(0, 40) : first}');
     } else {
-      moSnack(context, '连不上（${NetworkProxy.describe()}），检查代理或网络');
+      final String why = Http.lastError.isEmpty ? '无响应' : Http.lastError;
+      moSnack(context, '连不上：$why（${NetworkProxy.describe()}）');
     }
   }
 
