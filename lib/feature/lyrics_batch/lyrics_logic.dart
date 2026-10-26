@@ -7,6 +7,7 @@ library;
 import '../../core/model/lyric_hit.dart';
 import '../../core/model/query.dart';
 import '../../core/model/vfile.dart';
+import '../../core/lyrics/zh.dart';
 import '../../core/match/local_query.dart';
 import '../../core/source/offer_score.dart';
 
@@ -22,6 +23,9 @@ class LyricChoice {
   /// 是否参与本次写入；低置信默认不勾选。
   bool selected = true;
 
+  /// 是否把歌词转成简体（时间轴 / 标点 / 译文原样保留，日文歌词自动跳过）。
+  bool simplify = false;
+
   /// 低于 [LyricPick.lowThreshold]。
   bool get low => score < LyricPick.lowThreshold;
 
@@ -35,7 +39,10 @@ class LyricChoice {
   }
 
   /// 供写入的歌词文本：有时间轴用时间轴版，否则用纯文本。
-  String get text => hasTiming ? hit.synced.trim() : hit.plain.trim();
+  String get text {
+    final String raw = hasTiming ? hit.synced.trim() : hit.plain.trim();
+    return simplify ? Zh.toSimplified(raw) : raw;
+  }
 
   /// 一行说明：来源 / 时间轴 / 置信度。
   String get note {

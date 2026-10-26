@@ -46,6 +46,8 @@ class _LibraryPageState extends State<LibraryPage> {
   bool _busy = false;
   String _status = '';
   String _query = '';
+  /// 当前检索词（命中高亮用）。
+  List<String> _terms = <String>[];
 
   @override
   void initState() {
@@ -116,6 +118,7 @@ class _LibraryPageState extends State<LibraryPage> {
   void _applyFilter() {
     final repo = Repo.instance;
     final SearchQuery q = SearchQuery.parse(_query);
+    _terms = q.raw;
     final List<Entry> all = repo.index.search(q);
     final List<Entry> out = <Entry>[];
     for (final Entry e in all) {
@@ -385,6 +388,7 @@ class _LibraryPageState extends State<LibraryPage> {
     return _CoverRow(
       key: ValueKey<String>(e.docId),
       entry: e,
+      terms: _terms,
       selected: selected,
       selectMode: _selectMode,
       onTap: () {
@@ -594,6 +598,7 @@ class _CoverRow extends StatefulWidget {
   const _CoverRow({
     super.key,
     required this.entry,
+    this.terms = const <String>[],
     required this.selected,
     required this.selectMode,
     required this.onTap,
@@ -601,6 +606,8 @@ class _CoverRow extends StatefulWidget {
   });
 
   final Entry entry;
+  /// 检索命中词（高亮用）。
+  final List<String> terms;
   final bool selected;
   final bool selectMode;
   final VoidCallback onTap;
@@ -639,6 +646,7 @@ class _CoverRowState extends State<_CoverRow> {
     return SongRow(
       title: e.displayTitle(),
       subtitle: sub,
+      terms: widget.terms,
       cover: _cover,
       selected: widget.selected,
       selectionMode: widget.selectMode,

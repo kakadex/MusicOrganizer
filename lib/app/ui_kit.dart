@@ -238,6 +238,63 @@ class CoverBox extends StatelessWidget {
   }
 }
 
+/// 带命中高亮的文本：检索词用主色加粗标出（没命中就按原样显示）。
+///
+/// [terms] 是原始检索词（大小写不敏感）。高亮只影响显示，不影响匹配。
+Widget highlightText(
+  String text,
+  List<String> terms,
+  TextStyle style, {
+  required Color highlightColor,
+  FontWeight? highlightWeight,
+}) {
+  if (text.isEmpty || terms.isEmpty) {
+    return Text(text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: style);
+  }
+  final String lower = text.toLowerCase();
+  final List<bool> hit = List<bool>.filled(text.length, false);
+  for (final String raw in terms) {
+    final String term = raw.trim().toLowerCase();
+    if (term.isEmpty) continue;
+    int from = 0;
+    while (true) {
+      final int idx = lower.indexOf(term, from);
+      if (idx < 0) break;
+      for (int i = idx; i < idx + term.length && i < hit.length; i++) {
+        hit[i] = true;
+      }
+      from = idx + term.length;
+    }
+  }
+  if (!hit.any((bool b) => b)) {
+    return Text(text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: style);
+  }
+  final Color hl = highlightColor;
+  final List<InlineSpan> spans = <InlineSpan>[];
+  int start = 0;
+  for (int i = 0; i <= hit.length; i++) {
+    final bool on = i < hit.length && hit[i];
+    if (i == hit.length || on != hit[start]) {
+      final String part = text.substring(start, i);
+      spans.add(on
+          ? TextSpan(
+              text: part,
+              style: style.copyWith(
+                  color: hl, fontWeight: highlightWeight ?? FontWeight.w700))
+          : TextSpan(text: part, style: style));
+      start = i;
+    }
+  }
+  return Text.rich(TextSpan(children: spans),
+      maxLines: 1, overflow: TextOverflow.ellipsis, style: style);
+}
+
 /// 曲目行：封面 + 两行文字 + 右侧尾部控件（默认显示时长）。
 class SongRow extends StatelessWidget {
   const SongRow({
@@ -251,6 +308,7 @@ class SongRow extends StatelessWidget {
     this.selected = false,
     this.selectionMode = false,
     this.highlight = false,
+    this.terms = const <String>[],
   });
 
   final String title;
@@ -264,6 +322,9 @@ class SongRow extends StatelessWidget {
 
   /// 标题未命中标签时用次级色（一眼看出哪些还没整理）。
   final bool highlight;
+
+  /// 检索命中词（为空不高亮）。
+  final List<String> terms;
 
   @override
   Widget build(BuildContext context) {
@@ -294,19 +355,23 @@ class SongRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Text(title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: MoKit.fsTitle,
-                        fontWeight: FontWeight.w500,
-                        color: highlight ? MoKit.sub(context) : MoKit.text(context),
-                      )),
+                  highlightText(
+                    title,
+                    terms,
+                    TextStyle(
+                      fontSize: MoKit.fsTitle,
+                      fontWeight: FontWeight.w500,
+                      color: highlight ? MoKit.sub(context) : MoKit.text(context),
+                    ),
+                    highlightColor: MoKit.primary(context),
+                  ),
                   const SizedBox(height: 2),
-                  Text(subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
+                  highlightText(
+                    subtitle,
+                    terms,
+                    TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context)),
+                    highlightColor: MoKit.primary(context),
+                  ),
                 ],
               ),
             ),

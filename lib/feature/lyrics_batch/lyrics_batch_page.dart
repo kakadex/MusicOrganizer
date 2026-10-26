@@ -38,11 +38,14 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
   bool _writing = false;
   bool _fetched = false;
   bool _writeLrc = false;
+  /// 歌词是否转简体（设置项可记忆，默认开）。
+  bool _simplify = true;
 
   @override
   void initState() {
     super.initState();
     _rows = widget.files.map(LyricRow.new).toList();
+    _simplify = Repo.instance.settings.get<bool>('lyrics_simplify', fallback: true) ?? true;
   }
 
   int get _selectedCount =>
@@ -124,6 +127,15 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
             selected: _writeLrc,
             onTap: () => setState(() => _writeLrc = !_writeLrc),
           ),
+          const SizedBox(width: 6),
+          MoChip(
+            label: '转简体',
+            selected: _simplify,
+            onTap: () {
+              setState(() => _simplify = !_simplify);
+              Repo.instance.setSetting('lyrics_simplify', _simplify);
+            },
+          ),
           const Spacer(),
           MoButton('写入 $_selectedCount 首',
               busy: _writing,
@@ -180,6 +192,7 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
             LocalQuery.lyric(q, album: tags.get('album')));
         netErrors.addAll(agg.errors);
         final LyricChoice? best = LyricPick.best(q, agg.hits);
+        if (best != null) best.simplify = _simplify;
         row.choice = best;
         row.selected = best != null && !best.low;
         row.status = best == null
