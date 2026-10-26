@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../../app/cover_song_row.dart';
 import '../../app/ui_kit.dart';
 import '../../core/model/vfile.dart';
 
@@ -41,7 +42,9 @@ class CoverJobRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SongRow(
+    return CoverSongRow(
+      key: ValueKey<String>(job.file.docId),
+      file: job.file,
       title: job.file.stem(),
       subtitle: job.note,
       trailing: Padding(

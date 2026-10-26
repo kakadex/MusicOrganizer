@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/repo.dart';
 import '../../app/theme/palette.dart';
@@ -338,20 +339,35 @@ class _SettingsPageState extends State<SettingsPage> {
         : NetworkProxy.lastError);
   }
 
-  /// 打一次版本清单：能拿到内容就说明出口通了。
+  /// 测更新相关的两个出口（国内 Gitee 清单 + 海外 GitHub 接口），能拿到内容就说明通了。
   Future<void> _testConnectivity() async {
-    moSnack(context, '正在测试连通…');
-    final String url = Endpoints.urlOf('gitee', 0);
-    final String? text =
-        await Http.getText(url, null, null, Http.readTimeoutOverseasMs);
     if (!mounted) return;
-    if (text != null && text.trim().isNotEmpty) {
-      final String first = text.trim().split('\n').first;
-      moSnack(context, '连通正常：${first.length > 40 ? first.substring(0, 40) : first}');
-    } else {
-      final String why = Http.lastError.isEmpty ? '无响应' : Http.lastError;
-      moSnack(context, '连不上：$why（${NetworkProxy.describe()}）');
+    moSnack(context, '正在测试连通…');
+    final List<(String, String, int)> targets = <(String, String, int)>[
+      ('Gitee', Endpoints.urlOf('gitee', 0), Http.readTimeoutCnMs),
+      ('GitHub', Endpoints.urlOf('update', 0), Http.readTimeoutOverseasMs),
+    ];
+    final List<String> reached = <String>[];
+    String lastWhy = '';
+    for (final (String label, String url, int timeout) in targets) {
+      final String? text = await Http.getText(url, null, null, timeout);
+      if (text != null && text.trim().isNotEmpty) {
+        reached.add(label);
+      } else {
+        lastWhy = Http.lastError.isEmpty ? '无响应' : Http.lastError;
+      }
     }
+    if (!mounted) return;
+    final StringBuffer msg = StringBuffer();
+    if (reached.isNotEmpty) {
+      msg.write('连通正常：${reached.join(' / ')}');
+    } else {
+      msg.write('连不上：$lastWhy（${NetworkProxy.describe()}）');
+      if (NetworkProxy.mode == ProxyMode.direct) {
+        msg.write(' · 若处于需代理的网络，请切到「自动」或「手动」并填代理');
+      }
+    }
+    moSnack(context, msg.toString());
   }
 
   Widget _themeCard() {
@@ -449,8 +465,37 @@ class _SettingsPageState extends State<SettingsPage> {
       title: '关于',
       children: <Widget>[
         MoTile(title: '版本', subtitle: kAppVersionFull, icon: Icons.info_outline),
+        const SizedBox(height: 6),
+        Text('下载（国内用户优先访问 Gitee，速度更快）',
+            style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
+        const SizedBox(height: 4),
+        MoTile(
+          title: 'Gitee 发布页',
+          subtitle: '国内站点，推荐',
+          icon: Icons.download,
+          onTap: () => _openUrl(Endpoints.urlOf('gitee', 1)),
+        ),
+        MoTile(
+          title: 'GitHub 发布页',
+          subtitle: '海外站点',
+          icon: Icons.download_outlined,
+          onTap: () => _openUrl(Endpoints.urlOf('update', 1)),
+        ),
       ],
     );
+  }
+
+  Future<void> _openUrl(String url) async {
+    final Uri? uri = Uri.tryParse(url);
+    if (uri == null || url.isEmpty) {
+      if (mounted) moSnack(context, '地址无效：$url');
+      return;
+    }
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      if (mounted) moSnack(context, '打不开浏览器，请手动复制：$url');
+    }
   }
 
   String _themeName(MoThemeId id) {

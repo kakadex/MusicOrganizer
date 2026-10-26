@@ -8,6 +8,9 @@
 /// 3. 歌名一致时再比艺人：两边都解析得出且明显不同，视为翻唱 / 同名不同曲；
 /// 4. 拿不准的一律标 [DuplicateGroup.suspect]，界面据此默认不勾选。
 /// 不并入内容哈希链路：[DuplicateGroup.content] 恒为 [DuplicateGroup.contentUnknown]。
+///
+/// 与 Java 版一致：文件名没写艺人时，调用方可通过 [tagArtist] 传入内嵌标签里的艺人，
+/// 用来区分「同名不同歌手（翻唱 / 重名）」与「真的是同一首」。不传则只靠文件名 + 时长。
 library;
 
 import 'dart:math' as math;
@@ -37,8 +40,14 @@ abstract final class Duplicates {
   /// [similarityThreshold]）。[durationOf] 返回时长（秒），读不到返回 0 或省略；
   /// 只在名字证据不足或靠包含度命中时调用，调用方应自行缓存。艺人只从文件名解析
   /// （本模块不读标签），解析不出就当信息不全，交给时长复核。
+  ///
+  /// [tagArtist] 返回内嵌标签里的艺人（归一后的键，空串表示读不到 / 没有）。文件名没写
+  /// 艺人时，用它区分翻唱 / 重名 —— 这是「同名不同歌手」不被误判为重复的关键。调用方
+  /// 应自行缓存（同一首只解析一次）。不传则只靠文件名 + 时长，与旧行为一致。
   static List<DuplicateGroup> find(List<VFile> files,
-      {double threshold = minLenRatio, double Function(VFile)? durationOf}) {
+      {double threshold = minLenRatio,
+      double Function(VFile)? durationOf,
+      String Function(VFile)? tagArtist}) {
     final List<VFile> audio = <VFile>[];
     for (final VFile f in files) {
       if (!f.dir && f.audio()) audio.add(f);
@@ -53,16 +62,40 @@ abstract final class Duplicates {
       titles[i] = DuplicateGroup.titleKeyOf(audio[i].stem());
       artists[i] = DuplicateGroup.artistKeyOf(audio[i].stem());
     }
+    // 内嵌标签艺人（与文件名艺人互补）：文件名没写艺人时靠它区分翻唱 / 重名。
+    // 只在「歌名一致但文件名没写艺人」这种最容易误判的分支用到。
+    final List<String> tagArtists = List<String>.filled(total, '');
+    if (tagArtist != null) {
+      for (int i = 0; i < total; i++) {
+        tagArtists[i] =
+            _artistOf(DuplicateGroup.normalizeDuplicateKey(tagArtist(audio[i])));
+      }
+    }
+    // 有效艺人：文件名优先，文件名没有才用内嵌标签。
+    String effArtist(int i) =>
+        artists[i].isNotEmpty ? artists[i] : tagArtists[i];
     final _UnionFind uf = _UnionFind(total);
-    // 归一后整串相同：先并组，后面不必再两两算相似度。
+    // 归一后整串相同：先并组，后面不必再两两算相似度。但同名且「已知艺人明确不同」
+    // 的（翻唱 / 重名）不当重复 —— 文件名没写艺人时靠内嵌标签艺人补刀。byKey 簇很小，
+    // 两两比对代价可忽略。
     final Map<String, List<int>> byKey = <String, List<int>>{};
     for (int i = 0; i < total; i++) {
       if (keys[i].isEmpty) continue;
       byKey.putIfAbsent(keys[i], () => <int>[]).add(i);
     }
-    for (final List<int> list in byKey.values) {
-      for (int j = 1; j < list.length; j++) {
-        uf.union(list[0], list[j]);
+    for (final MapEntry<String, List<int>> entry in byKey.entries) {
+      final List<int> list = entry.value;
+      for (int a = 0; a < list.length; a++) {
+        for (int b = a + 1; b < list.length; b++) {
+          final String ea = effArtist(list[a]);
+          final String eb = effArtist(list[b]);
+          if (ea.isNotEmpty &&
+              eb.isNotEmpty &&
+              TextUtil.smartSimilarity(ea, eb) < artistSame) {
+            continue; // 同名不同歌手：不是同一首，不并组
+          }
+          uf.union(list[a], list[b]);
+        }
       }
     }
     // bigram 倒排：只和共享至少一个二字组的文件比，避免 O(n²)。
@@ -100,11 +133,20 @@ abstract final class Duplicates {
         // 艺人信息不全时名字不足以定论，必须靠时长。
         bool needDuration = false;
         if (keys[i] == otherKey) {
-          matched = true;
-          strongName = true;
+          // 归一后整串相同（复制尾巴）：默认当复制件；但两端都解析得出艺人且明显不同时，
+          // 这是「同名不同歌手」，不当重复（文件名没写艺人时靠内嵌标签艺人补刀）。
+          final String a1 = effArtist(i);
+          final String a2 = effArtist(other);
+          if (a1.isNotEmpty && a2.isNotEmpty) {
+            matched = TextUtil.smartSimilarity(a1, a2) >= artistSame;
+            strongName = matched;
+          } else {
+            matched = true;
+            strongName = true;
+          }
         } else if (bothTitles && t1 == t2) {
-          final String a1 = _artistOf(artists[i]);
-          final String a2 = _artistOf(artists[other]);
+          final String a1 = effArtist(i);
+          final String a2 = effArtist(other);
           if (a1.isNotEmpty && a2.isNotEmpty) {
             matched = TextUtil.smartSimilarity(a1, a2) >= artistSame;
             strongName = matched;
@@ -135,6 +177,7 @@ abstract final class Duplicates {
           final bool identicalCopy = strongName &&
               !needDuration &&
               audio[i].stem() == audio[other].stem() &&
+              audio[i].size > 0 &&
               audio[i].size == audio[other].size;
           if (!identicalCopy) {
             final double d1 = _duration(durationOf, durCache, audio[i]);
@@ -167,7 +210,9 @@ abstract final class Duplicates {
           clusters.putIfAbsent(uf.find(i), () => DuplicateGroup(keys[i]));
       final VFile f = audio[i];
       group.files.add(DuplicateItem(f, f.pathAfterRoot(), f.size, null));
-      if (unsure[i]) group.suspect = true;
+      if (unsure[i]) {
+        group.suspect = true;
+      }
     }
     final List<DuplicateGroup> out = <DuplicateGroup>[];
     for (final DuplicateGroup group in clusters.values) {

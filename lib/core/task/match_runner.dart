@@ -64,6 +64,9 @@ class MatchRunner {
   /// 语种覆盖；null = 按标题/艺人自动判断。
   final bool? chinese;
 
+  /// 本次匹配各源失败原因（源 key → 原因）；用于「一首都没命中」时判断是不是联网挂了。
+  final Map<String, String> errors = <String, String>{};
+
   /// 一个批次共用一个 id，撤销时按整批回滚。
   String newBatchId() => 'match-${DateTime.now().millisecondsSinceEpoch}';
 
@@ -144,6 +147,7 @@ class MatchRunner {
 
     final AggregateResult agg =
         await Aggregator.tagCandidates(q, chinese: chinese, fetch: fetch);
+    if (agg.errors.isNotEmpty) errors.addAll(agg.errors);
     if (agg.candidates.isEmpty) {
       if (memory != null) {
         memory!.record(f.docId, f.size, f.lastModified, BatchMemory.noHit);

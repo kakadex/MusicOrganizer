@@ -3,6 +3,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../../app/cover_song_row.dart';
 import '../../app/ui_kit.dart';
 import '../../core/model/vfile.dart';
 import 'lyrics_logic.dart';
@@ -36,7 +37,9 @@ class LyricRowTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final LyricChoice? choice = row.choice;
-    return SongRow(
+    return CoverSongRow(
+      key: ValueKey<String>(row.file.docId),
+      file: row.file,
       title: row.file.stem(),
       subtitle: choice == null ? row.status : '${row.status} · ${choice.note}',
       selectionMode: choice != null,

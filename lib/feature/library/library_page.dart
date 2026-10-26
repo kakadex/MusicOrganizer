@@ -187,7 +187,13 @@ class _LibraryPageState extends State<LibraryPage> {
     if (!mounted) return;
     setState(() => _busy = false);
     if (plans.isEmpty) {
-      moSnack(context, '没有匹配结果（可能都已经是完整标签）');
+      if (runner.errors.isNotEmpty) {
+        final String why = runner.errors.values.first;
+        moSnack(context,
+            '联网匹配失败：$why。请检查网络连接或代理设置（设置 → 网络与并发）');
+      } else {
+        moSnack(context, '没有匹配结果（可能都已经是完整标签）');
+      }
       return;
     }
     final bool? wrote = await PreviewSheet.show(context, plans);

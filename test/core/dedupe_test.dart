@@ -130,4 +130,25 @@ void main() {
     expect(groups[0].files.length, 3);
     expect(groups[1].files.length, 2);
   });
+
+  test('同名但内嵌艺人不同：翻唱/重名不成组', () {
+    final List<DuplicateGroup> groups = Duplicates.find(
+      <VFile>[
+        song('r/a/示例歌名.mp3', size: 3000),
+        song('r/b/示例歌名.mp3', size: 3100),
+      ],
+      tagArtist: (VFile f) => f.docId.contains('/a/') ? '甲' : '乙',
+    );
+    expect(groups, isEmpty);
+  });
+
+  test('同名无艺人且读不到时长：标疑似而不是确证', () {
+    final List<DuplicateGroup> groups = Duplicates.find(<VFile>[
+      song('r/a/示例歌名.mp3'),
+      song('r/b/示例歌名.mp3'),
+      song('r/c/示例歌名.mp3'),
+    ]);
+    expect(groups.length, 1);
+    expect(groups.single.suspect, isTrue);
+  });
 }

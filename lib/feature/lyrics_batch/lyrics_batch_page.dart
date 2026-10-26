@@ -9,7 +9,6 @@ import 'package:flutter/material.dart';
 import '../../app/repo.dart';
 import '../../app/ui_kit.dart';
 import '../../core/match/local_query.dart';
-import '../../core/model/lyric_hit.dart';
 import '../../core/model/query.dart';
 import '../../core/model/tags.dart';
 import '../../core/model/task_control.dart';
@@ -158,6 +157,8 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
     final control = running?.control;
     final int total = _rows.length;
     int found = 0;
+    // 累计各源失败原因（去重），用于「一首都没拿到」时判断是不是联网挂了。
+    final Map<String, String> netErrors = <String, String>{};
 
     for (int i = 0; i < total; i++) {
       if (control?.isCancelled() ?? false) break;
@@ -175,9 +176,10 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
       try {
         final Tags tags = await Scanner.readTags(store, row.file);
         final Query q = LocalQuery.forFile(row.file, tags);
-        final List<LyricHit> hits = await Aggregator.lyricCandidates(
+        final LyricAggregateResult agg = await Aggregator.lyricCandidates(
             LocalQuery.lyric(q, album: tags.get('album')));
-        final LyricChoice? best = LyricPick.best(q, hits);
+        netErrors.addAll(agg.errors);
+        final LyricChoice? best = LyricPick.best(q, agg.hits);
         row.choice = best;
         row.selected = best != null && !best.low;
         row.status = best == null
@@ -197,7 +199,14 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
       _fetching = false;
       _fetched = true;
     });
-    moSnack(context, '找到 $found 首歌词，确认后再写入');
+    if (found == 0 && netErrors.isNotEmpty) {
+      // 一首都没拿到、但联网源报了错 → 明确告诉用户是网络问题，而不是「没词」。
+      final String why = netErrors.values.first;
+      moSnack(context,
+          '联网取词失败：$why。请检查网络连接或代理设置（设置 → 网络与并发）');
+    } else {
+      moSnack(context, '找到 $found 首歌词，确认后再写入');
+    }
   }
 
   Future<void> _confirmWrite() async {

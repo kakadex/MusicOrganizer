@@ -37,12 +37,21 @@ class AggregateResult {
   AggregateResult(this.candidates, this.errors, this.totalBeforeDedupe);
 
   final List<Candidate> candidates;
-
   /// 源 key → 错误原因。
   final Map<String, String> errors;
 
   /// 去重前的候选总数（日志里用来说明「合并掉多少」）。
   final int totalBeforeDedupe;
+}
+
+/// 歌词聚合产出：命中 + 每家失败原因（界面据此提示「是不是没联网」）。
+class LyricAggregateResult {
+  LyricAggregateResult(this.hits, this.errors);
+
+  final List<LyricHit> hits;
+
+  /// 源 key → 失败原因；空串条目不会出现。
+  final Map<String, String> errors;
 }
 
 /// 多源聚合（纯编排，不含网络细节）。
@@ -125,7 +134,10 @@ abstract final class Aggregator {
   /// 取歌词候选：并发问各家，返回按 [offerScore] 排好序的命中（越靠前越可信）。
   ///
   /// 最终「取不取、取哪条」由匹配链路决定，这里只负责并发与排序。
-  static Future<List<LyricHit>> lyricCandidates(
+  /// 与 [tagCandidates] 不同，歌词聚合**不**按 `Endpoints.enabled` 过滤——
+  /// 歌词源没有「关掉某一家」的设置项；但会把每家失败原因带出来，
+  /// 调用方若一首都没拿到，可据此判断是「真没词」还是「联网挂了」。
+  static Future<LyricAggregateResult> lyricCandidates(
     LyricQuery q, {
     LyricScorer? score,
     TextFetcher? text,
@@ -133,12 +145,14 @@ abstract final class Aggregator {
     Iterable<String>? only,
   }) async {
     final List<Future<List<LyricHit>>> tasks = <Future<List<LyricHit>>>[];
+    final Map<String, String> errors = <String, String>{};
     final List<LyricSource> sources = SourceRegistry.lyrics(only: only);
     for (final LyricSource s in sources) {
       tasks.add(() async {
         try {
           return await s.search(q, text: text, json: json);
-        } catch (_) {
+        } catch (e) {
+          errors[s.key] = _short(e);
           return <LyricHit>[];
         }
       }());
@@ -148,7 +162,7 @@ abstract final class Aggregator {
     for (final List<LyricHit> g in groups) {
       out.addAll(g);
     }
-    return out;
+    return LyricAggregateResult(out, errors);
   }
 
   static Future<SourceResult> _ask(TagSource s, Query q, JsonFetcher? fetch) async {

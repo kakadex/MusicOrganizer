@@ -238,8 +238,32 @@ class _OrganizePageState extends State<OrganizePage> {
   }
 
   Future<void> _dedupe(List<VFile> files) async {
-    final List<DuplicateGroup> groups = Duplicates.find(files);
+    // 第一遍：只比文件名（不读标签，秒出）。把「同名但文件名没写艺人」的候选挑出来，
+    // 读它们内嵌标签里的艺人，用来区分翻唱 / 重名 —— 与 Java 版一致，避免把不同歌手的
+    // 同名歌曲误判为重复。
+    List<DuplicateGroup> groups = Duplicates.find(files);
     if (!mounted) return;
+    if (groups.isNotEmpty) {
+      final Map<String, VFile> byDoc = <String, VFile>{};
+      for (final VFile f in files) {
+        byDoc[f.docId] = f;
+      }
+      final Set<String> need = <String>{};
+      for (final DuplicateGroup g in groups) {
+        for (final DuplicateItem it in g.files) {
+          if (DuplicateGroup.artistKeyOf(it.file.stem()).isEmpty) {
+            need.add(it.file.docId);
+          }
+        }
+      }
+      if (need.isNotEmpty) {
+        final Map<String, String> artistMap = <String, String>{};
+        await _readTagArtists(byDoc, need, artistMap);
+        if (!mounted) return;
+        groups = Duplicates.find(files,
+            tagArtist: (VFile f) => artistMap[f.docId] ?? '');
+      }
+    }
     if (groups.isEmpty) {
       moSnack(context, '没有发现相似文件名');
       return;
@@ -282,6 +306,30 @@ class _OrganizePageState extends State<OrganizePage> {
     );
   }
 
+  /// 给候选文件补读内嵌标签艺人（只限 [docIds]，带缓存、限并发 8），让查重能用艺人区分
+  /// 翻唱 / 重名。结果写进 [out]（docId → 原始艺人串，由 [Duplicates.find] 归一）。
+  Future<void> _readTagArtists(Map<String, VFile> byDoc, Set<String> docIds,
+      Map<String, String> out) async {
+    final List<VFile> targets = docIds
+        .where((String id) => byDoc.containsKey(id))
+        .map((String id) => byDoc[id]!)
+        .toList();
+    const int k = 8;
+    for (int i = 0; i < targets.length; i += k) {
+      final int end = i + k < targets.length ? i + k : targets.length;
+      final List<VFile> batch = targets.sublist(i, end);
+      await Future.wait(batch.map((VFile f) async {
+        try {
+          final Tags t = await Scanner.readTags(_repo.store!, f);
+          final String a = t.get('artist').trim();
+          if (a.isNotEmpty) out[f.docId] = a;
+        } catch (_) {
+          // 读不到就当没有艺人，退回文件名 + 时长判定
+        }
+      }));
+    }
+  }
+
   Future<void> _junk(List<VFile> all) async {
     final List<VFile> junk = all.where(Junk.isJunk).toList();
     final bool? go = await showMoSheet<bool>(
@@ -322,7 +370,11 @@ class _OrganizePageState extends State<OrganizePage> {
     moSnack(context, '已删除 $ok 个');
   }
 
-  /// 批量清理标签文本（只改真需要改的字段，写入走事务）。
+  /// 批量清理标签文本（只改真需要改的字段）。
+  ///
+  /// **两步**：先逐首算出「哪些字段要改、改成什么」并出预览（旧值 → 新值），
+  /// 用户确认后才写盘（写盘走事务）。这是本项目的硬约束——
+  /// 任何写入 / 改动都必须先预览再写，清理标签也不例外。
   Future<void> _tidy(List<VFile> files) async {
     setState(() => _busy = true);
     final RunningTask? task = TaskCenter.start('清理标签文本');
@@ -334,10 +386,8 @@ class _OrganizePageState extends State<OrganizePage> {
       return;
     }
     const int ops = TagFix.trim | TagFix.spaces | TagFix.width | TagFix.padTrack;
-    final String batchId = 'tidy-${DateTime.now().millisecondsSinceEpoch}';
-    int changed = 0;
-    int skipped = 0;
-    int failed = 0;
+    // 第一遍：只算计划，不写盘。
+    final List<_TidyItem> items = <_TidyItem>[];
     int i = 0;
     for (final VFile f in files) {
       if (control?.isCancelled() ?? false) break;
@@ -345,26 +395,159 @@ class _OrganizePageState extends State<OrganizePage> {
       control?.report(i, files.length, f.name);
       final Tags tags = await Scanner.readTags(_repo.store!, f);
       final Map<String, String> plan = TagFix.plan(tags, ops);
-      if (plan.isEmpty) {
-        skipped++;
-        continue;
+      if (plan.isEmpty) continue;
+      final List<_TidyChange> changes = <_TidyChange>[];
+      for (final MapEntry<String, String> e in plan.entries) {
+        changes.add(_TidyChange(e.key, tags.get(e.key), e.value));
       }
-      final String err = await tx.apply(f, plan, record: true, batchId: batchId);
-      if (err.isEmpty) {
-        changed++;
-        _repo.invalidate(f);
-      } else {
-        failed++;
-      }
+      items.add(_TidyItem(f, changes));
     }
     TaskCenter.finish();
     if (!mounted) return;
     setState(() => _busy = false);
-    moSnack(context, '改动 $changed 首，无需改动 $skipped 首，失败 $failed 首',
+    if (items.isEmpty) {
+      moSnack(context, '没有需要清理的标签');
+      return;
+    }
+    // 预览确认：逐首展开旧值 → 新值。
+    final bool? go = await showMoSheet<bool>(
+      context,
+      title: '清理预览（${items.length} 首）',
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 0, MoKit.pagePad, 8),
+          child: Text(
+            '仅做本地文本整理：去首尾空白 / 折叠多余空格 / 全角转半角 / 音轨号补零。'
+            '确认后才写盘，可撤销。',
+            style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context)),
+          ),
+        ),
+        for (final _TidyItem it in items.take(80)) _tidyPreviewRow(it),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 10, MoKit.pagePad, 8),
+          child: MoButton('执行清理（${items.length} 首）',
+              onPressed: () => Navigator.of(context).pop(true)),
+        ),
+      ],
+    );
+    if (go != true) return;
+
+    // 第二遍：确认后才写盘。
+    setState(() => _busy = true);
+    final RunningTask? wTask = TaskCenter.start('写入清理');
+    final TaskControl? wControl = wTask?.control;
+    final String batchId = 'tidy-${DateTime.now().millisecondsSinceEpoch}';
+    int changed = 0;
+    int failed = 0;
+    int done = 0;
+    for (final _TidyItem it in items) {
+      if (wControl?.isCancelled() ?? false) break;
+      final Map<String, String> plan = <String, String>{
+        for (final _TidyChange c in it.changes) c.field: c.newValue
+      };
+      final String err = await tx.apply(it.file, plan, record: true, batchId: batchId);
+      if (err.isEmpty) {
+        changed++;
+        _repo.invalidate(it.file);
+      } else {
+        failed++;
+      }
+      done++;
+      wControl?.report(done, items.length, it.file.name);
+    }
+    TaskCenter.finish();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    moSnack(context, '改动 $changed 首，失败 $failed 首',
         actionLabel: changed == 0 ? null : '撤销',
         onAction: () async {
           final int n = await undoBatch(batchId);
           if (mounted) moSnack(context, '已撤销 $n 处');
         });
   }
+
+  /// 预览里一首歌的改动清单。
+  Widget _tidyPreviewRow(_TidyItem it) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(MoKit.pagePad, 0, MoKit.pagePad, 8),
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+      decoration: BoxDecoration(
+        color: MoKit.card(context),
+        borderRadius: BorderRadius.circular(MoKit.radiusRow),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(it.file.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontSize: MoKit.fsBody,
+                  fontWeight: FontWeight.w500,
+                  color: MoKit.text(context))),
+          const SizedBox(height: 4),
+          for (final _TidyChange c in it.changes)
+            Padding(
+              padding: const EdgeInsets.only(top: 3),
+              child: Text.rich(TextSpan(children: <TextSpan>[
+                TextSpan(
+                    text: '${_tidyFieldName(c.field)}：',
+                    style: TextStyle(
+                        fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
+                TextSpan(
+                    text: c.oldValue.isEmpty ? '（空）' : c.oldValue,
+                    style: TextStyle(
+                        fontSize: MoKit.fsBody, color: MoKit.faint(context))),
+                TextSpan(
+                    text: '  →  ',
+                    style: TextStyle(
+                        fontSize: MoKit.fsBody, color: MoKit.faint(context))),
+                TextSpan(
+                    text: c.newValue,
+                    style: TextStyle(
+                        fontSize: MoKit.fsBody,
+                        fontWeight: FontWeight.w500,
+                        color: MoKit.text(context))),
+              ])),
+            ),
+        ],
+      ),
+    );
+  }
+
+  String _tidyFieldName(String key) {
+    switch (key) {
+      case 'title':
+        return '标题';
+      case 'artist':
+        return '歌手';
+      case 'album':
+        return '专辑';
+      case 'year':
+        return '年份';
+      case 'track':
+        return '音轨';
+      case 'genre':
+        return '流派';
+      default:
+        return key;
+    }
+  }
+}
+
+/// 清理预览：一首歌 + 它的字段改动。
+class _TidyItem {
+  const _TidyItem(this.file, this.changes);
+
+  final VFile file;
+  final List<_TidyChange> changes;
+}
+
+/// 单个字段的旧值 → 新值。
+class _TidyChange {
+  const _TidyChange(this.field, this.oldValue, this.newValue);
+
+  final String field;
+  final String oldValue;
+  final String newValue;
 }

@@ -77,15 +77,18 @@ class _UpdateSheetState extends State<UpdateSheet> {
   }
 
   /// 按优先级依次尝试；失败原因逐条留下，最后一起展示。
+  ///
+  /// 国内优先：Gitee 清单 → Gitee 接口 → GitHub 清单 → GitHub 接口。
   Future<void> _tryAll() async {
     Release? r = await _manifest(
         'Gitee 版本清单', Endpoints.urlOf('gitee', 0), Http.readTimeoutCnMs);
+    r ??= await _api('Gitee Release 接口', Endpoints.urlOf('gitee', 3));
     r ??= await _manifest('GitHub 版本清单', Endpoints.urlOf('update', 3),
         Http.readTimeoutOverseasMs);
     r ??= await _api('GitHub Release 接口', Endpoints.urlOf('update', 0));
     if (!mounted) return;
     if (r == null) {
-      setState(() => _error = '三步检查都没有拿到版本信息');
+      setState(() => _error = '四个来源都没拿到版本信息');
       return;
     }
     setState(() => _release = r);
@@ -99,7 +102,8 @@ class _UpdateSheetState extends State<UpdateSheet> {
     _report('正在读取$label…');
     final String? text = await Http.getText(url, null, null, timeout);
     if (text == null) {
-      _failures.add('$label：无法访问或超时（$url）');
+      final String why = Http.lastError.isEmpty ? '无响应' : Http.lastError;
+      _failures.add('$label：无法访问或超时（$why）');
       return null;
     }
     final Release? r = AppUpdate.parseManifest(text, url);
@@ -124,7 +128,8 @@ class _UpdateSheetState extends State<UpdateSheet> {
       Http.readTimeoutOverseasMs,
     );
     if (json == null) {
-      _failures.add('$label：无法访问、超时或返回为空');
+      final String why = Http.lastError.isEmpty ? '无响应' : Http.lastError;
+      _failures.add('$label：无法访问、超时或返回为空（$why）');
       return null;
     }
     final Release? r = AppUpdate.parseRelease(json);
@@ -186,7 +191,7 @@ class _UpdateSheetState extends State<UpdateSheet> {
             Expanded(
               child: MoButton('打开发布页',
                   primary: false,
-                  onPressed: () => _open(Endpoints.urlOf('update', 1))),
+                  onPressed: () => _open(Endpoints.urlOf('gitee', 1))),
             ),
           ],
         ),
@@ -269,8 +274,9 @@ class _UpdateSheetState extends State<UpdateSheet> {
   }
 
   String _pageUrl(Release r) {
-    if (r.pageUrl.isNotEmpty) return r.pageUrl;
-    return Endpoints.urlOf('update', 1);
+    // 国内优先：清单/接口给的 page 若是 Gitee 就直接用，否则统一回 Gitee 发布页
+    if (r.pageUrl.isNotEmpty && r.pageUrl.contains('gitee.com')) return r.pageUrl;
+    return Endpoints.urlOf('gitee', 1);
   }
 
   Future<void> _open(String url) async {

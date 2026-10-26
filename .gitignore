@@ -48,4 +48,6 @@ app.*.map.json
 .widget_preview/
 
 # 本地分发目录（zip + APK 直发用，CI Release 才是官方分发点；不入库二进制）
-/dist/
+/dist/*
+# 例外：版本清单随源码入库（应用内「检查更新」优先读它）
+!dist/latest.txt
