@@ -18,6 +18,7 @@ import 'dart:math' as math;
 import '../match/text_util.dart';
 import '../model/duplicate_group.dart';
 import '../model/vfile.dart';
+import 'content_sample.dart';
 
 abstract final class Duplicates {
   /// 成组相似度门槛：达到它才算「像同一首」。
@@ -71,9 +72,11 @@ abstract final class Duplicates {
             _artistOf(DuplicateGroup.normalizeDuplicateKey(tagArtist(audio[i])));
       }
     }
-    // 有效艺人：文件名优先，文件名没有才用内嵌标签。
+    // 有效艺人：内嵌标签优先（标签比文件名可靠），文件名没有才用内嵌标签。
+    // 文件名的「艺人」常常是解析反了的歌名（曲库常见「歌名-歌手」写法），
+    // 拿它当唯一依据会把同一歌手的一整片歌错并成一组。
     String effArtist(int i) =>
-        artists[i].isNotEmpty ? artists[i] : tagArtists[i];
+        tagArtists[i].isNotEmpty ? tagArtists[i] : artists[i];
     final _UnionFind uf = _UnionFind(total);
     // 归一后整串相同：先并组，后面不必再两两算相似度。但同名且「已知艺人明确不同」
     // 的（翻唱 / 重名）不当重复 —— 文件名没写艺人时靠内嵌标签艺人补刀。byKey 簇很小，
@@ -156,12 +159,19 @@ abstract final class Duplicates {
             needDuration = true;
           }
         } else {
+          // 歌名相似只有在「两边确实是同一首歌/同一个歌手」时才作数。
+          // 文件名的艺人段常常解析反了（曲库常见「歌名-歌手」写法），
+          // 所以这里用「艺人段是否冲突」来给歌名相似度设闸：两边艺人段都解析得出
+          // 且明显不同 → 不是同一首，歌名再像也不并组。
+          final bool artistOk = artists[i].isEmpty ||
+              artists[other].isEmpty ||
+              TextUtil.smartSimilarity(artists[i], artists[other]) >= artistSame;
           double fullScore = 0;
           if (_lengthGateOk(keys[i], otherKey, threshold)) {
             fullScore = TextUtil.smartSimilarity(keys[i], otherKey);
           }
           final double titleScore =
-              bothTitles ? TextUtil.smartSimilarity(t1, t2) : 0;
+              (bothTitles && artistOk) ? TextUtil.smartSimilarity(t1, t2) : 0;
           matched = math.max(fullScore, titleScore) >= similarityThreshold;
           if (matched) {
             // 哪一路分数高就按哪一路的包含度判定「证据是不是只靠包含度」
@@ -235,6 +245,46 @@ abstract final class Duplicates {
       return w != 0 ? w : a.key.compareTo(b.key);
     });
     return out;
+  }
+
+  /// 疑似组的内容核验：拿不准的组去比对「大小 + 首尾各 64KB」。
+  ///
+  /// 文件名只给线索，内容才给结论：
+  /// - 全部内容一致 → [DuplicateGroup.contentSame]，取消「疑似」，升为确证重复；
+  /// - 内容对不上 → [DuplicateGroup.contentDiff]，说明只是名字像（不同版本 / 翻唱），
+  ///   **不是同一份文件**，不能当重复删；
+  /// - 有文件读不到 → [DuplicateGroup.contentUnknown]，维持「疑似」，交给用户判断。
+  ///
+  /// 只核验「疑似」组：名字证据本来就强的组不必再花 IO。
+  static Future<void> verifyContent(List<DuplicateGroup> groups,
+      Future<ContentSample?> Function(VFile) sample) async {
+    for (final DuplicateGroup g in groups) {
+      if (!g.suspect) continue;
+      ContentSample? first;
+      bool anyMissing = false;
+      bool differs = false;
+      for (final DuplicateItem it in g.files) {
+        final ContentSample? s = await sample(it.file);
+        if (s == null) {
+          anyMissing = true;
+          continue;
+        }
+        if (first == null) {
+          first = s;
+        } else if (!first.sameAs(s)) {
+          differs = true;
+          break;
+        }
+      }
+      if (differs) {
+        g.content = DuplicateGroup.contentDiff;
+      } else if (first != null && !anyMissing) {
+        g.content = DuplicateGroup.contentSame;
+        g.suspect = false; // 内容逐字节一致 → 确证
+      } else {
+        g.content = DuplicateGroup.contentUnknown;
+      }
+    }
   }
   /// 组内最高相似度（组一般只有两三个文件，两两比较代价可忽略）。
   static double _groupScore(DuplicateGroup group) {

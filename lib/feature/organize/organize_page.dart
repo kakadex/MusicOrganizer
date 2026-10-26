@@ -3,8 +3,11 @@ import 'package:flutter/material.dart';
 import '../../app/repo.dart';
 import '../../app/ui_kit.dart';
 import '../../core/cleanup/junk.dart';
+import '../../core/dedupe/content_reader.dart';
 import '../../core/dedupe/duplicates.dart';
+import '../../core/fs/file_store.dart';
 import '../../core/match/tag_fix.dart';
+import '../../core/match/text_util.dart';
 import '../../core/model/duplicate_group.dart';
 import '../../core/model/tags.dart';
 import '../../core/model/task_control.dart';
@@ -238,6 +241,7 @@ class _OrganizePageState extends State<OrganizePage> {
   }
 
   Future<void> _dedupe(List<VFile> files) async {
+    final FileStore? store = _repo.store;
     // 第一遍：只比文件名（不读标签，秒出）。把「同名但文件名没写艺人」的候选挑出来，
     // 读它们内嵌标签里的艺人，用来区分翻唱 / 重名 —— 与 Java 版一致，避免把不同歌手的
     // 同名歌曲误判为重复。
@@ -264,45 +268,105 @@ class _OrganizePageState extends State<OrganizePage> {
             tagArtist: (VFile f) => artistMap[f.docId] ?? '');
       }
     }
+    // 第二遍：拿不准的组去比对内容（大小 + 首尾各 64KB）。文件名只给线索，内容才给结论：
+    // 内容对不上的说明只是名字像（不同版本 / 翻唱），不是重复。
+    if (groups.isNotEmpty && store != null) {
+      setState(() => _busy = true);
+      await Duplicates.verifyContent(groups, (VFile f) => ContentReader.sample(store, f));
+      if (!mounted) return;
+      setState(() => _busy = false);
+    }
     if (groups.isEmpty) {
       moSnack(context, '没有发现相似文件名');
       return;
     }
+    // 内容不同的组不算重复：单列出来，免得把别人的歌当成重复删了。
+    final List<DuplicateGroup> dups = groups
+        .where((DuplicateGroup g) => g.content != DuplicateGroup.contentDiff)
+        .toList();
+    final List<DuplicateGroup> lookalikes = groups
+        .where((DuplicateGroup g) => g.content == DuplicateGroup.contentDiff)
+        .toList();
+    if (dups.isEmpty && lookalikes.isEmpty) {
+      moSnack(context, '没有发现重复文件');
+      return;
+    }
     await showMoSheet<void>(
       context,
-      title: '疑似重复 ${groups.length} 组',
+      title: dups.isEmpty
+          ? '没有发现重复文件'
+          : '重复 ${dups.length} 组'
+              '${lookalikes.isEmpty ? '' : ' · 另有 ${lookalikes.length} 组只是名字像'}',
       children: <Widget>[
-        for (final DuplicateGroup g in groups.take(50))
+        if (dups.isNotEmpty)
           Padding(
-            padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 6, MoKit.pagePad, 6),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Row(
-                  children: <Widget>[
-                    if (g.suspect)
-                      Container(
-                        margin: const EdgeInsets.only(right: 6),
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                        decoration: BoxDecoration(
-                            color: MoKit.warn(context).withValues(alpha: 0.16),
-                            borderRadius: BorderRadius.circular(6)),
-                        child: Text('疑似',
-                            style: TextStyle(fontSize: 10, color: MoKit.warn(context))),
-                      ),
-                    Text('${g.files.length} 个文件',
-                        style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
-                  ],
-                ),
-                for (final DuplicateItem item in g.files)
-                  Text('· ${item.relative}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: MoKit.fsBody, color: MoKit.text(context))),
-              ],
-            ),
+            padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 0, MoKit.pagePad, 4),
+            child: Text('大小与首尾各 64KB 一致，确认为同一份文件：',
+                style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
           ),
+        for (final DuplicateGroup g in dups.take(50)) _dupGroup(g, false),
+        if (lookalikes.isNotEmpty) ...<Widget>[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 14, MoKit.pagePad, 4),
+            child: Text('只是名字像，内容对不上，不是重复：',
+                style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
+          ),
+          for (final DuplicateGroup g in lookalikes.take(50)) _dupGroup(g, true),
+        ],
       ],
+    );
+  }
+
+  /// 查重结果里的一组。[lookalike] 为 true 表示「名字像但内容不同」。
+  Widget _dupGroup(DuplicateGroup g, bool lookalike) {
+    final Color tag = lookalike ? MoKit.sub(context) : MoKit.ok(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 6, MoKit.pagePad, 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Container(
+                margin: const EdgeInsets.only(right: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                    color: tag.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(6)),
+                child: Text(lookalike ? '内容不同' : '内容一致',
+                    style: TextStyle(fontSize: 10, color: tag)),
+              ),
+              if (g.suspect)
+                Container(
+                  margin: const EdgeInsets.only(right: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  decoration: BoxDecoration(
+                      color: MoKit.warn(context).withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(6)),
+                  child: Text('疑似',
+                      style: TextStyle(fontSize: 10, color: MoKit.warn(context))),
+                ),
+              Expanded(
+                child: Text('${g.files.length} 个文件 · 相似度 ${(g.score * 100).round()}%',
+                    style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
+              ),
+            ],
+          ),
+          for (final DuplicateItem item in g.files)
+            Text('· ${item.relative}'
+                '${item.size > 0 ? '（${TextUtil.formatSize(item.size)}）' : ''}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: MoKit.fsBody, color: MoKit.text(context))),
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(lookalike
+                ? '首尾采样对不上 —— 不是同一份内容（可能是不同版本或别人的翻唱）。'
+                : '重复占用约 ${TextUtil.formatSize(g.wastedBytes())}',
+                style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
+          ),
+        ],
+      ),
     );
   }
 

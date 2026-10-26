@@ -1,4 +1,7 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:musicorganizer/core/dedupe/content_sample.dart';
 import 'package:musicorganizer/core/dedupe/duplicates.dart';
 import 'package:musicorganizer/core/model/duplicate_group.dart';
 import 'package:musicorganizer/core/model/vfile.dart';
@@ -150,5 +153,44 @@ void main() {
     ]);
     expect(groups.length, 1);
     expect(groups.single.suspect, isTrue);
+  });
+
+  test('「歌名-歌手」写法的两首不同歌：靠包含度也不成组', () {
+    // 文件名是「歌名-歌手」写法时，艺人段会被解析成歌名、歌名段被解析成歌手，
+    // 于是两首歌的「歌名」段变成同一个歌手名，短的那个还是长的那个的子串 ——
+    // 只看包含度会把整片歌并成一组。两边艺人段明确不同 → 不成组。
+    final List<DuplicateGroup> groups = Duplicates.find(<VFile>[
+      song('r/一千个伤心的理由-示例歌手.mp3', size: 1000),
+      song('r/你最珍贵-示例歌手嘉宾.mp3', size: 2000),
+    ]);
+    expect(groups, isEmpty);
+  });
+
+  test('内容核验：一致升为确证，不同标为「内容不同」', () async {
+    final List<DuplicateGroup> same = Duplicates.find(<VFile>[
+      song('r/a/示例歌名.mp3', size: 1024),
+      song('r/b/示例歌名.mp3', size: 1024),
+    ]);
+    // 造一个「名字像但读不到时长」的组，才能进内容核验
+    same[0].suspect = true;
+    await Duplicates.verifyContent(same, (VFile f) async {
+      return ContentSample(1024, Uint8List.fromList(<int>[1, 2, 3]),
+          Uint8List.fromList(<int>[4, 5, 6]));
+    });
+    expect(same.single.content, DuplicateGroup.contentSame);
+    expect(same.single.suspect, isFalse);
+
+    final List<DuplicateGroup> diff = Duplicates.find(<VFile>[
+      song('r/a/示例歌名.mp3', size: 1024),
+      song('r/b/示例歌名.mp3', size: 1024),
+    ]);
+    diff[0].suspect = true;
+    await Duplicates.verifyContent(diff, (VFile f) async {
+      // 按 docId 造出不同内容
+      return ContentSample(1024, Uint8List.fromList(<int>[f.docId.codeUnitAt(2)]),
+          Uint8List.fromList(<int>[4, 5, 6]));
+    });
+    expect(diff.single.content, DuplicateGroup.contentDiff);
+    expect(diff.single.suspect, isTrue);
   });
 }
