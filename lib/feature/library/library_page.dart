@@ -7,6 +7,7 @@ import '../../app/app_focus.dart';
 import '../../app/cover_cache.dart';
 import '../../app/repo.dart';
 import '../../app/ui_kit.dart';
+import '../../core/match/match_queue.dart';
 import '../../core/match/tag_plan.dart';
 import '../../core/model/task_control.dart';
 import '../../core/model/vfile.dart';
@@ -154,7 +155,7 @@ class _LibraryPageState extends State<LibraryPage> {
     });
   }
 
-  Future<void> _matchSelected() async {
+  Future<void> _matchSelected({bool ignoreMemory = false}) async {
     final repo = Repo.instance;
     final runner = repo.runner;
     if (runner == null) return;
@@ -167,9 +168,17 @@ class _LibraryPageState extends State<LibraryPage> {
     setState(() => _busy = true);
     final RunningTask? task = TaskCenter.start('匹配标签');
     final TaskControl? control = task?.control;
+    if (ignoreMemory) {
+      // 用户明确要重来：清掉这些文件的续跑条目，否则又会拿到上次的结论
+      for (final VFile f in files) {
+        runner.queue?.mark(f.docId, MatchQueue.skipped);
+      }
+      runner.queue?.clearFinished();
+    }
     final List<FilePlan> plans = await runner.match(
       files,
       control: control,
+      ignoreMemory: ignoreMemory,
       onPlan: (int done, int total, FilePlan plan) {
         control?.report(done, total, plan.file.name);
       },
@@ -450,6 +459,15 @@ class _LibraryPageState extends State<LibraryPage> {
           onTap: () {
             Navigator.of(context).pop();
             _push(LyricsBatchPage(files: files));
+          },
+        ),
+        MoTile(
+          title: '忽略上次结果，重新匹配',
+          subtitle: '清掉这批的续跑队列与「无命中」记忆，重头问一遍',
+          icon: Icons.refresh,
+          onTap: () {
+            Navigator.of(context).pop();
+            _matchSelected(ignoreMemory: true);
           },
         ),
         MoTile(
