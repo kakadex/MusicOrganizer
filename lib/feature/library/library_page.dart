@@ -19,6 +19,7 @@ import '../covers/covers_page.dart';
 import '../editor/editor_page.dart';
 import '../lyrics_batch/lyrics_batch_page.dart';
 import '../organize/rename_flow.dart';
+import '../tag_batch/batch_edit.dart';
 import 'preview_sheet.dart';
 
 /// 曲库页：搜索 + 筛选 + 排序 + 多选 + 批量匹配。
@@ -559,6 +560,15 @@ class _LibraryPageState extends State<LibraryPage> {
           onTap: () {
             Navigator.of(context).pop();
             _matchSelected(ignoreMemory: true);
+          },
+        ),
+        MoTile(
+          title: '批量改标签',
+          subtitle: '统一设专辑 / 流派 / 年份等，可重排音轨号',
+          icon: Icons.edit_note_outlined,
+          onTap: () {
+            Navigator.of(context).pop();
+            runBatchEdit(context, files);
           },
         ),
         MoTile(
