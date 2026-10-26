@@ -4,7 +4,7 @@
 
 整理手机里散乱的本地音乐：批量补标签、配歌词、查重、按「艺人 / 专辑」归位。
 
-纯 Java + Android 框架 API 实现，**零第三方依赖**（无 AndroidX、无 Material、无 OkHttp）。
+纯 Java + Android 框架 API 为主；**不绑定任何需注册账号的第三方平台**，数据源一律走公开接口。安装包自包含——第三方库直接打包、免环境配置即装即用（体积控制在 15MB 内）。可靠的开源库在许可合规、可靠度足够高时可直接用，不为「零依赖」重复造轮子（当前界面与网络层均为手写，未引入 AndroidX / Material / OkHttp）。
 ID3 / FLAC 读写、多源元数据聚合、HTTP 客户端、界面控件全部手写。
 
 ---
@@ -29,11 +29,6 @@ GitHub（备用）：
 - **GitHub Releases**：[github.com/kakadex/MusicOrganizer/releases](https://github.com/kakadex/MusicOrganizer/releases) —— 同一个 Release 里同时挂 APK 与桌面版 exe
 
 > 桌面版与安卓版共用同一个版本号（例如 `0.1.89-236781`），功能与标签逻辑保持同步。
-
-**版本号规则（v0.1.100 之后实行）**：版本号第二、三段范围 **0-99，满 100 进位** ——
-`0.1.100` 的下一版是 `0.2.0`，`0.2.100` → `0.3.0`，`0.100.5` → `1.0.5`。
-大变动（里程碑）由维护者手动指定版本号。两端版本串由仓库外层的
-`sync-version.sh` 统一写入并校验。
 
 > App 内的「检查更新」也是**国内优先**：先读 Gitee 上的 `dist/latest.txt`，
 > 连不上再退到 GitHub（清单 → Release API），下载同样优先给 Gitee 的直链。
