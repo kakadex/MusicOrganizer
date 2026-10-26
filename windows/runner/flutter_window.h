@@ -31,7 +31,8 @@ class FlutterWindow : public Win32Window {
   // The Flutter instance hosted by this window.
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
 
-  // 把「拖进来的文件 / 目录」送给 Dart 侧（通道名与 Dart 里一致）。
+  // Forwards dropped file/folder paths to Dart (channel name matches the
+  // Dart side).
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> drop_channel_;
 };
 

@@ -33,13 +33,13 @@ bool FlutterWindow::OnCreate() {
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
-  // 拖放通道：Windows 侧只负责把路径送过去，怎么用由 Dart 决定。
+  // Channel used to hand dropped file/folder paths over to the Dart side.
   drop_channel_ = std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
       flutter_controller_->engine()->messenger(),
       "com.dsh.musicorganizer/drop",
       &flutter::StandardMethodCodec::GetInstance());
 
-  // 允许把文件 / 文件夹拖进窗口（收 WM_DROPFILES）。
+  // Accept files and folders dragged onto this window (enables WM_DROPFILES).
   DragAcceptFiles(GetHandle(), TRUE);
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
@@ -66,7 +66,7 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
-  // 拖进来的东西：取全部路径 → 交给 Dart → 结束拖放。
+  // Collect every dropped path, forward it to Dart, then finish the drop.
   if (message == WM_DROPFILES) {
     auto drop = reinterpret_cast<HDROP>(wparam);
     const UINT count = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
