@@ -44,6 +44,12 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# 发布签名材料（本机口令 / keystore，严禁入库；CI 由 secrets 生成）
+/android/key.properties
+/android/app/*.keystore
+*.jks
+*.p12
+
 # Widget Preview related
 .widget_preview/
 

@@ -1,4 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 联网（标签/歌词/封面/更新检查）。必须放在 main 清单：Flutter 模板只把它放进
+         debug/profile 清单，release 版会因此完全没网。 -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <!-- 读取音频只在用户点「从系统媒体库导入」时才申请（不选目录不需要任何权限） -->
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     <uses-permission

@@ -39,6 +39,28 @@ jobs:
       - name: Test
         run: flutter test
 
+      # 有密钥 secret 就用正式 keystore 签名（本地/CI 签名一致，升级才能覆盖安装）；
+      # 没配置时退回 debug 签名，不阻断构建。
+      - name: Configure release signing (optional)
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASS: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > android/app/release.keystore
+            {
+              echo "storeFile=release.keystore"
+              echo "storePassword=$STORE_PASS"
+              echo "keyAlias=${KEY_ALIAS:-musicorganizer}"
+              echo "keyPassword=$KEY_PASS"
+            } > android/key.properties
+            echo "release keystore configured"
+          else
+            echo "no ANDROID_KEYSTORE_BASE64 secret; falling back to debug signing"
+          fi
+
       - name: Build APK
         run: flutter build apk --release --split-per-abi
 

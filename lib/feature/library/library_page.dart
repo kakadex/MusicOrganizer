@@ -454,6 +454,8 @@ class _LibraryPageState extends State<LibraryPage> {
     }
     return ListView.builder(
       padding: const EdgeInsets.only(bottom: 12),
+      // 快速滑动优化：离屏行不再保活，避免一次性为大量行保留状态、触发过多封面 I/O。
+      addAutomaticKeepAlives: false,
       itemCount: _shown.length,
       itemBuilder: (BuildContext c, int i) => _row(_shown[i]),
     );

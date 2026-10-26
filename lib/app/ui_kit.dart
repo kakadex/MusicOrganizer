@@ -224,6 +224,11 @@ class CoverBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 按实际显示尺寸解码：封面原图常见 500~1000px，若按全分辨率解到 46dp 的格子里，
+    // 快速滑动时会反复分配大块内存触发 GC，是卡顿的主因。这里给定 cacheWidth/Height，
+    // 让引擎只解到「显示像素」大小（含设备像素比）。
+    final double dpr = MediaQuery.maybeOf(context)?.devicePixelRatio ?? 1.0;
+    final int cachePx = (size * dpr).round().clamp(1, 4096).toInt();
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
       child: Container(
@@ -232,7 +237,11 @@ class CoverBox extends StatelessWidget {
         color: MoKit.line(context),
         child: bytes == null
             ? Icon(Icons.music_note, size: size * 0.42, color: MoKit.faint(context))
-            : Image.memory(bytes!, fit: BoxFit.cover, gaplessPlayback: true),
+            : Image.memory(bytes!,
+                fit: BoxFit.cover,
+                gaplessPlayback: true,
+                cacheWidth: cachePx,
+                cacheHeight: cachePx),
       ),
     );
   }

@@ -43,7 +43,14 @@ class CoverCache {
         _miss.add(key);
         return null;
       }
-      if (_bytes.length >= _limit) _bytes.clear();
+      if (_bytes.length >= _limit) {
+        // 只淘汰最早插入的一批（约 1/4），避免整表清空后快速回滚时全部重读造成卡顿。
+        final List<String> old =
+            _bytes.keys.take(_limit ~/ 4).toList(growable: false);
+        for (final String k in old) {
+          _bytes.remove(k);
+        }
+      }
       _bytes[key] = art;
       return art;
     } catch (_) {

@@ -1,8 +1,8 @@
-version=0.2.2
-tag=v0.2.2
+version=0.2.3
+tag=v0.2.3
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.2/musicorganizer-arm64-v8a.apk
-size=19394737
-sha256=8db1b4a1eccfd3e5e3489ad0cb372937aee2e7efb8940e8c189615179e50666f
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.2
-summary=功能扩充：文件名清理与改名、批量改标签、歌词工具与转简体、单文件编辑器补全（歌词 / 在线取封面 / 在线匹配）、查重内容比对与可删除、日志与崩溃页、搜索高亮与更多排序。
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.3/musicorganizer-arm64-v8a.apk
+size=19394765
+sha256=432f32b46fe67b93044dd335452cde7f9698b336e02ee08320df9387fdd9698d
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.3
+summary=修复正式版无法联网与应用内检查更新失败；优化音乐库快速滑动卡顿；修复部分设备覆盖安装被识别为新安装。

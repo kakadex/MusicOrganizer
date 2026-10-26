@@ -192,12 +192,26 @@ class Repo extends ChangeNotifier {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
 
     if (isDesktop) {
+      // 一次性迁移：旧版本把「上次打开的目录」存在全局偏好里（%APPDATA%），
+      // 换包 / 重装后仍会恢复它，开发机上可能是测试曲库——新安装的包一打开就看到无关目录。
+      // 升级后首次启动清掉旧的记住目录，让用户重新选择；之后照常记忆最后一次选择。
+      if (!(prefs.getBool('desktop_root_migrated_v1') ?? false)) {
+        await prefs.remove('root_doc_id');
+        await prefs.remove('root_tree_uri');
+        await prefs.setBool('desktop_root_migrated_v1', true);
+        return false;
+      }
       // 桌面没有「授权」概念：上次的目录还在就直接用
       final String? path = prefs.getString('root_doc_id');
       if (path != null && Directory(path).existsSync()) {
         root = TreeRef(treeUri: 'file://$path', rootDocId: path);
         notifyListeners();
         return true;
+      }
+      // 记住的目录已不存在：顺手清掉，避免下次再试。
+      if (path != null) {
+        await prefs.remove('root_doc_id');
+        await prefs.remove('root_tree_uri');
       }
       return false;
     }

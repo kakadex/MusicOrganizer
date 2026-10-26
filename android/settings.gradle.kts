@@ -11,6 +11,11 @@ pluginManagement {
     includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
 
     repositories {
+        // 国内镜像优先：Google Maven 直连在国内会被卡住（连接建立但数据不来）。
+        // 保留官方源作兜底，海外环境不受影响。
+        maven { url = uri("https://maven.aliyun.com/repository/google") }
+        maven { url = uri("https://maven.aliyun.com/repository/public") }
+        maven { url = uri("https://maven.aliyun.com/repository/gradle-plugin") }
         google()
         mavenCentral()
         gradlePluginPortal()
