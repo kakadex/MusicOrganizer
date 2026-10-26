@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/cover/folder_cover.dart';
+import '../core/cover/sidecar_cover.dart';
 import '../core/fs/desktop_file_store.dart';
 import '../core/fs/file_store.dart';
 import '../core/fs/saf_file_store.dart';
@@ -300,6 +301,7 @@ class Repo extends ChangeNotifier {
       final ScanMergeResult merge =
           ScanMerge.merge(incremental ? files : null, walk.files);
       FolderCover.invalidate();
+      SidecarCover.invalidate();
       files = merge.files;
       _rebuildIndex();
       notifyListeners();
