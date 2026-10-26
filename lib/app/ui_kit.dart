@@ -441,8 +441,12 @@ class MoButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool enabled = onPressed != null && !busy;
     final Color fg = primary ? Theme.of(context).colorScheme.onPrimary : MoKit.text(context);
+    // 禁用时把底色也压暗：只把字变浅仍然像「可点」，用户会反复戳。
+    final Color bg = enabled
+        ? (primary ? MoKit.primary(context) : MoKit.soft(context))
+        : MoKit.soft(context);
     return Material(
-      color: primary ? MoKit.primary(context) : MoKit.soft(context),
+      color: bg,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: enabled ? onPressed : null,
