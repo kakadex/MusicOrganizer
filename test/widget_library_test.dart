@@ -32,7 +32,7 @@ void main() {
     repo.settings.set('sort_key', 0);
     repo.settings.set('sort_desc', false);
     // 页面只在「已选目录」后才显示搜索与筛选，这里直接给一个根
-    repo.root = const TreeRef(treeUri: 'file:///r', rootDocId: 'r');
+    repo.setRoots(<TreeRef>[const TreeRef(treeUri: 'file:///r', rootDocId: 'r')]);
     repo.files = <VFile>[a, b, c];
     repo.index.clear();
     for (final VFile f in repo.files) {

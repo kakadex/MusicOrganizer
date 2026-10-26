@@ -87,7 +87,7 @@ abstract final class SettingsBackup {
   static const List<String> boolKeys = <String>[
     'recursive', 'skip_artist', 'fast', 'net', 'cn', 'dry',
     'lrc_overwrite', 'lrc_plain', 'lrc_embed', 'lyrics_simplify', 'tag_overwrite',
-    'update_auto', 'theme_dark', 'move_unrec',
+    'update_auto', 'theme_dark', 'move_unrec', 'scan_ignore_video',
   ];
 
   static const String keyLayout = 'layout_id';
@@ -98,6 +98,7 @@ abstract final class SettingsBackup {
   static const String keyProxyMode = 'proxy_mode';
   static const String keyProxyHost = 'proxy_host';
   static const String keyProxyPort = 'proxy_port';
+  static const String keyScanExclude = 'scan_exclude';
 
   static const String prefixEndpoint = 'ep:';
   static const String prefixSourceOn = 'ep_on:';
@@ -121,7 +122,7 @@ abstract final class SettingsBackup {
         key == keyProxyPort) {
       return SettingsKind.intKey;
     }
-    if (key == keyProxyHost) {
+    if (key == keyProxyHost || key == keyScanExclude) {
       return SettingsKind.stringKey;
     }
     if (key.startsWith(prefixFieldMode)) {

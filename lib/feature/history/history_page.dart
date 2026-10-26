@@ -2,12 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../app/repo.dart';
 import '../../app/ui_kit.dart';
-import '../../core/model/journal_entry.dart';
-import '../../core/model/vfile.dart';
 import '../../core/task/task_center.dart';
 import '../../core/tx/journal.dart';
 import '../../core/tx/journal_history.dart';
-import '../../core/tx/tag_transaction.dart';
+import 'undo_flow.dart';
 
 /// 撤销历史：按批次列出写入记录，整批逆序回滚。
 class HistoryPage extends StatefulWidget {
@@ -61,63 +59,20 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 
   Future<void> _undo(JournalBatch batch) async {
-    final Repo repo = Repo.instance;
-    final Journal? journal = repo.journal;
-    final TagTransaction? tx = repo.tx;
-    if (journal == null || tx == null) {
-      moSnack(context, '仓库还没初始化，无法撤销');
-      return;
-    }
     if (_busyKey.isNotEmpty) return;
     if (TaskCenter.isBusy()) {
       moSnack(context, '另一个任务正在运行，等它结束再撤销');
       return;
     }
-    final RunningTask? task = TaskCenter.start('撤销写入');
-    if (task == null) {
-      moSnack(context, '任务没启动起来，请稍后再试');
-      return;
-    }
+    // 撤销也是写盘：先预览「当前值 → 还原后」，用户勾选后才回滚
     setState(() => _busyKey = batch.key);
-
-    final Map<String, VFile> byId = <String, VFile>{
-      for (final VFile f in repo.files) f.docId: f,
-    };
-    List<int> result = <int>[0, 0, 0];
-    try {
-      result = await journal.revertBatch(batch.key,
-          revertOne: (JournalEntry entry) async {
-        final String key = entry.targetId.isNotEmpty ? entry.targetId : entry.uri;
-        final VFile? f = byId[key];
-        if (f == null) return false;
-        final String err = await tx.apply(
-          f,
-          Map<String, String>.from(entry.before),
-          record: false,
-        );
-        if (err.isNotEmpty) return false;
-        repo.invalidate(f);
-        return true;
-      });
-    } catch (e) {
-      if (mounted) moSnack(context, '撤销失败：$e');
-    } finally {
-      TaskCenter.finish();
-    }
-
+    final int? n = await undoBatchWithPreview(context, batchId: batch.key);
     if (!mounted) return;
     setState(() => _busyKey = '');
+    if (n == null) return; // 用户取消 / 没有可还原的
     await _load();
     if (!mounted) return;
-    final int ok = result[0];
-    final int failed = result[1];
-    final int total = result[2];
-    if (total == 0 && failed == 0) return;
-    if (failed == 0) {
-      moSnack(context, '已撤销 $ok 处改动');
-    } else {
-      moSnack(context, '已撤销 $ok 处，失败 $failed 处（共 $total 条）');
-    }
+    moSnack(context, n == 0 ? '没有可还原的改动' : '已撤销 $n 处改动');
   }
 
   @override

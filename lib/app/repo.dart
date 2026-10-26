@@ -12,6 +12,7 @@ import '../core/fs/file_store.dart';
 import '../core/fs/saf_file_store.dart';
 import '../core/fs/tree_ref.dart';
 import '../core/match/batch_memory.dart';
+import '../core/match/tag_fill.dart';
 import '../core/match/match_queue.dart';
 import '../core/model/cancel_token.dart';
 import '../core/model/tags.dart';
@@ -19,6 +20,7 @@ import '../core/model/vfile.dart';
 import '../core/net/http_client.dart';
 import '../core/net/net.dart';
 import '../core/net/proxy_settings.dart';
+import '../core/scan/scan_filter.dart';
 import '../core/scan/scan_merge.dart';
 import '../core/scan/scan_stats.dart';
 import '../core/scan/scanner.dart';
@@ -66,8 +68,11 @@ class Repo extends ChangeNotifier {
   /// 文件系统抽象（安卓 SAF / 桌面 dart:io）。
   FileStore? store;
 
-  /// 当前曲库目录（可空 = 还没授权）。
-  TreeRef? root;
+  /// 已登记的曲库目录（可为空 = 还没授权）。第一个是「当前」目录。
+  final List<TreeRef> roots = <TreeRef>[];
+
+  /// 当前曲库目录（可空 = 还没授权）；[roots] 为空时为 null。
+  TreeRef? get root => roots.isEmpty ? null : roots.first;
 
   /// 扫描结果（音频 + 歌词，按目录名排序）。
   List<VFile> files = <VFile>[];
@@ -93,7 +98,7 @@ class Repo extends ChangeNotifier {
   bool get isInitialized => _initialized;
   bool get scanning => _scanning;
   bool get metaLoading => _metaLoading;
-  bool get hasRoot => root != null;
+  bool get hasRoot => roots.isNotEmpty;
 
   /// 当前平台是桌面（dart:io 直读写）。
   static bool get isDesktop =>
@@ -144,13 +149,19 @@ class Repo extends ChangeNotifier {
       'proxy_mode',
       'proxy_host',
       'proxy_port',
+      'scan_exclude',
+      'scan_ignore_video',
     ]) {
       final Object? v = prefs.get(key);
       if (v != null) settings.set(key, v);
     }
-    // 数据源：改过的接口地址（ep:）与源开关（ep_on:）不固定键名，按前缀捞。
+    // 数据源地址（ep:）/ 源开关（ep_on:）/ 逐字段策略（fp:）键名不固定，按前缀捞。
     for (final String key in prefs.getKeys()) {
-      if (!key.startsWith('ep:') && !key.startsWith('ep_on:')) continue;
+      if (!key.startsWith('ep:') &&
+          !key.startsWith('ep_on:') &&
+          !key.startsWith('fp:')) {
+        continue;
+      }
       final Object? v = prefs.get(key);
       if (v != null) settings.set(key, v);
     }
@@ -199,6 +210,7 @@ class Repo extends ChangeNotifier {
     final FileStore? st = store;
     if (st == null) return false;
     final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final List<String> order = _savedOrder(prefs);
 
     if (isDesktop) {
       // 一次性迁移：旧版本把「上次打开的目录」存在全局偏好里（%APPDATA%），
@@ -210,72 +222,144 @@ class Repo extends ChangeNotifier {
         await prefs.setBool('desktop_root_migrated_v1', true);
         return false;
       }
-      // 桌面没有「授权」概念：上次的目录还在就直接用
-      final String? path = prefs.getString('root_doc_id');
-      if (path != null && Directory(path).existsSync()) {
-        root = TreeRef(treeUri: 'file://$path', rootDocId: path);
-        notifyListeners();
-        return true;
+      // 桌面没有「授权」概念：登记过的目录还在就直接用（不存在的顺手忘掉）
+      final List<String> kept = <String>[];
+      for (final String path in order) {
+        if (Directory(path).existsSync()) kept.add(path);
       }
-      // 记住的目录已不存在：顺手清掉，避免下次再试。
-      if (path != null) {
-        await prefs.remove('root_doc_id');
-        await prefs.remove('root_tree_uri');
+      final String? legacy = prefs.getString('root_doc_id');
+      if (kept.isEmpty && legacy != null && Directory(legacy).existsSync()) {
+        kept.add(legacy);
       }
-      return false;
+      if (kept.isEmpty) {
+        if (legacy != null) {
+          await prefs.remove('root_doc_id');
+          await prefs.remove('root_tree_uri');
+        }
+        return false;
+      }
+      setRoots(kept.map((String p) => TreeRef(treeUri: 'file://$p', rootDocId: p)).toList());
+      return true;
     }
 
-    List<TreeRef> roots;
+    List<TreeRef> granted;
     try {
-      roots = await st.roots();
+      granted = await st.roots();
     } catch (_) {
-      roots = <TreeRef>[];
+      granted = <TreeRef>[];
     }
-    if (roots.isEmpty) return false;
-    final String? saved = prefs.getString('root_doc_id');
-    TreeRef picked = roots.first;
-    for (final TreeRef t in roots) {
-      if (t.rootDocId == saved) {
-        picked = t;
-        break;
+    if (granted.isEmpty) return false;
+    // 按上次登记的顺序排：先当前目录，再其余
+    final List<TreeRef> ordered = <TreeRef>[];
+    for (final String id in order) {
+      for (final TreeRef t in granted) {
+        if (t.rootDocId == id && !ordered.any((TreeRef x) => x.rootDocId == id)) {
+          ordered.add(t);
+        }
       }
     }
-    root = picked;
-    notifyListeners();
+    for (final TreeRef t in granted) {
+      if (!ordered.any((TreeRef x) => x.rootDocId == t.rootDocId)) ordered.add(t);
+    }
+    setRoots(ordered);
     return true;
   }
 
-  /// 移除当前曲库目录：释放授权、清空列表。
-  ///
-  /// 桌面没有「授权」概念，只是把记住的目录忘掉；安卓会连系统授权一起放掉。
+  /// 上次登记的目录顺序（换行分隔）。
+  static List<String> _savedOrder(SharedPreferences prefs) {
+    final String raw = prefs.getString('roots_order') ?? '';
+    if (raw.isEmpty) return <String>[];
+    return raw.split('\n').where((String s) => s.trim().isNotEmpty).toList();
+  }
+
+  /// 登记多个曲库目录（第一个成为当前目录）。
+  void setRoots(List<TreeRef> list) {
+    roots
+      ..clear()
+      ..addAll(list);
+    notifyListeners();
+  }
+
+  /// 追加一个曲库目录；已存在则返回 false。
+  Future<bool> addRoot([TreeRef? picked]) async {
+    if (store == null) return false;
+    final TreeRef? t = picked ?? await store!.pickTree();
+    if (t == null) return false;
+    if (roots.any((TreeRef x) => x.rootDocId == t.rootDocId)) return false;
+    // 新加的目录排到最前，立刻成为当前目录，省得再点一次切换
+    setRoots(<TreeRef>[t, ...roots]);
+    await _persistRoots();
+    return true;
+  }
+
+  /// 移除一个曲库目录（安卓连系统授权一起放掉）。
+  Future<void> removeRoot(TreeRef t) async {
+    final FileStore? st = store;
+    if (st != null) {
+      try {
+        await st.releaseTree(t);
+      } catch (_) {
+        // 释放失败不阻塞：至少从登记列表里去掉
+      }
+    }
+    setRoots(roots.where((TreeRef x) => x.rootDocId != t.rootDocId).toList());
+    files = <VFile>[];
+    index.clear();
+    await _persistRoots();
+    notifyListeners();
+  }
+
+  /// 把某个已登记目录设为当前（排到最前）。
+  Future<void> switchRoot(TreeRef t) async {
+    if (roots.length < 2) return;
+    setRoots(<TreeRef>[t, ...roots.where((TreeRef x) => x.rootDocId != t.rootDocId)]);
+    await _persistRoots();
+  }
+
+  Future<void> _persistRoots() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    if (roots.isEmpty) {
+      await prefs.remove('roots_order');
+      await prefs.remove('root_tree_uri');
+      await prefs.remove('root_doc_id');
+      return;
+    }
+    await prefs.setString(
+        'roots_order', roots.map((TreeRef t) => t.rootDocId).join('\n'));
+    await prefs.setString('root_tree_uri', roots.first.treeUri);
+    await prefs.setString('root_doc_id', roots.first.rootDocId);
+  }
+
+  /// 移除所有曲库目录：释放授权、清空列表。
   Future<void> clearRoot() async {
     final FileStore? st = store;
-    final TreeRef? old = root;
-    if (st != null && old != null) {
+    for (final TreeRef t in List<TreeRef>.of(roots)) {
+      if (st == null) break;
       try {
-        await st.releaseTree(old);
+        await st.releaseTree(t);
       } catch (_) {
         // 释放失败不阻塞：至少把本地记住的目录清掉
       }
     }
-    root = null;
+    setRoots(<TreeRef>[]);
     files = <VFile>[];
     index.clear();
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.remove('root_tree_uri');
-    await prefs.remove('root_doc_id');
+    await _persistRoots();
     notifyListeners();
   }
 
-  /// 让用户选目录；成功后持久化并返回 true。
+  /// 让用户选目录；成功后登记为当前目录并返回 true。
   Future<bool> pickRoot() async {
     if (store == null) return false;
     final TreeRef? t = await store!.pickTree();
     if (t == null) return false;
-    root = t;
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setString('root_tree_uri', t.treeUri);
-    await prefs.setString('root_doc_id', t.rootDocId);
+    final bool has = roots.any((TreeRef x) => x.rootDocId == t.rootDocId);
+    if (!has) {
+      setRoots(<TreeRef>[t, ...roots]);
+    } else {
+      await switchRoot(t);
+    }
+    await _persistRoots();
     notifyListeners();
     return true;
   }
@@ -287,12 +371,10 @@ class Repo extends ChangeNotifier {
     final String p = path.trim();
     if (p.isEmpty) return false;
     if (!Directory(p).existsSync()) return false;
-    root = TreeRef(treeUri: 'file://$p', rootDocId: p);
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setString('root_tree_uri', root!.treeUri);
-    await prefs.setString('root_doc_id', p);
+    setRoots(<TreeRef>[TreeRef(treeUri: 'file://$p', rootDocId: p)]);
     files = <VFile>[];
     index.clear();
+    await _persistRoots();
     notifyListeners();
     return true;
   }
@@ -306,10 +388,9 @@ class Repo extends ChangeNotifier {
     bool incremental = true,
   }) async {
     final FileStore? st = store;
-    final TreeRef? r = root;
     final ScanMergeResult empty =
         ScanMergeResult(files: <VFile>[], reused: 0, fresh: 0, removed: 0);
-    if (st == null || r == null) {
+    if (st == null || roots.isEmpty) {
       return ScanOutcome(<VFile>[], ScanStats(), empty, 0, '还没有选择曲库目录');
     }
     if (_scanning) {
@@ -317,24 +398,86 @@ class Repo extends ChangeNotifier {
     }
     _scanning = true;
     try {
-      final VFile rootDir =
-          VFile(docId: r.rootDocId, name: r.rootDocId, dir: true);
-      final WalkResult walk =
-          await Scanner.scanMusicFiles(st, rootDir, cancel: cancel);
+      // 多目录：逐个走一遍再合并（docId 本来就带树前缀，不会撞）
+      final List<VFile> all = <VFile>[];
+      int dup = 0;
+      for (final TreeRef r in roots) {
+        final VFile rootDir =
+            VFile(docId: r.rootDocId, name: r.rootDocId, dir: true);
+        final WalkResult walk = await Scanner.scanMusicFiles(st, rootDir,
+            cancel: cancel, filter: scanFilter());
+        all.addAll(walk.files);
+        dup += walk.duplicates;
+      }
       final ScanMergeResult merge =
-          ScanMerge.merge(incremental ? files : null, walk.files);
+          ScanMerge.merge(incremental ? files : null, all);
       FolderCover.invalidate();
       SidecarCover.invalidate();
       files = merge.files;
       _rebuildIndex();
       notifyListeners();
       final ScanStats stats = Scanner.statsOf(files);
-      return ScanOutcome(files, stats, merge, walk.duplicates, '');
+      return ScanOutcome(files, stats, merge, dup, '');
     } catch (e) {
       return ScanOutcome(<VFile>[], ScanStats(), empty, 0, '扫描失败：$e');
     } finally {
       _scanning = false;
     }
+  }
+
+  /// 文件相对「它所属那棵树」的路径。
+  ///
+  /// 多目录时每棵树的 rootDocId 不同，按当前根去截会截错，这里逐个根试。
+  String relPath(VFile f) {
+    for (final TreeRef r in roots) {
+      final String prefix = r.rootDocId.endsWith('/') ? r.rootDocId : '${r.rootDocId}/';
+      if (f.docId.startsWith(prefix)) return f.docId.substring(prefix.length);
+    }
+    return f.relativePath(roots.isEmpty ? '' : roots.first.rootDocId);
+  }
+
+  /// 逐字段的写入策略（三态）。
+  ///
+  /// 键名用 `fp:<字段>`（与设置备份格式一致，导出时能直接带走）；没配过的字段
+  /// 退回旧的单开关 `fill_overwrite`，保证老配置行为不变。
+  Map<String, int> tagModes() {
+    final bool overwrite =
+        settings.get<bool>('fill_overwrite', fallback: false) ?? false;
+    final int fallbackMode = overwrite ? TagFill.overwrite : TagFill.supplement;
+    final Map<String, int> out = <String, int>{};
+    for (final String f in TagFill.candidateFields) {
+      out[f] = settings.get<int>('fp:$f', fallback: fallbackMode) ?? fallbackMode;
+    }
+    return out;
+  }
+
+  /// 写入某一字段的策略（设置页逐字段选择）。
+  Future<void> setTagMode(String field, int mode) async {
+    await setSetting('fp:$field', mode);
+    // 老的全局开关跟着一起动，避免别处（旧入口 / 备份）读到的值与这里不一致
+    final Map<String, int> m = tagModes();
+    final bool allOverwrite =
+        m.length == TagFill.candidateFields.length &&
+        TagFill.candidateFields.every((String f) => m[f] == TagFill.overwrite);
+    await setSetting('fill_overwrite', allOverwrite);
+  }
+
+  /// 某个文件属于哪一棵树（多目录时用它决定整理 / 扁平化落到哪儿）。
+  TreeRef? rootOf(VFile f) {
+    for (final TreeRef r in roots) {
+      final String prefix = r.rootDocId.endsWith('/') ? r.rootDocId : '${r.rootDocId}/';
+      if (f.docId.startsWith(prefix) || f.docId == r.rootDocId) return r;
+    }
+    return roots.isEmpty ? null : roots.first;
+  }
+
+  /// 当前的扫描过滤（路径关键字 + 忽略视频），没配规则返回 null。
+  ScanFilter? scanFilter() {
+    final String text = settings.get<String>('scan_exclude', fallback: '') ?? '';
+    final bool ignoreVideo =
+        settings.get<bool>('scan_ignore_video', fallback: false) ?? false;
+    if (text.trim().isEmpty && !ignoreVideo) return null;
+    return ScanFilter.parse(text, ignoreVideo: ignoreVideo);
   }
 
   /// 重建搜索索引（只重建骨架，标签留给 [loadMeta] 逐首填）。
@@ -345,7 +488,7 @@ class Repo extends ChangeNotifier {
       final Entry e = Entry(
         docId: f.docId,
         name: f.name,
-        relPath: f.relativePath(root?.rootDocId ?? ''),
+        relPath: relPath(f),
         size: f.size,
         modified: f.lastModified,
         file: f,
@@ -410,7 +553,7 @@ class Repo extends ChangeNotifier {
   /// 测试用：重置。
   void resetForTest() {
     store = null;
-    root = null;
+    roots.clear();
     files = <VFile>[];
     index.clear();
     journal = null;

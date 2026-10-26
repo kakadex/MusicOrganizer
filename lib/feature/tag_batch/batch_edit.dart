@@ -11,6 +11,8 @@ import '../../core/match/batch_edit.dart';
 import '../../core/model/tags.dart';
 import '../../core/model/vfile.dart';
 import '../../core/tag/tag_io.dart';
+import '../../core/tx/write_preview.dart';
+import '../common/write_confirm_sheet.dart';
 
 /// 打开批量编辑流程。[files] 是选中的曲目。
 Future<void> runBatchEdit(BuildContext context, List<VFile> files) async {
@@ -129,60 +131,54 @@ Future<void> runBatchEdit(BuildContext context, List<VFile> files) async {
     return;
   }
 
-  // 预览：逐首列「旧值 → 新值」
+  // 预览：逐首列「旧值 → 新值」，用户可整首 / 逐字段勾选
   final List<VFile> targets = files
       .where((VFile f) => !f.dir && TagIO.canWrite(f.ext()))
       .toList();
   int index = 0;
-  final List<String> preview = <String>[];
+  final List<WriteTarget> plans = <WriteTarget>[];
   for (final VFile f in targets) {
-    final Map<String, String> updates = spec.updatesFor(index++);
+    final int at = index++;
+    final Map<String, String> updates = spec.updatesFor(at);
     final Tags now = f.cachedTags ?? Tags();
-    final List<String> parts = <String>[];
+    final List<WriteLine> lines = <WriteLine>[];
     for (final MapEntry<String, String> e in updates.entries) {
       final String old = now.get(e.key).trim();
       if (old == e.value) continue;
-      parts.add('${_label(e.key)}：${old.isEmpty ? '（空）' : old} → '
-          '${e.value.isEmpty ? '（清空）' : e.value}');
+      lines.add(WriteLine(
+        label: _label(e.key),
+        oldText: old,
+        newText: e.value,
+        key: e.key,
+      ));
     }
-    if (parts.isNotEmpty) {
-      preview.add('${f.name}\n    ${parts.join('；')}');
-    }
+    if (lines.isEmpty) continue;
+    plans.add(WriteTarget(
+      docId: f.docId,
+      name: f.name,
+      path: repo.relPath(f),
+      kind: WriteKind.tag,
+      lines: lines,
+      file: f,
+      data: at,
+    ));
   }
-  if (preview.isEmpty) {
+  if (plans.isEmpty) {
     moSnack(context, '这些文件的标签已经和要填的一样了');
     return;
   }
 
-  final bool? ok = await showMoSheet<bool>(
+  final List<WriteTarget>? picked = await WriteConfirmSheet.show(
     context,
-    title: '批量改标签预览（${preview.length} 首）',
-    children: <Widget>[
-      Padding(
-        padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 0, MoKit.pagePad, 4),
-        child: Text(spec.summary(),
-            style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
-      ),
-      for (final String line in preview.take(80))
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: MoKit.pagePad, vertical: 3),
-          child: Text(line,
-              style: TextStyle(fontSize: MoKit.fsBody, color: MoKit.text(context))),
-        ),
-      if (preview.length > 80)
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: MoKit.pagePad, vertical: 3),
-          child: Text('……还有 ${preview.length - 80} 首',
-              style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
-        ),
-      Padding(
-        padding: const EdgeInsets.all(MoKit.pagePad),
-        child: MoButton('确认写入 ${preview.length} 首',
-            onPressed: () => Navigator.of(context).pop(true)),
-      ),
-    ],
+    title: '批量改标签预览',
+    subtitle: spec.summary(),
+    targets: plans,
+    commitLabel: '写入',
+    unit: '首',
+    verb: '写入',
+    expandAll: true,
   );
-  if (ok != true || !context.mounted) return;
+  if (picked == null || picked.isEmpty || !context.mounted) return;
 
   final tx = repo.tx;
   if (tx == null) {
@@ -192,9 +188,11 @@ Future<void> runBatchEdit(BuildContext context, List<VFile> files) async {
   final String batchId = 'batchedit-${DateTime.now().millisecondsSinceEpoch}';
   int done = 0;
   int failed = 0;
-  index = 0;
-  for (final VFile f in targets) {
-    final Map<String, String> updates = spec.updatesFor(index++);
+  for (final WriteTarget t in picked) {
+    final VFile? f = t.file as VFile?;
+    if (f == null) continue;
+    // 只写用户勾中的字段（音轨号用的是原始顺序算出来的值，取消勾选不影响其余文件）
+    final Map<String, String> updates = t.toUpdates();
     if (updates.isEmpty) continue;
     final String err = await tx.apply(f, updates, batchId: batchId);
     if (err.isEmpty) {

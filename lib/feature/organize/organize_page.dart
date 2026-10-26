@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/repo.dart';
 import '../../app/ui_kit.dart';
+import '../../core/cleanup/cleaner.dart';
 import '../../core/cleanup/junk.dart';
 import '../../core/dedupe/content_reader.dart';
 import '../../core/dedupe/duplicates.dart';
@@ -18,8 +19,10 @@ import '../../core/scan/scanner.dart';
 import '../../core/task/task_center.dart';
 import '../../core/tx/tag_transaction.dart';
 import '../covers/covers_page.dart';
-import '../library/preview_sheet.dart';
 import '../lyrics_batch/lyrics_batch_page.dart';
+import '../../core/tx/write_preview.dart';
+import '../common/write_confirm_sheet.dart';
+import '../history/undo_flow.dart';
 import 'rename_flow.dart';
 
 /// 整理页：**三张任务卡**（扫描与整理 / 批量处理 / 清理），而不是一长串平铺按钮。
@@ -55,7 +58,7 @@ class _OrganizePageState extends State<OrganizePage> {
 
   /// 曲库根目录变了（首次授权 / 换目录 / 刚删完垃圾）就重扫一次垃圾候选。
   void _scheduleJunkScan() {
-    final String id = _repo.root?.rootDocId ?? '';
+    final String id = _repo.roots.map((t) => t.rootDocId).join('|');
     if (id.isEmpty || _junkScanning || _junkRootId == id) return;
     _junkRootId = id;
     Future<void>.delayed(Duration.zero, _scanJunk);
@@ -64,13 +67,15 @@ class _OrganizePageState extends State<OrganizePage> {
   /// 遍历整棵目录树找垃圾（Thumbs.db / .bak / .tmp 都不是音频，不在曲库列表里）。
   Future<void> _scanJunk() async {
     final FileStore? st = _repo.store;
-    final TreeRef? r = _repo.root;
-    if (st == null || r == null) return;
+    if (st == null || _repo.roots.isEmpty) return;
     if (!mounted) return;
     setState(() => _junkScanning = true);
     try {
-      final VFile rootDir = VFile(docId: r.rootDocId, name: r.rootDocId, dir: true);
-      final List<VFile> all = await Scanner.walkAll(st, rootDir);
+      final List<VFile> all = <VFile>[];
+      for (final TreeRef r in _repo.roots) {
+        final VFile rootDir = VFile(docId: r.rootDocId, name: r.rootDocId, dir: true);
+        all.addAll(await Scanner.walkAll(st, rootDir, filter: _repo.scanFilter()));
+      }
       final List<VFile> junk = all.where(Junk.isJunk).toList();
       if (!mounted) return;
       setState(() {
@@ -109,7 +114,7 @@ class _OrganizePageState extends State<OrganizePage> {
 
   Widget _scanCard(int audio) {
     final int unorganized = _repo.audioFiles().where((VFile f) {
-      final rel = f.relativePath(_repo.root?.rootDocId ?? '');
+      final rel = _repo.relPath(f);
       return !rel.contains('/');
     }).length;
     return SectionCard(
@@ -185,6 +190,12 @@ class _OrganizePageState extends State<OrganizePage> {
           onTap: all.isEmpty ? null : () => _dedupe(all),
         ),
         MoTile(
+          title: '扁平化文件夹',
+          subtitle: '把所有子目录里的曲子搬到当前目录这一层（撞名自动加 _2，不覆盖）',
+          icon: Icons.account_tree_outlined,
+          onTap: all.isEmpty ? null : _flatten,
+        ),
+        MoTile(
           title: '垃圾文件',
           subtitle: _junkScanning
               ? '正在扫描…'
@@ -236,48 +247,47 @@ class _OrganizePageState extends State<OrganizePage> {
       return;
     }
     final int conflicts = plans.where((MovePlan p) => p.conflict).length;
-
-    final bool? go = await showMoSheet<bool>(
-      context,
-      title: '整理计划（${plans.length} 首）',
-      children: <Widget>[
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: MoKit.pagePad),
-          child: Text(
-            conflicts > 0
-                ? '其中 $conflicts 首目标位置已有同名文件，会跳过（不覆盖）。'
-                : '目标位置没有同名文件，可以安全执行。',
-            style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context)),
-          ),
-        ),
-        for (final MovePlan p in plans.take(60))
-          Padding(
-            padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 8, MoKit.pagePad, 0),
-            child: Row(
-              children: <Widget>[
-                Expanded(
-                  child: Text('${p.file.name}  →  ${p.targetPath}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: MoKit.fsCaption,
-                          color: p.conflict ? MoKit.warn(context) : MoKit.text(context))),
-                ),
-              ],
+    // 移动也是写盘：逐首列出「现在在哪 → 要搬到哪」，由用户勾选后再执行
+    final List<WriteTarget> targets = <WriteTarget>[
+      for (final MovePlan p in plans)
+        WriteTarget(
+          docId: p.file.docId,
+          name: p.file.name,
+          path: _repo.relPath(p.file),
+          kind: WriteKind.move,
+          note: p.conflict ? '目标已有同名文件，会跳过' : p.reason,
+          risky: p.conflict,
+          lines: <WriteLine>[
+            WriteLine(
+              label: '位置',
+              oldText: _repo.relPath(p.file),
+              newText: '${p.targetPath}/${p.file.name}',
             ),
-          ),
-        Padding(
-          padding: const EdgeInsets.all(MoKit.pagePad),
-          child: MoButton('执行移动（${plans.length} 首）', onPressed: () => Navigator.of(context).pop(true)),
+          ],
+          file: p.file,
+          data: p,
         ),
-      ],
+    ];
+    final List<WriteTarget>? picked = await WriteConfirmSheet.show(
+      context,
+      title: '整理计划',
+      subtitle: conflicts > 0
+          ? '其中 $conflicts 首目标位置已有同名文件，会跳过（不覆盖）'
+          : '目标位置没有同名文件，可以安全执行',
+      targets: targets,
+      commitLabel: '执行移动',
+      unit: '首',
+      verb: '移动',
     );
-    if (go != true) return;
+    if (picked == null || picked.isEmpty || !mounted) return;
+    final Set<String> keep = <String>{for (final WriteTarget t in picked) t.docId};
+    final List<MovePlan> doList =
+        plans.where((MovePlan p) => keep.contains(p.file.docId)).toList();
 
     setState(() => _busy = true);
     final RunningTask? task = TaskCenter.start('自动整理');
     final TaskControl? control = task?.control;
-    final OrganizeResult r = await Organizer.execute(_repo.store!, plans,
+    final OrganizeResult r = await Organizer.execute(_repo.store!, doList,
         onProgress: (int done, int total) => control?.report(done, total, '移动中'),
         cancel: control);
     TaskCenter.finish();
@@ -554,39 +564,133 @@ class _OrganizePageState extends State<OrganizePage> {
     }
   }
 
+  /// 扁平化：子目录里的音频 → 当前曲库目录这一层。
+  Future<void> _flatten() async {
+    final FileStore? st = _repo.store;
+    if (st == null || _repo.roots.isEmpty) return;
+    final List<FlattenPlan> plans = <FlattenPlan>[];
+    for (final TreeRef r in _repo.roots) {
+      final VFile rootDir = VFile(docId: r.rootDocId, name: r.rootDocId, dir: true);
+      List<VFile> all = <VFile>[];
+      try {
+        all = await Scanner.walkAll(st, rootDir, filter: _repo.scanFilter());
+      } catch (e) {
+        if (mounted) moSnack(context, '遍历失败：$e');
+        return;
+      }
+      plans.addAll(Flattener.plan(all, rootDocId: r.rootDocId));
+    }
+    if (!mounted) return;
+    if (plans.isEmpty) {
+      moSnack(context, '没有需要扁平化的文件（都已经在根目录这一层）');
+      return;
+    }
+    final List<WriteTarget> targets = <WriteTarget>[
+      for (final FlattenPlan p in plans)
+        WriteTarget(
+          docId: p.source.docId,
+          name: p.source.name,
+          path: p.fromDir.isEmpty ? '(根目录)' : p.fromDir,
+          kind: WriteKind.move,
+          note: p.renamed ? '搬到根目录并改名为 ${p.targetName}' : '搬到根目录',
+          lines: <WriteLine>[
+            WriteLine(
+              label: '位置',
+              oldText: p.fromDir.isEmpty ? '(根目录)' : p.fromDir,
+              newText: p.renamed ? '(根目录) / ${p.targetName}' : '(根目录)',
+            ),
+          ],
+          file: p.source,
+          data: p,
+        ),
+    ];
+    final List<WriteTarget>? picked = await WriteConfirmSheet.show(
+      context,
+      title: '扁平化预览',
+      subtitle: '勾中的曲目会搬到曲库目录这一层；搬空的子目录会被删掉',
+      targets: targets,
+      commitLabel: '开始移动',
+      unit: '个',
+      verb: '移动',
+    );
+    if (picked == null || picked.isEmpty || !mounted) return;
+    final Set<String> keep = <String>{
+      for (final WriteTarget t in picked) t.docId,
+    };
+    final Map<String, List<FlattenPlan>> byRoot = <String, List<FlattenPlan>>{};
+    for (final FlattenPlan p in plans) {
+      if (!keep.contains(p.source.docId)) continue;
+      // 按目标根分组：同一批里每个文件只属于它自己那棵树
+      String rootId = _repo.roots.first.rootDocId;
+      for (final TreeRef r in _repo.roots) {
+        final String prefix = r.rootDocId.endsWith('/') ? r.rootDocId : '${r.rootDocId}/';
+        if (p.source.docId.startsWith(prefix) || p.source.docId == r.rootDocId) {
+          rootId = r.rootDocId;
+          break;
+        }
+      }
+      byRoot.putIfAbsent(rootId, () => <FlattenPlan>[]).add(p);
+    }
+    final RunningTask? task = TaskCenter.start('扁平化文件夹');
+    final TaskControl? control = task?.control;
+    int moved = 0;
+    int removedDirs = 0;
+    int failed = 0;
+    for (final MapEntry<String, List<FlattenPlan>> e in byRoot.entries) {
+      final VFile rootDir = VFile(docId: e.key, name: e.key, dir: true);
+      final FlattenResult r = await Flattener.execute(
+        st,
+        root: rootDir,
+        plans: e.value,
+        onProgress: (int done, int total) =>
+            control?.report(done, total, '移动中'),
+      );
+      moved += r.moved;
+      removedDirs += r.removedDirs;
+      failed += r.failed;
+    }
+    TaskCenter.finish();
+    if (!mounted) return;
+    await _repo.rescan();
+    if (!mounted) return;
+    moSnack(context, '已移动 $moved 个 · 删空目录 $removedDirs 个'
+        '${failed > 0 ? ' · 失败 $failed 个' : ''}');
+  }
+
   Future<void> _junk() async {
     final List<VFile> junk = _junkFiles;
     if (junk.isEmpty) return;
-    final bool? go = await showMoSheet<bool>(
-      context,
-      title: '垃圾文件 ${junk.length} 个',
-      children: <Widget>[
-        for (final VFile f in junk.take(80))
-          Padding(
-            padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 6, MoKit.pagePad, 0),
-            child: Row(
-              children: <Widget>[
-                Expanded(
-                  child: Text(f.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: MoKit.fsBody, color: MoKit.text(context))),
-                ),
-                Text(Junk.reasonOf(f),
-                    style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
-              ],
-            ),
+    // 统一预览：列出每个文件与判定原因，用户可取消勾选不想删的
+    final List<WriteTarget> targets = junk
+        .map(
+          (VFile f) => WriteTarget(
+            docId: f.docId,
+            name: f.name,
+            path: _repo.relPath(f),
+            kind: WriteKind.delete,
+            note: Junk.reasonOf(f),
+            risky: true,
+            lines: <WriteLine>[WriteLineX.delete(f.name)],
+            file: f,
           ),
-        Padding(
-          padding: const EdgeInsets.all(MoKit.pagePad),
-          child: MoButton('删除这 ${junk.length} 个文件', primary: false,
-              onPressed: () => Navigator.of(context).pop(true)),
-        ),
-      ],
+        )
+        .toList();
+    final List<WriteTarget>? picked = await WriteConfirmSheet.show(
+      context,
+      title: '删除垃圾文件',
+      subtitle: '删除后无法恢复，取消勾选的会保留',
+      warning: '确认前请核对：判定为垃圾的文件会直接从磁盘删除',
+      targets: targets,
+      commitLabel: '删除',
+      unit: '个',
+      verb: '删除',
+      expandAll: true,
     );
-    if (go != true) return;
+    if (picked == null || picked.isEmpty) return;
     int ok = 0;
-    for (final VFile f in junk) {
+    for (final WriteTarget t in picked) {
+      final VFile? f = t.file as VFile?;
+      if (f == null) continue;
       if (await _repo.store!.delete(f)) ok++;
     }
     if (!mounted) return;
@@ -687,8 +791,8 @@ class _OrganizePageState extends State<OrganizePage> {
     moSnack(context, '改动 $changed 首，失败 $failed 首',
         actionLabel: changed == 0 ? null : '撤销',
         onAction: () async {
-          final int n = await undoBatch(batchId);
-          if (mounted) moSnack(context, '已撤销 $n 处');
+          final int? n = await undoBatchWithPreview(context, batchId: batchId);
+          if (n != null && mounted) moSnack(context, '已撤销 $n 处');
         });
   }
 

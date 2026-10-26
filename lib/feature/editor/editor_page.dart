@@ -17,6 +17,8 @@ import '../../core/fs/raw_write.dart';
 import '../../core/model/tags.dart';
 import '../../core/model/vfile.dart';
 import '../../core/scan/scanner.dart';
+import '../../core/tx/write_preview.dart';
+import '../common/write_confirm_sheet.dart';
 import 'editor_cover_card.dart';
 import 'editor_online_cover.dart';
 import 'editor_online_match.dart';
@@ -42,6 +44,9 @@ class EditorPage extends StatefulWidget {
 }
 
 class _EditorPageState extends State<EditorPage> {
+  /// 封面在预览里的行键（不是真标签字段，写完单独取出来）。
+  static const String _coverKey = '__cover';
+
   final Map<String, TextEditingController> _ctl =
       <String, TextEditingController>{};
   /// 歌词单独一个控制器（歌词不进 [Tags.keys]：不进撤销日志、也不当普通字段处理）。
@@ -340,29 +345,105 @@ class _EditorPageState extends State<EditorPage> {
     }
   }
 
+  /// 歌词预览只显示头一行 + 行数，避免把整篇歌词铺进确认面板。
+  static String _briefLyrics(String text) {
+    final String t = text.trim();
+    if (t.isEmpty) return '';
+    final List<String> lines =
+        t.split('\n').where((String s) => s.trim().isNotEmpty).toList();
+    final String head = lines.isEmpty ? '' : lines.first.trim();
+    return lines.length <= 1 ? head : '$head …（共 ${lines.length} 行）';
+  }
+
+  /// 保存：先把本次改动列成「旧值 → 新值」交给用户逐项勾选，确认后才写盘。
   Future<void> _save() async {
     final tx = Repo.instance.tx;
     if (tx == null) {
       moSnack(context, '还没有准备好写盘通道');
       return;
     }
-    final Map<String, String> updates = <String, String>{};
+    final List<WriteLine> lines = <WriteLine>[];
     for (final String key in Tags.keys) {
       String now = _ctl[key]!.text.trim();
       // 年份只留四位（与 Tags.put / 读回校验口径一致）
       if (key == 'year' && now.length > 4) now = now.substring(0, 4);
-      if (now != _initial.get(key)) updates[key] = now;
+      final String old = _initial.get(key);
+      if (now == old) continue;
+      lines.add(WriteLine(
+        label: Tags.labels[key] ?? key,
+        oldText: old,
+        newText: now,
+        key: key,
+      ));
     }
     final String lyrics = _lyricsCtl.text.trim();
-    if (lyrics != _initial.get(Tags.lyrics).trim()) {
-      updates[Tags.lyrics] = lyrics;
+    final String oldLyrics = _initial.get(Tags.lyrics).trim();
+    if (lyrics != oldLyrics) {
+      lines.add(WriteLine(
+        label: '歌词',
+        oldText: _briefLyrics(oldLyrics),
+        newText: _briefLyrics(lyrics),
+        key: Tags.lyrics,
+        payload: lyrics,
+      ));
     }
-    final Uint8List? coverArg =
-        _coverTouched ? (_cover ?? Uint8List(0)) : null;
-    if (updates.isEmpty && coverArg == null) {
+    if (_coverTouched) {
+      final bool empty = _cover == null || _cover!.isEmpty;
+      lines.add(WriteLine(
+        label: '封面',
+        oldText: _hasCover ? '已有封面' : '（空）',
+        newText: empty
+            ? '（清空）'
+            : '新封面 ${(_cover!.lengthInBytes / 1024).round()} KB',
+        key: _coverKey,
+      ));
+    }
+    if (lines.isEmpty) {
       moSnack(context, '没有需要保存的修改');
       return;
     }
+
+    final WriteTarget target = WriteTarget(
+      docId: widget.file.docId,
+      name: widget.file.name,
+      path: Repo.instance.relPath(widget.file),
+      kind: WriteKind.tag,
+      lines: lines,
+      file: widget.file,
+      risky: _coverTouched && _hasCover,
+    );
+    final List<WriteTarget>? picked = await WriteConfirmSheet.show(
+      context,
+      title: '确认写入',
+      subtitle: '取消勾选的项目不会被写入',
+      targets: <WriteTarget>[target],
+      commitLabel: '保存',
+      unit: '处',
+      verb: '保存',
+      expandAll: true,
+    );
+    if (!mounted || picked == null || picked.isEmpty) return;
+
+    // 只写用户勾中的那些
+    final Map<String, String> updates = <String, String>{};
+    Uint8List? coverArg;
+    for (final WriteLine l in picked.first.lines) {
+      if (!l.selected || !l.changed) continue;
+      final String? k = l.key;
+      if (k == null) continue;
+      if (k == _coverKey) {
+        coverArg = _cover ?? Uint8List(0);
+      } else if (k == Tags.lyrics) {
+        updates[Tags.lyrics] = (l.payload as String?) ?? l.newText;
+      } else {
+        updates[k] = l.newText;
+      }
+    }
+    if (updates.isEmpty && coverArg == null) {
+      moSnack(context, '没有勾选任何改动');
+      return;
+    }
+
     setState(() => _saving = true);
     final String err = await tx.apply(
       widget.file,
@@ -378,7 +459,8 @@ class _EditorPageState extends State<EditorPage> {
     }
     Repo.instance.invalidate(widget.file);
     CoverCache.instance.clear();
-    moSnack(context, '已保存');
+    final int n = updates.length + (coverArg == null ? 0 : 1);
+    moSnack(context, '已保存 $n 处改动');
     Navigator.of(context).pop(true);
   }
 }

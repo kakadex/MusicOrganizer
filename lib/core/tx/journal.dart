@@ -89,12 +89,17 @@ class Journal {
   ///
   /// 返回 {成功数, 失败数, 总数}。
   Future<List<int>> revertBatch(String batchId,
-      {required Future<bool> Function(JournalEntry) revertOne}) async {
+      {required Future<bool> Function(JournalEntry) revertOne,
+      bool Function(JournalEntry)? skip}) async {
     final List<JournalEntry> targets = await this.targets(batchId);
     int ok = 0;
     int failed = 0;
+    int total = 0;
     for (int i = targets.length - 1; i >= 0; i--) {
       final JournalEntry e = targets[i];
+      // 用户在预览里取消勾选的：既不回滚，也不计进成功 / 失败。
+      if (skip != null && skip(e)) continue;
+      total++;
       if (await revertOne(e)) {
         ok++;
         final JournalEntry rev = JournalEntry()
@@ -110,6 +115,6 @@ class Journal {
         failed++;
       }
     }
-    return <int>[ok, failed, targets.length];
+    return <int>[ok, failed, total];
   }
 }

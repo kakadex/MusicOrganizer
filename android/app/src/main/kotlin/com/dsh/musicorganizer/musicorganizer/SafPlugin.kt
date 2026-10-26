@@ -375,6 +375,30 @@ class SafPlugin(private val resolver: ContentResolver) {
         }
     }
 
+    /**
+     * 外部调起的文件信息（显示名 + 大小 + 可读写的字节长度）。
+     *
+     * 用于「在文件管理器里用本应用打开音频」：先拿名字和大小去曲库里找，
+     * 找得到就直接在编辑器里打开，找不到再引导用户授权所在目录。
+     */
+    fun uriInfo(uriString: String): Map<String, Any>? {
+        val uri = Uri.parse(uriString)
+        val out = mutableMapOf<String, Any>()
+        resolver.query(uri, null, null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val nameIdx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                val sizeIdx = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                if (nameIdx >= 0) out["name"] = cursor.getString(nameIdx) ?: ""
+                if (sizeIdx >= 0 && !cursor.isNull(sizeIdx)) out["size"] = cursor.getLong(sizeIdx)
+            }
+        }
+        if (out.isEmpty()) {
+            out["name"] = uri.lastPathSegment ?: ""
+            out["size"] = 0L
+        }
+        return out
+    }
+
     private fun lastSegment(docId: String): String {
         val idx = docId.lastIndexOf('/')
         return if (idx >= 0) docId.substring(idx + 1) else docId

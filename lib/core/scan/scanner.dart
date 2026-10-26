@@ -18,6 +18,7 @@ import '../model/tags.dart';
 import '../model/vfile.dart';
 import '../tag/cover_reader.dart';
 import '../tag/tag_io.dart';
+import 'scan_filter.dart';
 import 'scan_stats.dart';
 
 /// 遍历结果。
@@ -72,6 +73,7 @@ abstract final class Scanner {
     bool recursive = true,
     CancelToken? cancel,
     Progress? progress,
+    ScanFilter? filter,
   }) async {
     final List<VFile> out = <VFile>[];
     final Set<String> visited = <String>{};
@@ -86,10 +88,11 @@ abstract final class Scanner {
           continue;
         }
         if (c.dir) {
-          if (recursive && !c.isHidden() && depth < maxDepth) {
+          final bool skip = filter?.skipDir(c) ?? false;
+          if (recursive && !c.isHidden() && !skip && depth < maxDepth) {
             await collect(c, depth + 1);
           }
-        } else if (c.music() && !c.isHidden()) {
+        } else if (c.music() && !c.isHidden() && !(filter?.skip(c) ?? false)) {
           out.add(c);
           if (progress != null && out.length % 200 == 0) {
             progress.onProgress(out.length, 0, c.name);
@@ -111,6 +114,7 @@ abstract final class Scanner {
     VFile root, {
     CancelToken? cancel,
     Progress? progress,
+    ScanFilter? filter,
   }) async {
     final List<VFile> out = <VFile>[];
 
@@ -119,8 +123,10 @@ abstract final class Scanner {
       for (final VFile c in await st.children(dir)) {
         if (cancel?.isCancelled() ?? false) return;
         if (c.dir) {
-          if (!c.isHidden()) await walk(c, depth + 1);
-        } else if (!c.isHidden()) {
+          if (!c.isHidden() && !(filter?.skipDir(c) ?? false)) {
+            await walk(c, depth + 1);
+          }
+        } else if (!c.isHidden() && !(filter?.skip(c) ?? false)) {
           out.add(c);
           if (progress != null && out.length % 200 == 0) {
             progress.onProgress(out.length, out.length, c.name);
@@ -140,9 +146,10 @@ abstract final class Scanner {
     bool recursive = true,
     CancelToken? cancel,
     Progress? progress,
+    ScanFilter? filter,
   }) async {
-    final WalkResult r =
-        await walkMusic(st, root, recursive: recursive, cancel: cancel, progress: progress);
+    final WalkResult r = await walkMusic(st, root,
+        recursive: recursive, cancel: cancel, progress: progress, filter: filter);
     r.files.sort((VFile a, VFile b) {
       final int d = (a.parentId ?? '').compareTo(b.parentId ?? '');
       if (d != 0) return d;

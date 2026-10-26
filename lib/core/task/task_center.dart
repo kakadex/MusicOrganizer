@@ -28,11 +28,18 @@ class RunningTask {
 abstract final class TaskCenter {
   static RunningTask? _current;
 
+  /// 平台层钩子：任务开始（core 不认识平台，只留函数位，由 main 挂上）。
+  static void Function(String title)? onStart;
+
+  /// 平台层钩子：任务结束。
+  static void Function()? onFinish;
+
   /// 启动一个任务；已有任务在跑返回 null（不排队、不覆盖）。
   static RunningTask? start(String title, {PartialSink<Object>? partial}) {
     if (_current != null) return null;
     final TaskControl control = TaskControl();
     _current = RunningTask(title, control, partial: partial);
+    onStart?.call(title);
     return _current;
   }
 
@@ -57,6 +64,7 @@ abstract final class TaskCenter {
     if (t == null) return;
     t.control.finish();
     _current = null;
+    onFinish?.call();
   }
 
   /// 部分结果快照（没有返回 null）。

@@ -196,3 +196,136 @@ abstract final class Cleaner {
     return r;
   }
 }
+
+/// 一条「扁平化」计划：把子目录里的文件搬到根目录。
+class FlattenPlan {
+  FlattenPlan({
+    required this.source,
+    required this.targetName,
+    required this.fromDir,
+    this.conflict = false,
+  });
+
+  final VFile source;
+
+  /// 搬到根目录后的名字（与根目录已有文件撞名时加 `_2` / `_3`）。
+  final String targetName;
+
+  /// 源文件所在目录（相对根目录，预览用）。
+  final String fromDir;
+
+  /// 目标名字仍撞车（极端情况），默认不执行。
+  final bool conflict;
+
+  bool get renamed => targetName != source.name;
+}
+
+/// 扁平化执行结果。
+class FlattenResult {
+  int moved = 0;
+  int failed = 0;
+  int removedDirs = 0;
+  final List<String> errors = <String>[];
+
+  String summary() => '移动 $moved 个 · 删空目录 $removedDirs 个'
+      '${failed > 0 ? ' · 失败 $failed 个' : ''}';
+}
+
+/// 扁平化文件夹：把所有嵌套子目录里的音频搬到根目录这一层。
+///
+/// 只出计划不动盘；撞名时在基本名后加 `_2`、`_3`…，保证不覆盖任何文件。
+abstract final class Flattener {
+  /// 生成计划（纯计算）。
+  ///
+  /// [rootDocId] 是目标目录（通常是曲库根）；[files] 是它下面的全部文件
+  /// （含子目录里的）。已经在根目录的文件跳过。
+  static List<FlattenPlan> plan(List<VFile> files, {required String rootDocId}) {
+    final Set<String> taken = <String>{};
+    for (final VFile f in files) {
+      if (f.dir) continue;
+      if ((f.parentId ?? '') == rootDocId) taken.add(f.name.toLowerCase());
+    }
+    final List<FlattenPlan> out = <FlattenPlan>[];
+    for (final VFile f in files) {
+      if (f.dir || !f.music()) continue;
+      if ((f.parentId ?? '') == rootDocId) continue; // 已在根目录
+      String name = f.name;
+      if (taken.contains(name.toLowerCase())) name = _unique(name, taken);
+      taken.add(name.toLowerCase());
+      final String path = _relDir(f, rootDocId);
+      out.add(FlattenPlan(source: f, targetName: name, fromDir: path));
+    }
+    return out;
+  }
+
+  static String _unique(String name, Set<String> taken) {
+    final int dot = name.lastIndexOf('.');
+    final String stem = dot > 0 ? name.substring(0, dot) : name;
+    final String ext = dot > 0 ? name.substring(dot) : '';
+    for (int i = 2; i < 10000; i++) {
+      final String candidate = '${stem}_$i$ext';
+      if (!taken.contains(candidate.toLowerCase())) return candidate;
+    }
+    return '${stem}_${DateTime.now().millisecondsSinceEpoch}$ext';
+  }
+
+  static String _relDir(VFile f, String rootDocId) {
+    final String id = f.docId;
+    final String prefix = rootDocId.endsWith('/') ? rootDocId : '$rootDocId/';
+    String rel = id.startsWith(prefix) ? id.substring(prefix.length) : id;
+    // docId 末尾是文件名：去掉最后一段剩下的就是目录
+    final int slash = rel.lastIndexOf('/');
+    rel = slash > 0 ? rel.substring(0, slash) : '';
+    // 安卓 SAF 的 docId 形如 `primary:Music/A/B/file.mp3`，把卷前缀也去掉
+    final int colon = rel.indexOf(':');
+    return colon >= 0 ? rel.substring(colon + 1) : rel;
+  }
+
+  /// 执行计划：改名（需要时）→ 移动到根目录 → 删掉空出来的子目录。
+  static Future<FlattenResult> execute(
+    FileStore st, {
+    required VFile root,
+    required List<FlattenPlan> plans,
+    void Function(int done, int total)? onProgress,
+  }) async {
+    final FlattenResult r = FlattenResult();
+    int done = 0;
+    final Set<String> touchedDirs = <String>{};
+    for (final FlattenPlan p in plans) {
+      done++;
+      onProgress?.call(done, plans.length);
+      try {
+        if (p.renamed) {
+          final bool ok = await st.rename(p.source, p.targetName);
+          if (!ok) {
+            r.failed++;
+            r.errors.add('${p.source.name}：改名失败');
+            continue;
+          }
+        }
+        final String? err = await st.move(p.source, root);
+        if (err != null) {
+          r.failed++;
+          r.errors.add('${p.source.name}：$err');
+          continue;
+        }
+        r.moved++;
+        if (p.source.parentId != null) touchedDirs.add(p.source.parentId!);
+      } catch (e) {
+        r.failed++;
+        r.errors.add('${p.source.name}：$e');
+      }
+    }
+    // 清掉搬空的目录（只删空目录，删不掉就留着）
+    for (final String dirId in touchedDirs) {
+      try {
+        final VFile dir = VFile(docId: dirId, name: dirId, dir: true);
+        final List<VFile> kids = await st.children(dir);
+        if (kids.isEmpty && await st.delete(dir)) r.removedDirs++;
+      } catch (_) {
+        // 删不掉不影响结果
+      }
+    }
+    return r;
+  }
+}

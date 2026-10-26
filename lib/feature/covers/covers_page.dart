@@ -21,6 +21,8 @@ import '../../core/scan/scanner.dart';
 import '../../core/source/aggregator.dart';
 import '../../core/tag/tag_io.dart';
 import '../../core/task/task_center.dart';
+import '../../core/tx/write_preview.dart';
+import '../common/write_confirm_sheet.dart';
 import 'covers_logic.dart';
 import 'covers_progress.dart';
 
@@ -36,6 +38,9 @@ class CoversPage extends StatefulWidget {
 
 class _CoversPageState extends State<CoversPage> {
   static const int _maxDownloadBytes = 8 * 1024 * 1024;
+
+  /// 封面在预览里的行键（不是标签字段，单独取字节）。
+  static const String _coverKey = '__cover';
 
   late List<CoverJob> _jobs;
   final List<CoverUndo> _undo = <CoverUndo>[];
@@ -154,11 +159,11 @@ class _CoversPageState extends State<CoversPage> {
       }
     });
 
-    final running = TaskCenter.start('补封面');
+    final running = TaskCenter.start('查找封面');
     final control = running?.control;
-    final String batchId = 'covers-${DateTime.now().millisecondsSinceEpoch}';
     final int total = _jobs.length;
 
+    // ① 先把所有封面抓到内存（这一步不动盘）
     for (int i = 0; i < total; i++) {
       if (control?.isCancelled() ?? false) break;
       await _waitIfPaused(control);
@@ -193,23 +198,13 @@ class _CoversPageState extends State<CoversPage> {
           control?.report(i + 1, total, job.file.name);
           continue;
         }
-        final Uint8List? previous = await Scanner.readCover(store, job.file);
-        _update(job, CoverPhase.working, '写入封面…');
-        final String err = await tx.apply(
-          job.file,
-          const <String, String>{},
-          cover: bytes,
-          batchId: batchId,
-        );
-        if (err.isEmpty) {
-          _written++;
-          repo.invalidate(job.file);
-          _undo.add(CoverUndo(job.file, previous));
-          _update(job, CoverPhase.written, '已写入内嵌封面');
-        } else {
-          _failed++;
-          _update(job, CoverPhase.failed, err);
-        }
+        job.pendingBytes = bytes;
+        job.previousBytes = await Scanner.readCover(store, job.file);
+        _update(
+            job,
+            CoverPhase.ready,
+            '待确认：${(bytes.lengthInBytes / 1024).round()} KB'
+                '${job.previousBytes == null ? '' : '（将覆盖已有封面）'}');
       } catch (e) {
         _failed++;
         _update(job, CoverPhase.failed, '出错：$e');
@@ -218,6 +213,91 @@ class _CoversPageState extends State<CoversPage> {
     }
 
     TaskCenter.finish();
+    if (!mounted) return;
+    setState(() => _busy = false);
+
+    // ② 预览：让用户逐首决定写不写
+    final List<CoverJob> ready = _jobs
+        .where((CoverJob j) => j.phase == CoverPhase.ready && j.pendingBytes != null)
+        .toList();
+    if (ready.isEmpty) {
+      setState(() => _done = true);
+      moSnack(context,
+          '没有可写入的封面（无封面 $_noCover 首，跳过 $_skipped 首，失败 $_failed 首）');
+      return;
+    }
+    final List<WriteTarget> targets = ready.map((CoverJob j) {
+      final bool overwriting = j.previousBytes != null && j.previousBytes!.isNotEmpty;
+      return WriteTarget(
+        docId: j.file.docId,
+        name: j.file.name,
+        path: repo.relPath(j.file),
+        kind: WriteKind.cover,
+        note: '${(j.pendingBytes!.lengthInBytes / 1024).round()} KB'
+            '${overwriting ? ' · 将覆盖已有封面' : ''}',
+        risky: overwriting,
+        lines: <WriteLine>[
+          WriteLine(
+            label: '封面',
+            oldText: overwriting ? '已有封面' : '（空）',
+            newText: '在线封面 ${(j.pendingBytes!.lengthInBytes / 1024).round()} KB',
+            key: _coverKey,
+            payload: j.pendingBytes,
+          ),
+        ],
+        data: j,
+      );
+    }).toList();
+
+    final List<WriteTarget>? picked = await WriteConfirmSheet.show(
+      context,
+      title: '确认写入封面',
+      subtitle: '共找到 ${ready.length} 张封面，勾选要写入的曲目',
+      targets: targets,
+      commitLabel: '写入封面',
+      unit: '首',
+      verb: '写入',
+      expandAll: true,
+    );
+    if (!mounted || picked == null || picked.isEmpty) {
+      setState(() => _done = true);
+      for (final CoverJob j in ready) {
+        j.pendingBytes = null;
+      }
+      return;
+    }
+
+    // ③ 只写勾中的那些
+    final String batchId = 'covers-${DateTime.now().millisecondsSinceEpoch}';
+    setState(() => _busy = true);
+    final TaskControl? wc = TaskCenter.start('写入封面')?.control;
+    final int wt = picked.length;
+    int wi = 0;
+    for (final WriteTarget t in picked) {
+      final CoverJob? j = t.data as CoverJob?;
+      if (j == null) continue;
+      wc?.report(wi, wt, j.file.name);
+      final String err = await tx.apply(
+        j.file,
+        const <String, String>{},
+        cover: j.pendingBytes,
+        batchId: batchId,
+      );
+      if (err.isEmpty) {
+        _written++;
+        repo.invalidate(j.file);
+        _undo.add(CoverUndo(j.file, j.previousBytes));
+        _update(j, CoverPhase.written, '已写入内嵌封面');
+      } else {
+        _failed++;
+        _update(j, CoverPhase.failed, err);
+      }
+      j.pendingBytes = null;
+      wi++;
+      wc?.report(wi, wt, j.file.name);
+    }
+    TaskCenter.finish();
+
     // 写完刷新这些文件的元数据（封面标记 / 列表封面都要重新读）
     await repo.loadMeta(only: _jobs.map((CoverJob j) => j.file));
     if (!mounted) return;

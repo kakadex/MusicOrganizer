@@ -63,7 +63,13 @@ class TaskControl implements CancelToken {
     _done = done;
     _total = total;
     if (message != null) _message = message;
+    // 转发给外部（平台层拿它更新通知栏）；core 不认识平台，只留一个函数位。
+    final void Function(int done, int total, String message)? on = onReport;
+    if (on != null) on(done, total, _message);
   }
+
+  /// 进度上报的转发钩子（纯 Dart，平台层可挂通知栏刷新）。
+  static void Function(int done, int total, String message)? onReport;
 
   int done() => _done;
   int total() => _total;

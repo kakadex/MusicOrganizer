@@ -14,10 +14,42 @@ class MainActivity : FlutterActivity() {
     private var pendingPickResult: MethodChannel.Result? = null
     private var pendingPermissionResult: MethodChannel.Result? = null
     private lateinit var safPlugin: SafPlugin
+    private var hostChannel: MethodChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         safPlugin = SafPlugin(contentResolver)
+        // 宿主能力：任务通知（前台服务）+ 外部调起拿到的文件
+        val host = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "com.dsh.musicorganizer/host"
+        )
+        hostChannel = host
+        host.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "updateTask" -> {
+                    val intent = Intent(this, TaskForegroundService::class.java).apply {
+                        putExtra(TaskForegroundService.EXTRA_TITLE, call.argument<String>("title") ?: "正在处理")
+                        putExtra(TaskForegroundService.EXTRA_TEXT, call.argument<String>("text") ?: "")
+                        putExtra(TaskForegroundService.EXTRA_DONE, call.argument<Int>("done") ?: 0)
+                        putExtra(TaskForegroundService.EXTRA_TOTAL, call.argument<Int>("total") ?: 0)
+                    }
+                    runCatching { startForegroundServiceCompat(intent) }
+                    result.success(null)
+                }
+                "stopTask" -> {
+                    runCatching {
+                        stopService(Intent(this, TaskForegroundService::class.java))
+                    }
+                    result.success(null)
+                }
+                "takeInitialIntent" -> result.success(initialFileUri)
+                "uriInfo" -> safCall(result) {
+                    safPlugin.uriInfo(call.argument<String>("uri") ?: "")
+                }
+                else -> result.notImplemented()
+            }
+        }
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             "com.dsh.musicorganizer/saf"
@@ -129,6 +161,47 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+    }
+
+    /**
+     * 外部调起带进来的文件 URI（ACTION_EDIT / ACTION_VIEW）。
+     *
+     * 用户在文件管理器里「用本应用打开」音频时，把它交给 Dart 侧直接进编辑器；
+     * 应用已经在前台时走 [onNewIntent]，同样转发过去。
+     */
+    private var initialFileUri: String? = null
+
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        initialFileUri = fileUriFrom(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        val uri = fileUriFrom(intent)
+        if (uri.isNullOrEmpty()) return
+        initialFileUri = uri
+        hostChannel?.invokeMethod("onFileIntent", uri)
+    }
+
+    private fun fileUriFrom(intent: Intent?): String? {
+        val intent = intent ?: return null
+        val action = intent.action
+        if (action != Intent.ACTION_EDIT && action != Intent.ACTION_VIEW) return null
+        val uri = intent.data ?: return null
+        // 只读一次授权，避免重启后失效
+        runCatching {
+            contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+        }
+        return uri.toString()
+    }
+
+    private fun startForegroundServiceCompat(intent: Intent) {
+        if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(intent)
+        else startService(intent)
     }
 
     @Suppress("DEPRECATION")

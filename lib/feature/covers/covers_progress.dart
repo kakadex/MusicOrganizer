@@ -10,7 +10,9 @@ import '../../app/ui_kit.dart';
 import '../../core/model/vfile.dart';
 
 /// 单首的状态。
-enum CoverPhase { waiting, working, written, skipped, noCover, failed }
+///
+/// [ready] 是两阶段写入的中点：封面已下载到内存、等用户在预览里确认后才真正落盘。
+enum CoverPhase { waiting, working, ready, written, skipped, noCover, failed }
 
 /// 单首的进度。
 class CoverJob {
@@ -20,9 +22,17 @@ class CoverJob {
   CoverPhase phase = CoverPhase.waiting;
   String note = '等待';
 
+  /// 已下载、待写入的封面字节（[CoverPhase.ready] 时有值）。
+  Uint8List? pendingBytes;
+
+  /// 写之前那张（撤销 / 预览「已有封面」用）。
+  Uint8List? previousBytes;
+
   void reset() {
     phase = CoverPhase.waiting;
     note = '等待';
+    pendingBytes = null;
+    previousBytes = null;
   }
 }
 
@@ -63,6 +73,8 @@ class CoverJobRow extends StatelessWidget {
         return '';
       case CoverPhase.working:
         return '处理中';
+      case CoverPhase.ready:
+        return '待确认';
       case CoverPhase.written:
         return '已写入';
       case CoverPhase.skipped:
@@ -81,6 +93,8 @@ class CoverJobRow extends StatelessWidget {
         return MoKit.ok(context);
       case CoverPhase.failed:
         return MoKit.err(context);
+      case CoverPhase.ready:
+        return MoKit.primary(context);
       case CoverPhase.skipped:
       case CoverPhase.noCover:
         return MoKit.warn(context);

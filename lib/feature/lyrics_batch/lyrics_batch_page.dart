@@ -17,7 +17,8 @@ import '../../core/scan/scanner.dart';
 import '../../core/source/aggregator.dart';
 import '../../core/tag/tag_io.dart';
 import '../../core/task/task_center.dart';
-import 'lyrics_confirm_sheet.dart';
+import '../../core/tx/write_preview.dart';
+import '../common/write_confirm_sheet.dart';
 import 'lyrics_lrc_writer.dart';
 import 'lyrics_logic.dart';
 import 'lyrics_row_tile.dart';
@@ -33,6 +34,9 @@ class LyricsBatchPage extends StatefulWidget {
 }
 
 class _LyricsBatchPageState extends State<LyricsBatchPage> {
+  /// .lrc 在预览里的行键（不是标签字段，单独判断）。
+  static const String _lrcKey = '__lrc';
+
   late List<LyricRow> _rows;
   bool _fetching = false;
   bool _writing = false;
@@ -242,6 +246,16 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
     }
   }
 
+  /// 歌词预览只显示头一行 + 行数，避免把整篇歌词铺进确认面板。
+  static String _brief(String text) {
+    final String t = text.trim();
+    if (t.isEmpty) return '';
+    final List<String> lines =
+        t.split('\n').where((String s) => s.trim().isNotEmpty).toList();
+    final String head = lines.isEmpty ? '' : lines.first.trim();
+    return lines.length <= 1 ? head : '$head …（共 ${lines.length} 行）';
+  }
+
   Future<void> _confirmWrite() async {
     final List<LyricPlan> plans = <LyricPlan>[
       for (final LyricRow row in _rows)
@@ -252,13 +266,55 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
       moSnack(context, '没有勾选可写入的歌词');
       return;
     }
-    final bool? ok = await LyricsConfirmSheet.show(context,
-        plans: plans, writeLrc: _writeLrc);
-    if (ok != true || !mounted) return;
-    await _write(plans);
+
+    // 统一预览：逐首列「原歌词 → 新歌词」，用户可整首 / 逐项勾选
+    final List<WriteTarget> targets = plans.map((LyricPlan p) {
+      final String old = (p.file.cachedTags?.get(Tags.lyrics) ?? '').trim();
+      final List<WriteLine> lines = <WriteLine>[
+        WriteLine(
+          label: '内嵌歌词',
+          oldText: _brief(old),
+          newText: _brief(p.choice.text),
+          key: Tags.lyrics,
+          payload: p.choice.text,
+        ),
+      ];
+      if (_writeLrc) {
+        lines.add(WriteLine(
+          label: '同名 .lrc',
+          oldText: '（随内嵌歌词一起写）',
+          newText: '写入 ${p.file.stem()}.lrc',
+          key: _lrcKey,
+        ));
+      }
+      return WriteTarget(
+        docId: p.file.docId,
+        name: p.file.name,
+        path: Repo.instance.relPath(p.file),
+        kind: WriteKind.lyrics,
+        note: p.choice.note,
+        lowConfidence: p.choice.low,
+        risky: old.isNotEmpty,
+        lines: lines,
+        data: p,
+      );
+    }).toList();
+
+    final List<WriteTarget>? picked = await WriteConfirmSheet.show(
+      context,
+      title: '确认写入歌词',
+      subtitle: '取消勾选的曲目不会被写入',
+      targets: targets,
+      commitLabel: '写入歌词',
+      unit: '首',
+      verb: '写入',
+      expandAll: true,
+    );
+    if (!mounted || picked == null || picked.isEmpty) return;
+    await _write(picked);
   }
 
-  Future<void> _write(List<LyricPlan> plans) async {
+  Future<void> _write(List<WriteTarget> picked) async {
     final Repo repo = Repo.instance;
     final store = repo.store;
     final tx = repo.tx;
@@ -275,10 +331,14 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
     int failed = 0;
     int done = 0;
 
-    for (final LyricPlan plan in plans) {
+    for (final WriteTarget t in picked) {
       if (control?.isCancelled() ?? false) break;
       await _waitIfPaused(control);
+      final LyricPlan? plan = t.data as LyricPlan?;
+      if (plan == null) continue;
       final String text = plan.choice.text;
+      final bool wantLrc = _writeLrc &&
+          t.lines.any((WriteLine l) => l.key == _lrcKey && l.selected && l.changed);
       final String err = await tx.apply(
         plan.file,
         <String, String>{'lyrics': text},
@@ -288,7 +348,7 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
         inlineOk++;
         repo.invalidate(plan.file);
         String lrcErr = '';
-        if (_writeLrc) {
+        if (wantLrc) {
           lrcErr = await LyricLrcWriter.write(store, plan.file, text);
           if (lrcErr.isEmpty) {
             lrcOk++;
@@ -300,18 +360,21 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
             plan.file,
             lrcErr.isNotEmpty
                 ? '歌词已写入，.lrc 失败：$lrcErr'
-                : (_writeLrc ? '已写入内嵌歌词与 .lrc' : '已写入内嵌歌词'));
+                : (wantLrc ? '已写入内嵌歌词与 .lrc' : '已写入内嵌歌词'));
       } else {
         failed++;
         _setStatus(plan.file, '写入失败：$err');
       }
       done++;
-      control?.report(done, plans.length, plan.file.name);
+      control?.report(done, picked.length, plan.file.name);
       if (mounted) setState(() {});
     }
 
     TaskCenter.finish();
-    await repo.loadMeta(only: plans.map((LyricPlan p) => p.file));
+    await repo.loadMeta(only: picked
+        .map((WriteTarget t) => t.data)
+        .whereType<LyricPlan>()
+        .map((LyricPlan p) => p.file));
     if (!mounted) return;
     setState(() => _writing = false);
     final String summary = '内嵌歌词 $inlineOk 首'

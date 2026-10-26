@@ -4,7 +4,7 @@ publish_to: 'none'
 
 # version: X.Y.Z+NNN（build 号 = versionCode，须为整数）。
 # 内容哈希后缀不进本行，由 tools/stamp-version.dart 写入 lib/core/version.dart。
-version: 0.2.3+116
+version: 0.2.4+117
 
 environment:
   sdk: ^3.13.7

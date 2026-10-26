@@ -11,6 +11,8 @@ import '../../core/cleanup/cleaner.dart';
 import '../../core/cleanup/name_template.dart';
 import '../../core/fs/file_store.dart';
 import '../../core/model/vfile.dart';
+import '../../core/tx/write_preview.dart';
+import '../common/write_confirm_sheet.dart';
 
 /// 打开改名流程。[files] 是要改名的文件。
 Future<void> runRenameFlow(BuildContext context, List<VFile> files) async {
@@ -94,40 +96,36 @@ Future<void> runRenameFlow(BuildContext context, List<VFile> files) async {
         conflict > 0 ? '没有可改名的文件（$conflict 个目标名撞车）' : '文件名已经干净了');
     return;
   }
-  final bool? go = await showMoSheet<bool>(
+  // 统一预览：逐文件列「旧名 → 新名」，用户可取消勾选不想改的
+  final List<WriteTarget> targets = todo.map((RenamePlan p) {
+    return WriteTarget(
+      docId: p.source.docId,
+      name: p.source.name,
+      path: repo.relPath(p.source),
+      kind: WriteKind.rename,
+      lines: <WriteLine>[WriteLineX.rename(p.source.name, p.newName)],
+      data: p,
+    );
+  }).toList();
+
+  final List<WriteTarget>? chosen = await WriteConfirmSheet.show(
     context,
-    title: '改名计划（${todo.length} 个）',
-    children: <Widget>[
-      Padding(
-        padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 0, MoKit.pagePad, 4),
-        child: Text(conflict > 0
-            ? '另有 $conflict 个目标名撞车，会跳过（不覆盖）。'
-            : '目标位置没有同名文件，可以安全执行。',
-            style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
-      ),
-      for (final RenamePlan p in todo.take(80))
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: MoKit.pagePad, vertical: 2),
-          child: Text('${p.source.name}  →  ${p.newName}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: MoKit.fsBody, color: MoKit.text(context))),
-        ),
-      if (todo.length > 80)
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: MoKit.pagePad, vertical: 2),
-          child: Text('……还有 ${todo.length - 80} 个',
-              style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
-        ),
-      Padding(
-        padding: const EdgeInsets.all(MoKit.pagePad),
-        child: MoButton('确认改名 ${todo.length} 个', primary: false,
-            onPressed: () => Navigator.of(context).pop(true)),
-      ),
-    ],
+    title: '改名计划',
+    subtitle: conflict > 0
+        ? '另有 $conflict 个目标名撞车，会跳过（不覆盖）。'
+        : '目标位置没有同名文件，可以安全执行。',
+    targets: targets,
+    commitLabel: '确认改名',
+    unit: '个',
+    verb: '改名',
+    expandAll: true,
   );
-  if (go != true) return;
-  final CleanerResult r = await Cleaner.execute(store, todo);
+  if (chosen == null || chosen.isEmpty) return;
+  final List<RenamePlan> doList = chosen
+      .map((WriteTarget t) => t.data)
+      .whereType<RenamePlan>()
+      .toList();
+  final CleanerResult r = await Cleaner.execute(store, doList);
   await repo.rescan();
   if (!context.mounted) return;
   moSnack(context, r.summary());

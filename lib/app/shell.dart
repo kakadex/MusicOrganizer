@@ -5,8 +5,10 @@ import 'repo.dart';
 import 'ui_kit.dart';
 import '../core/tx/journal.dart';
 import '../platform/drop_channel.dart';
+import '../platform/external_open.dart';
+import '../platform/task_service.dart';
 import '../core/tx/journal_history.dart';
-import '../feature/library/preview_sheet.dart';
+import '../feature/history/undo_flow.dart';
 import '../feature/library/library_page.dart';
 import '../feature/organize/organize_page.dart';
 import '../feature/settings/settings_page.dart';
@@ -34,6 +36,10 @@ class _MoShellState extends State<MoShell> {
     super.initState();
     // 拖放只在桌面生效（其他平台没有对端，注册是空操作）
     DropChannel.listen(_onDrop);
+    // 长任务挂通知栏（安卓前台服务），退后台才不会被系统回收
+    TaskService.attach();
+    // 外部调起：文件管理器里「用本应用打开」音频
+    ExternalOpen.listen(_onExternalUri);
     _boot();
   }
 
@@ -45,8 +51,21 @@ class _MoShellState extends State<MoShell> {
       _bootError = '$e';
     }
     if (mounted) setState(() => _booted = true);
+    // 启动时就带进来的文件（ACTION_EDIT / ACTION_VIEW）
+    _takeInitialIntent();
     // 静默查更新（每天最多一次）：查到新版本就在底栏提示一句，不打断。
     _silentCheck();
+  }
+
+  Future<void> _takeInitialIntent() async {
+    final String? uri = await ExternalOpen.takeInitialIntent();
+    if (uri == null || uri.isEmpty || !mounted) return;
+    await ExternalOpen.handle(context, uri);
+  }
+
+  Future<void> _onExternalUri(String uri) async {
+    if (!mounted) return;
+    await ExternalOpen.handle(context, uri);
   }
 
   Future<void> _silentCheck() async {
@@ -129,12 +148,14 @@ class _MoShellState extends State<MoShell> {
     final Journal? journal = Repo.instance.journal;
     if (journal == null) return;
     final List<JournalBatch> batches = await journal.batches(1);
+    if (!mounted) return;
     if (batches.isEmpty) {
       if (mounted) moSnack(context, '没有可撤销的写入记录');
       return;
     }
-    final int n = await undoBatch(batches.first.key);
-    if (mounted) moSnack(context, '已撤销 $n 处改动');
+    final int? n = await undoBatchWithPreview(context, batchId: batches.first.key);
+    if (n == null || !mounted) return;
+    moSnack(context, n == 0 ? '没有可还原的改动' : '已撤销 $n 处改动');
   }
 
   Widget _scaffold() {

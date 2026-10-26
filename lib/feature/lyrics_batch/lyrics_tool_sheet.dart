@@ -17,6 +17,8 @@ import '../../core/lyrics/lyrics_tool.dart';
 import '../../core/model/tags.dart';
 import '../../core/model/vfile.dart';
 import '../../core/scan/scanner.dart';
+import '../../core/tx/write_preview.dart';
+import '../common/write_confirm_sheet.dart';
 import 'lyrics_lrc_writer.dart';
 
 /// 打开歌词工具。[files] 是选中的曲目（取第一首）。
@@ -216,8 +218,61 @@ class _ToolSheetState extends State<_ToolSheet> {
     });
   }
 
+  /// 歌词预览只显示头一行 + 行数。
+  static String _brief(String text) {
+    final String t = text.trim();
+    if (t.isEmpty) return '';
+    final List<String> lines =
+        t.split('\n').where((String s) => s.trim().isNotEmpty).toList();
+    final String head = lines.isEmpty ? '' : lines.first.trim();
+    return lines.length <= 1 ? head : '$head …（共 ${lines.length} 行）';
+  }
+
   Future<void> _save() async {
     final String out = _result;
+    if (out == widget.source) {
+      if (mounted) moSnack(context, '歌词没有变化');
+      return;
+    }
+    final List<WriteTarget> targets = <WriteTarget>[
+      WriteTarget(
+        docId: widget.file.docId,
+        name: widget.file.name,
+        path: Repo.instance.relPath(widget.file),
+        kind: WriteKind.lyrics,
+        note: '${_brief(widget.source)} → ${_brief(out)}',
+        lines: <WriteLine>[
+          WriteLine(
+            label: '内嵌歌词',
+            oldText: _brief(widget.source),
+            newText: _brief(out),
+            key: Tags.lyrics,
+            payload: out,
+          ),
+          WriteLine(
+            label: '同名 .lrc',
+            oldText: '（随内嵌歌词一起写）',
+            newText: '写入 ${widget.file.stem()}.lrc',
+            key: '__lrc',
+          ),
+        ],
+      ),
+    ];
+    final List<WriteTarget>? picked = await WriteConfirmSheet.show(
+      context,
+      title: '确认写入歌词',
+      targets: targets,
+      commitLabel: '写回',
+      unit: '处',
+      verb: '写入',
+      expandAll: true,
+    );
+    if (!mounted || picked == null || picked.isEmpty) return;
+    final WriteTarget t = picked.first;
+    if (!t.lines.any((WriteLine l) => l.key == Tags.lyrics && l.selected)) return;
+    final bool wantLrc =
+        t.lines.any((WriteLine l) => l.key == '__lrc' && l.selected);
+
     final String err = await Repo.instance.tx?.apply(
           widget.file,
           <String, String>{Tags.lyrics: out},
@@ -228,10 +283,14 @@ class _ToolSheetState extends State<_ToolSheet> {
       if (mounted) moSnack(context, '写入失败：$err');
       return;
     }
-    final String lrcErr = await LyricLrcWriter.write(widget.store, widget.file, out);
+    String lrcErr = '';
+    if (wantLrc) {
+      lrcErr = await LyricLrcWriter.write(widget.store, widget.file, out);
+    }
     if (!mounted) return;
     Repo.instance.invalidate(widget.file);
-    moSnack(context, lrcErr.isEmpty ? '已写回内嵌歌词与 .lrc' : '内嵌歌词已写入，.lrc 失败：$lrcErr');
+    moSnack(context,
+        lrcErr.isEmpty ? '已写回内嵌歌词与 .lrc' : '内嵌歌词已写入，.lrc 失败：$lrcErr');
   }
 
   void _showViewer(BuildContext context, String text) {

@@ -9,6 +9,7 @@ import '../../app/repo.dart';
 import '../../app/theme/palette.dart';
 import '../../app/ui_kit.dart';
 import '../../core/log/log.dart';
+import '../../core/match/tag_fill.dart';
 import '../../core/media/media_import.dart';
 import '../../core/model/vfile.dart';
 import '../../core/net/http_client.dart';
@@ -19,6 +20,7 @@ import '../../core/settings/settings_backup.dart';
 import '../../core/version.dart';
 import '../health/health_page.dart';
 import 'data_source_page.dart';
+import 'folder_page.dart';
 import '../library/media_import_sheet.dart';
 import '../history/history_page.dart';
 import 'update_sheet.dart';
@@ -39,6 +41,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   late final TextEditingController _proxyHost;
   late final TextEditingController _proxyPort;
+  late final TextEditingController _excludeCtl;
 
   @override
   void initState() {
@@ -47,12 +50,15 @@ class _SettingsPageState extends State<SettingsPage> {
     final int port = _repo.settings.get<int>('proxy_port', fallback: 0) ?? 0;
     _proxyHost = TextEditingController(text: host);
     _proxyPort = TextEditingController(text: port > 0 ? '$port' : '');
+    _excludeCtl = TextEditingController(
+        text: _repo.settings.get<String>('scan_exclude', fallback: '') ?? '');
   }
 
   @override
   void dispose() {
     _proxyHost.dispose();
     _proxyPort.dispose();
+    _excludeCtl.dispose();
     super.dispose();
   }
 
@@ -74,6 +80,7 @@ class _SettingsPageState extends State<SettingsPage> {
             children: <Widget>[
               _dirCard(),
               _matchCard(),
+              _scanCard(),
               _netCard(),
               _themeCard(),
               _maintainCard(),
@@ -111,6 +118,12 @@ class _SettingsPageState extends State<SettingsPage> {
             ],
           ],
         ),
+        const SizedBox(height: 8),
+        MoButton('文件夹管理（多目录）', primary: false,
+            onPressed: () => FolderPage.show(context)),
+        const SizedBox(height: 4),
+        Text('可以同时登记多个目录，扫描时一起进曲库；查重与整理跨目录生效。',
+            style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
         if (MediaImport.supported) ...<Widget>[
           const SizedBox(height: 8),
           MoButton('从系统媒体库导入', primary: false,
@@ -149,10 +162,10 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Widget _matchCard() {
     final int weight = _repo.settings.get<int>('filename_weight', fallback: 20) ?? 20;
-    final bool overwrite = _repo.settings.get<bool>('fill_overwrite', fallback: false) ?? false;
+    final Map<String, int> modes = _repo.tagModes();
     return SectionCard(
       title: '匹配与写入',
-      subtitle: '文件名权重越高越信文件名，越低越信已有标签',
+      subtitle: '文件名权重越高越信文件名；写入策略逐字段生效',
       children: <Widget>[
         Row(
           children: <Widget>[
@@ -174,29 +187,86 @@ class _SettingsPageState extends State<SettingsPage> {
           ],
         ),
         const SizedBox(height: 4),
+        Text('字段写入策略',
+            style: TextStyle(fontSize: MoKit.fsBody, color: MoKit.text(context))),
+        const SizedBox(height: 2),
+        Text('不写=这个字段永远不动；只补空=已有值保留；覆盖=与候选不同就改',
+            style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
+        const SizedBox(height: 6),
+        for (final String f in TagFill.candidateFields) _modeRow(f, modes[f] ?? TagFill.supplement),
+      ],
+    );
+  }
+
+  /// 单字段的三档选择行。
+  Widget _modeRow(String field, int mode) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: <Widget>[
+          SizedBox(
+            width: 56,
+            child: Text(TagFill.label(field),
+                style: TextStyle(fontSize: MoKit.fsBody, color: MoKit.text(context))),
+          ),
+          const Spacer(),
+          for (final int m in <int>[TagFill.disabled, TagFill.supplement, TagFill.overwrite])
+            Padding(
+              padding: const EdgeInsets.only(left: 6),
+              child: MoChip(
+                label: TagFill.modeName(m),
+                selected: mode == m,
+                onTap: () async {
+                  setState(() {});
+                  await _repo.setTagMode(field, m);
+                  if (mounted) setState(() {});
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _scanCard() {
+    final bool ignoreVideo =
+        _repo.settings.get<bool>('scan_ignore_video', fallback: false) ?? false;
+    return SectionCard(
+      title: '扫描过滤',
+      subtitle: '把不想要的声音文件挡在曲库之外（改完重新扫描生效）',
+      children: <Widget>[
         Row(
           children: <Widget>[
-            Text('写入策略',
-                style: TextStyle(fontSize: MoKit.fsBody, color: MoKit.text(context))),
-            const Spacer(),
-            MoChip(
-              label: '只补空缺',
-              selected: !overwrite,
-              onTap: () {
-                setState(() {});
-                _repo.setSetting('fill_overwrite', false);
-              },
+            Expanded(
+              child: Text('忽略视频文件（mkv/mp4/avi 等）',
+                  style: TextStyle(fontSize: MoKit.fsBody, color: MoKit.text(context))),
             ),
-            const SizedBox(width: 8),
-            MoChip(
-              label: '覆盖已有',
-              selected: overwrite,
-              onTap: () {
+            Switch(
+              value: ignoreVideo,
+              onChanged: (bool v) {
                 setState(() {});
-                _repo.setSetting('fill_overwrite', true);
+                _repo.setSetting('scan_ignore_video', v);
               },
             ),
           ],
+        ),
+        const SizedBox(height: 4),
+        Text('路径关键字黑名单（一行一个，命中就跳过该目录或文件）',
+            style: TextStyle(fontSize: MoKit.fsBody, color: MoKit.text(context))),
+        const SizedBox(height: 4),
+        TextField(
+          controller: _excludeCtl,
+          minLines: 2,
+          maxLines: 5,
+          decoration: const InputDecoration(
+            hintText: '例如：\n备份\nPodcasts\n现场版',
+            border: OutlineInputBorder(),
+            isDense: true,
+          ),
+          style: TextStyle(fontSize: MoKit.fsBody, color: MoKit.text(context)),
+          onChanged: (String v) {
+            _repo.setSetting('scan_exclude', v.trim().isEmpty ? null : v);
+          },
         ),
       ],
     );
@@ -637,6 +707,14 @@ class _SettingsPageState extends State<SettingsPage> {
     for (final MapEntry<String, String> e in _toBackupKey.entries) {
       final Object? v = _repo.settings.get<Object>(e.key);
       if (v != null) out[e.value] = v;
+    }
+    // 逐字段策略（fp:）/ 数据源开关（ep_on:）/ 接口地址（ep:）/ 扫描过滤：
+    // 运行时键名与备份格式一致，凡是备份核心认识的都直接带上。
+    for (final String key in _repo.settings.keys) {
+      if (out.containsKey(key)) continue;
+      if (SettingsBackup.kindOf(key) == null) continue;
+      final Object? v = _repo.settings.get<Object>(key);
+      if (v != null) out[key] = v;
     }
     return out;
   }

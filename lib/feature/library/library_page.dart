@@ -9,17 +9,24 @@ import '../../app/repo.dart';
 import '../../app/ui_kit.dart';
 import '../../core/match/match_queue.dart';
 import '../../core/match/tag_plan.dart';
+import '../../core/model/tags.dart';
 import '../../core/model/task_control.dart';
+import '../../core/model/partial_sink.dart';
 import '../../core/model/vfile.dart';
+import '../../core/organize/organizer.dart';
 import '../../core/cover/folder_cover.dart';
 import '../../core/cover/sidecar_cover.dart';
 import '../../core/fs/file_store.dart';
+import '../../core/fs/tree_ref.dart';
+import '../../core/scan/scanner.dart';
 import '../../core/scan/search_index.dart';
 import '../../core/scan/search_query.dart';
 import '../../core/task/task_center.dart';
 import '../covers/covers_page.dart';
 import '../editor/editor_page.dart';
 import '../lyrics_batch/lyrics_batch_page.dart';
+import '../../core/tx/write_preview.dart';
+import '../common/write_confirm_sheet.dart';
 import '../organize/rename_flow.dart';
 import '../lyrics_batch/lyrics_tool_sheet.dart';
 import '../tag_batch/batch_edit.dart';
@@ -48,6 +55,12 @@ class _LibraryPageState extends State<LibraryPage> {
   int _sort = 0;
   bool _desc = false;
   bool _selectMode = false;
+
+  /// 长按后是否处于「拖动连选」状态。
+  bool _dragSelecting = false;
+
+  /// 每行一个 key，拖选时用来判断手指落在哪一行。
+  final Map<String, GlobalKey> _rowKeys = <String, GlobalKey>{};
   final Set<String> _selected = <String>{};
   bool _busy = false;
   String _status = '';
@@ -176,48 +189,32 @@ class _LibraryPageState extends State<LibraryPage> {
   /// 删除选中的文件（不可撤销，先确认再删）。
   Future<void> _deleteSelected(List<VFile> files) async {
     if (files.isEmpty) return;
-    final bool? go = await showMoSheet<bool>(
+    // 统一预览：逐个列出，用户可取消勾选不想删的
+    final List<WriteTarget> targets = files
+        .map(
+          (VFile f) => WriteTarget(
+            docId: f.docId,
+            name: f.name,
+            path: f.pathAfterRoot(),
+            kind: WriteKind.delete,
+            risky: true,
+            lines: <WriteLine>[WriteLineX.delete(f.name)],
+            file: f,
+          ),
+        )
+        .toList();
+    final List<WriteTarget>? picked = await WriteConfirmSheet.show(
       context,
-      title: '删除 ${files.length} 个文件？',
-      children: <Widget>[
-        Padding(
-          padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 0, MoKit.pagePad, 4),
-          child: Text('删除不可撤销，回收站也没有。要删的是这些：',
-              style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
-        ),
-        for (final VFile f in files.take(80))
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: MoKit.pagePad, vertical: 1),
-            child: Text(f.pathAfterRoot(),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: MoKit.fsBody, color: MoKit.text(context))),
-          ),
-        if (files.length > 80)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: MoKit.pagePad, vertical: 2),
-            child: Text('……还有 ${files.length - 80} 个',
-                style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
-          ),
-        Padding(
-          padding: const EdgeInsets.all(MoKit.pagePad),
-          child: Row(
-            children: <Widget>[
-              Expanded(
-                child: MoButton('取消', primary: false,
-                    onPressed: () => Navigator.of(context).pop(false)),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: MoButton('确认删除 ${files.length} 个', primary: false,
-                    onPressed: () => Navigator.of(context).pop(true)),
-              ),
-            ],
-          ),
-        ),
-      ],
+      title: '删除文件',
+      subtitle: '删除不可撤销，回收站也没有',
+      warning: '确认前请核对：勾中的文件会直接从磁盘删除',
+      targets: targets,
+      commitLabel: '确认删除',
+      unit: '个',
+      verb: '删除',
+      expandAll: true,
     );
-    if (go != true || !mounted) return;
+    if (picked == null || picked.isEmpty || !mounted) return;
     final FileStore? store = Repo.instance.store;
     if (store == null) {
       moSnack(context, '还没有准备好文件访问');
@@ -226,7 +223,9 @@ class _LibraryPageState extends State<LibraryPage> {
     setState(() => _busy = true);
     int ok = 0;
     int fail = 0;
-    for (final VFile f in files) {
+    for (final WriteTarget t in picked) {
+      final VFile? f = t.file as VFile?;
+      if (f == null) continue;
       if (await store.delete(f)) {
         ok++;
       } else {
@@ -243,6 +242,74 @@ class _LibraryPageState extends State<LibraryPage> {
     moSnack(context, '已删除 $ok 个${fail > 0 ? '，失败 $fail 个' : ''}');
   }
 
+  /// 手动把一首歌搬到「歌手」目录（认不出歌手就不动）。
+  Future<void> _classifyToArtist(VFile f) async {
+    final repo = Repo.instance;
+    final store = repo.store;
+    final TreeRef? ref = repo.rootOf(f);
+    if (store == null || ref == null) return;
+    Tags tags = f.cachedTags ?? Tags();
+    try {
+      tags = await Scanner.readTags(store, f);
+    } catch (_) {
+      // 读不到就用缓存
+    }
+    final VFile probe = VFile(docId: f.docId, name: f.name, dir: false)
+      ..cachedTags = tags;
+    final List<MovePlan> plans = Organizer.plan(
+      <VFile>[probe],
+      rootDocId: ref.rootDocId,
+      byAlbum: false,
+      onlyUnorganized: false,
+    );
+    if (!mounted) return;
+    if (plans.isEmpty) {
+      moSnack(context, '认不出歌手（标签里没有艺术家，文件名也解析不出）');
+      return;
+    }
+    final MovePlan p = plans.first;
+    final List<WriteTarget>? picked = await WriteConfirmSheet.show(
+      context,
+      title: '归类到歌手目录',
+      subtitle: '勾中后会把文件搬到下面这个位置',
+      targets: <WriteTarget>[
+        WriteTarget(
+          docId: f.docId,
+          name: f.name,
+          path: repo.relPath(f),
+          kind: WriteKind.move,
+          note: p.conflict ? '同目录已有同名文件，会跳过' : p.reason,
+          lines: <WriteLine>[
+            WriteLine(
+              label: '位置',
+              oldText: repo.relPath(f),
+              newText: '${p.targetPath}/${f.name}',
+            ),
+          ],
+          file: f,
+          data: p,
+        ),
+      ],
+      commitLabel: '归类',
+      unit: '首',
+      verb: '移动',
+    );
+    if (picked == null || picked.isEmpty || !mounted) return;
+    if (p.conflict) {
+      moSnack(context, '目标目录已有同名文件，没动');
+      return;
+    }
+    TaskCenter.start('归类到歌手目录');
+    final OrganizeResult r = await Organizer.execute(store, <MovePlan>[p]);
+    TaskCenter.finish();
+    if (!mounted) return;
+    await repo.rescan();
+    if (!mounted) return;
+    moSnack(context, r.ok > 0
+        ? '已归类到 ${p.targetPath}'
+        : '没搬动：${r.errors.isNotEmpty ? r.errors.first : r.summary()}');
+  }
+
   Future<void> _matchSelected({bool ignoreMemory = false}) async {
     final repo = Repo.instance;
     final runner = repo.runner;
@@ -254,8 +321,13 @@ class _LibraryPageState extends State<LibraryPage> {
     }
     if (files.isEmpty) return;
     setState(() => _busy = true);
-    final RunningTask? task = TaskCenter.start('匹配标签');
+    // 边跑边存已完成的结果：中途暂停 / 取消时也能把「已获取的部分」拿出来看
+    final PartialSink<FilePlan> partial = PartialSink<FilePlan>();
+    final RunningTask? task = TaskCenter.start('匹配标签', partial: partial as PartialSink<Object>);
     final TaskControl? control = task?.control;
+    final Map<String, int> indexOf = <String, int>{
+      for (int i = 0; i < files.length; i++) files[i].docId: i,
+    };
     if (ignoreMemory) {
       // 用户明确要重来：清掉这些文件的续跑条目，否则又会拿到上次的结论
       for (final VFile f in files) {
@@ -266,14 +338,57 @@ class _LibraryPageState extends State<LibraryPage> {
     final List<FilePlan> plans = await runner.match(
       files,
       control: control,
+      modes: repo.tagModes(),
       ignoreMemory: ignoreMemory,
       onPlan: (int done, int total, FilePlan plan) {
+        partial.addAt(indexOf[plan.file.docId] ?? done, plan);
         control?.report(done, total, plan.file.name);
       },
     );
+    final bool stopped = control?.isCancelled() ?? false;
     TaskCenter.finish();
     if (!mounted) return;
     setState(() => _busy = false);
+    // 中途停下来的：把已经拿到的部分交出来给用户，别让跑到一半的活儿白费
+    final List<FilePlan> usable =
+        plans.isNotEmpty ? plans : partial.snapshot().where((FilePlan p) => p.hasChange).toList();
+    if (plans.isEmpty && usable.isNotEmpty) {
+      final bool? go = await showMoSheet<bool>(
+        context,
+        title: stopped ? '已停止，先看已获取的部分' : '已暂停，先看已获取的部分',
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 4, MoKit.pagePad, 8),
+            child: Text('还剩 ${files.length - usable.length} 首没跑完；'
+                '现在可以把这 ${usable.length} 首的结果先写进去。',
+                style: TextStyle(fontSize: MoKit.fsBody, color: MoKit.sub(context))),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(MoKit.pagePad),
+            child: Row(
+              children: <Widget>[
+                Expanded(
+                  child: MoButton('不要了', primary: false,
+                      onPressed: () => Navigator.of(context).pop(false)),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: MoButton('查看这 ${usable.length} 首',
+                      onPressed: () => Navigator.of(context).pop(true)),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+      if (go != true || !mounted) return;
+      final bool? wrote = await PreviewSheet.show(context, usable);
+      if (wrote == true && mounted) {
+        setState(() => _selected.clear());
+        _applyFilter();
+      }
+      return;
+    }
     if (plans.isEmpty) {
       if (runner.errors.isNotEmpty) {
         final String why = runner.errors.values.first;
@@ -452,19 +567,29 @@ class _LibraryPageState extends State<LibraryPage> {
             : null,
       );
     }
-    return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 12),
-      // 快速滑动优化：离屏行不再保活，避免一次性为大量行保留状态、触发过多封面 I/O。
-      addAutomaticKeepAlives: false,
-      itemCount: _shown.length,
-      itemBuilder: (BuildContext c, int i) => _row(_shown[i]),
+    return RefreshIndicator(
+      onRefresh: _scan,
+      child: Listener(
+        // 长按进入多选后，手指继续滑动即可连续勾选（Listener 不参与手势竞争，
+        // 所以不会影响正常滚动）。
+        onPointerMove: _onDragSelectMove,
+        onPointerUp: (_) => _dragSelecting = false,
+        onPointerCancel: (_) => _dragSelecting = false,
+        child: ListView.builder(
+          padding: const EdgeInsets.only(bottom: 12),
+          // 快速滑动优化：离屏行不再保活，避免一次性为大量行保留状态、触发过多封面 I/O。
+          addAutomaticKeepAlives: false,
+          itemCount: _shown.length,
+          itemBuilder: (BuildContext c, int i) => _row(_shown[i]),
+        ),
+      ),
     );
   }
 
   Widget _row(Entry e) {
     final bool selected = _selected.contains(e.docId);
     return _CoverRow(
-      key: ValueKey<String>(e.docId),
+      key: _rowKeys.putIfAbsent(e.docId, () => GlobalKey()),
       entry: e,
       terms: _terms,
       selected: selected,
@@ -480,9 +605,28 @@ class _LibraryPageState extends State<LibraryPage> {
         setState(() {
           _selectMode = true;
           _selected.add(e.docId);
+          _dragSelecting = true;
         });
       },
     );
+  }
+
+  /// 手指滑到哪一行就把哪一行勾上（长按进入多选后生效）。
+  void _onDragSelectMove(PointerMoveEvent event) {
+    if (!_dragSelecting || !_selectMode) return;
+    for (final Entry e in _shown) {
+      final GlobalKey? key = _rowKeys[e.docId];
+      final RenderObject? box = key?.currentContext?.findRenderObject();
+      if (box is! RenderBox || !box.attached) continue;
+      final Offset local = box.globalToLocal(event.position);
+      if (local.dx < 0 || local.dy < 0 || local.dx > box.size.width || local.dy > box.size.height) {
+        continue;
+      }
+      if (!_selected.contains(e.docId)) {
+        setState(() => _selected.add(e.docId));
+      }
+      break;
+    }
   }
 
   Widget _selectionBar() {
@@ -680,6 +824,15 @@ class _LibraryPageState extends State<LibraryPage> {
                 Navigator.of(context).pop();
                 final bool? changed = await EditorPage.show(context, f);
                 if (changed == true && mounted) _applyFilter();
+              }),
+              const SizedBox(height: 8),
+              MoButton('归类到歌手目录', primary: false,
+                  icon: Icons.drive_file_move_outline,
+                  onPressed: () async {
+                final VFile? f = e.file;
+                if (f == null) return;
+                Navigator.of(context).pop();
+                await _classifyToArtist(f);
               }),
             ],
           ),

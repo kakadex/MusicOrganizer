@@ -8,6 +8,7 @@ import '../../core/model/vfile.dart';
 import '../../core/task/task_center.dart';
 import '../../core/tx/journal.dart';
 import '../../core/tx/tag_transaction.dart';
+import '../history/undo_flow.dart';
 
 /// 写入前预览：逐首展开「旧值 → 新值」，勾选后才写盘。
 ///
@@ -232,7 +233,9 @@ class _PreviewBodyState extends State<_PreviewBody> {
           : SnackBarAction(
               label: '撤销',
               onPressed: () async {
-                final int n = await undoBatch(batchId);
+                final int? n =
+                    await undoBatchWithPreview(context, batchId: batchId);
+                if (n == null) return;
                 messenger.showSnackBar(SnackBar(
                     content: Text('已撤销 $n 处改动'),
                     behavior: SnackBarBehavior.floating,

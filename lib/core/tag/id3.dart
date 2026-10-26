@@ -367,28 +367,30 @@ abstract final class Id3 {
       Uint8List? cover, List<Uint8List> preserved) {
     final BytesBuilder frames = BytesBuilder();
     final String yearId = version >= 4 ? 'TDRC' : 'TYER';
-    if (values.containsKey('title')) {
+    // 空值 = 删除该帧（不写空帧）。否则撤销「原来没有这个字段」的改动时，
+    // 会凭空多出 TPE1/TALB/… 一串空帧，文件比原始还大。
+    if (_has(values, 'title')) {
       _putTextFrame(frames, version, 'TIT2', _orEmpty(values['title']));
     }
-    if (values.containsKey('artist')) {
+    if (_has(values, 'artist')) {
       _putTextFrame(frames, version, 'TPE1', _orEmpty(values['artist']));
     }
-    if (values.containsKey('album')) {
+    if (_has(values, 'album')) {
       _putTextFrame(frames, version, 'TALB', _orEmpty(values['album']));
     }
-    if (values.containsKey('year')) {
+    if (_has(values, 'year')) {
       _putTextFrame(frames, version, yearId, _orEmpty(values['year']));
     }
-    if (values.containsKey('track')) {
+    if (_has(values, 'track')) {
       _putTextFrame(frames, version, 'TRCK', _orEmpty(values['track']));
     }
-    if (values.containsKey('genre')) {
+    if (_has(values, 'genre')) {
       _putTextFrame(frames, version, 'TCON', _orEmpty(values['genre']));
     }
-    if (values.containsKey('comment')) {
+    if (_has(values, 'comment')) {
       _putCommFrame(frames, version, _orEmpty(values['comment']));
     }
-    if (values.containsKey('lyrics')) {
+    if (_has(values, 'lyrics')) {
       _putUsltFrame(frames, version, _orEmpty(values['lyrics']));
     }
     if (cover != null && cover.isNotEmpty) {
@@ -401,6 +403,10 @@ abstract final class Id3 {
   }
 
   static String _orEmpty(String? s) => s == null ? '' : s.trim();
+
+  /// 值非空才需要写；空串表示「删掉这个字段」。
+  static bool _has(Map<String, String> values, String key) =>
+      _orEmpty(values[key]).isNotEmpty;
 
   static void _putTextFrame(
       BytesBuilder out, int version, String id, String value) {
