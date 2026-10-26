@@ -19,6 +19,7 @@ import '../covers/covers_page.dart';
 import '../editor/editor_page.dart';
 import '../lyrics_batch/lyrics_batch_page.dart';
 import '../organize/rename_flow.dart';
+import '../lyrics_batch/lyrics_tool_sheet.dart';
 import '../tag_batch/batch_edit.dart';
 import 'preview_sheet.dart';
 
@@ -560,6 +561,15 @@ class _LibraryPageState extends State<LibraryPage> {
           onTap: () {
             Navigator.of(context).pop();
             _matchSelected(ignoreMemory: true);
+          },
+        ),
+        MoTile(
+          title: '歌词工具',
+          subtitle: '清洗歌词、整体偏移时间轴、查看原词',
+          icon: Icons.lyrics_outlined,
+          onTap: () {
+            Navigator.of(context).pop();
+            runLyricsTool(context, files);
           },
         ),
         MoTile(
