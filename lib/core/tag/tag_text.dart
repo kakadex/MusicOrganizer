@@ -1,4 +1,4 @@
-/// 标签文本解码的公共容错层 —— 移植自旧 core/TagText.java。
+/// 标签文本解码的公共容错层。
 ///
 /// ID3 / Vorbis Comment / MP4 atom 都规定文本用 UTF-8，但国产工具链实际写出的
 /// 常常不是 UTF-8。这里兜住三类：GBK 冒充 UTF-8、双重编码、真 UTF-8 标 enc=0。

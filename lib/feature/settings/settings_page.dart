@@ -20,7 +20,7 @@ import 'update_sheet.dart';
 
 /// 设置页：偏好 / 主题 / 维护 / 备份 / 关于。
 ///
-/// 与「整理」明确分工：这里只放**偏好与维护**，功能类动作不在这（旧版把工具卡塞进设置里，
+/// 与「整理」明确分工：这里只放**偏好与维护**，功能类动作不在这（把工具卡塞进设置里，
 /// 结果主功能要点三次才能到）。
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -449,11 +449,6 @@ class _SettingsPageState extends State<SettingsPage> {
       title: '关于',
       children: <Widget>[
         MoTile(title: '版本', subtitle: kAppVersionFull, icon: Icons.info_outline),
-        MoTile(
-          title: '零依赖说明',
-          subtitle: '不绑定需注册账号的平台；数据源全部使用公开接口；安装包自包含',
-          icon: Icons.verified_user_outlined,
-        ),
       ],
     );
   }

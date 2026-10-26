@@ -1,4 +1,4 @@
-/// 在线标签源的统一契约（T10a）—— 移植自旧 net/OnlineSource.java。
+/// 在线标签源的统一契约：一个源一个实现 + 注册表。
 ///
 /// 以前所有源都挤在一个类的 if-else 里：加一家要改多处、还说不清
 /// 「这家支不支持歌词 / 封面」。现在一个源一个实现 + 注册表，
@@ -34,7 +34,7 @@ abstract class TagSource {
   Future<List<Candidate>> search(Query q, {JsonFetcher? fetch});
 }
 
-/// 从查询上下文里取检索用的标题 / 艺人 —— 移植自旧 net/Sources.java。
+/// 从查询上下文里取检索用的标题 / 艺人。
 ///
 /// 文件名解析结果与已有标签按 [Query.filenameWeight] 取舍：权重高更信文件名，
 /// 权重低更信内嵌标签。所有源必须用同一套取值口径，否则同一首歌在不同源会搜出不同结果。

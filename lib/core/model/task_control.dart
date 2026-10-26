@@ -1,8 +1,8 @@
-/// 任务控制器 —— 移植自旧 core/TaskControl.java。
+/// 任务控制器。
 ///
 /// 同时承担「进度上报」与「暂停 / 取消」。
 ///
-/// Dart 单线程下无法像 Java 那样在检查点阻塞工作线程，因此 [isCancelled]
+/// Dart 单线程下无法在检查点阻塞工作线程，因此 [isCancelled]
 /// 只做非阻塞状态查询；「暂停」由业务循环协作检查 [isPaused] 实现。
 library;
 

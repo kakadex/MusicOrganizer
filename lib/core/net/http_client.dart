@@ -1,4 +1,4 @@
-/// 极简 HTTP GET 工具 —— 移植自旧 net/Http.java（改用 dart:io HttpClient）。
+/// 极简 HTTP GET 工具（改用 dart:io HttpClient）。
 ///
 /// - keep-alive 连接池：dart:io HttpClient 自带连接复用，全程复用同一个实例；
 /// - 失败熔断：同一主机连续失败 [HostBreaker.failThreshold] 次后冷却，冷却期内

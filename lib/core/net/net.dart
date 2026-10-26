@@ -1,4 +1,4 @@
-/// 网络并发编排 —— 移植自旧 net/Net.java（Dart 单线程 async 版）。
+/// 网络并发编排（Dart 单线程 async 版）。
 ///
 /// - [map] / [mapIndexed]：文件级并发（默认 3，可调 1-5），结果按输入顺序返回；
 /// - [gather]：源级并发，Future.wait + 总预算 timeout（默认 12s 随倍率缩放）。

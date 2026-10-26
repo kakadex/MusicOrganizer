@@ -1,4 +1,4 @@
-/// APEv2 标签读写 —— 移植自旧 core/Ape.java（Monkey's Audio / WavPack / Musepack 用同一套）。
+/// APEv2 标签读写（Monkey's Audio / WavPack / Musepack 用同一套）。
 ///
 /// 结构：键值项 + 32 字节 footer。footer 固定在文件尾（ID3v1 之前）。
 /// tagSize 含 footer；写入保留文件末尾的 ID3v1。

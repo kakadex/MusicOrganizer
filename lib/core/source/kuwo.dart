@@ -1,4 +1,4 @@
-/// 酷我音乐标签源（T10b）—— 移植自旧 net/Sources.java 的 kuwo(Query) 一段。
+/// 酷我音乐标签源。
 ///
 /// 酷我字段全大写：SONGNAME（取不到再退 NAME）/ ARTIST / ALBUM / DURATION，
 /// 时长本来就是秒。返回体是 `abslist` 数组；标题为空的记录直接丢掉，

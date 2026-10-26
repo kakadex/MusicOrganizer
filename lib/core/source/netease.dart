@@ -1,4 +1,4 @@
-/// 网易云音乐标签源（T10b）—— 移植自旧 net/Sources.java 的 netease(Query) 一段。
+/// 网易云音乐标签源。
 ///
 /// 国内五家里字段最全的一家：年份来自 album.publishTime（毫秒时间戳），
 /// 封面来自 album.picUrl 追加 800×800 参数，艺人是数组需要拼串。

@@ -1,4 +1,4 @@
-/// FLAC Vorbis Comment 读写 —— 移植自旧 core/Flac.java（纯手写，零依赖）。
+/// FLAC Vorbis Comment 读写（纯手写实现）。
 ///
 /// 元数据块结构：4 字节 magic + [1 字节(最后块标志<<7|类型) + 3 字节长度]。
 /// 类型 4 = VORBIS_COMMENT（全部小端）。重写时只替换该块，PICTURE 等其余块原样保留。

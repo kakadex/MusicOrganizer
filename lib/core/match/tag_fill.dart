@@ -1,4 +1,4 @@
-/// 批量标签的「这个字段要不要写」判定 —— 移植自旧 core/TagFill.java。
+/// 批量标签的「这个字段要不要写」判定。
 ///
 /// 字段级三态策略：
 /// - disabled   不写：这个字段永远不动；
@@ -21,7 +21,7 @@ abstract final class TagFill {
     'title', 'artist', 'album', 'year', 'track', 'genre',
   ];
 
-  /// 字段中文标签（等价旧 Tags.LABELS；T04 落位 core/model/tags.dart 后改为引用）。
+  /// 字段中文标签（等价旧 Tags.LABELS； core/model/tags.dart 后改为引用）。
   static const Map<String, String> tagLabels = <String, String>{
     'title': '标题',
     'artist': '艺术家',

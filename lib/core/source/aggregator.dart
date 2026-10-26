@@ -1,4 +1,4 @@
-/// 多源聚合（T10b）—— 移植自旧 net/Sources.java 的 aggregate 与去重逻辑。
+/// 多源聚合：源级并发 → 时长交叉验证 → 去重 → 排序 → 截断。
 ///
 /// 流程：**源级并发 → 时长交叉验证 → 多源去重 → 按 [SourceRank] 排序 → 截断**。
 /// 时长容差 3 秒（超出基本可判定不是同一录音）；去重后最多留 10 条，
@@ -124,7 +124,7 @@ abstract final class Aggregator {
 
   /// 取歌词候选：并发问各家，返回按 [offerScore] 排好序的命中（越靠前越可信）。
   ///
-  /// 最终「取不取、取哪条」由 T11 的匹配链路决定，这里只负责并发与排序。
+  /// 最终「取不取、取哪条」由匹配链路决定，这里只负责并发与排序。
   static Future<List<LyricHit>> lyricCandidates(
     LyricQuery q, {
     LyricScorer? score,
@@ -226,5 +226,5 @@ abstract final class Aggregator {
   }
 }
 
-/// 歌词打分回调签名（T11 注入 [offerScore] 的实现）。
+/// 歌词打分回调签名（由调用的批量链路注入）。
 typedef LyricScorer = double Function(LyricHit hit);

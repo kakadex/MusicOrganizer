@@ -6,7 +6,7 @@ import 'palette.dart';
 /// 主题状态（Phase 0：内存态）。
 ///
 /// 持久化槽位已预留：主题 id / 夜间模式后续经 `Repo.settings` 落盘，
-/// 启动时读回（T13 设置页接线时接入）。
+/// 启动时读回（）。
 class ThemeController extends ChangeNotifier {
   /// 创建主题控制器；默认「简紫 · 亮色」。
   ThemeController({MoThemeId themeId = MoThemeId.minimal, bool dark = false}) {

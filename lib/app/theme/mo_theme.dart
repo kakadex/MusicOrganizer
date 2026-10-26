@@ -7,7 +7,7 @@ abstract final class MoTheme {
   /// 构建主题数据。
   ///
   /// [dark] 决定 brightness；语义色的明暗提亮变体已内含在各 palette 中。
-  /// 组件级细节（圆角、 elevation、 chip 样式等）留待 T14 打磨。
+  /// 组件级细节（圆角、 elevation、 chip 样式等）留待 。
   static ThemeData build(MoPalette p, {required bool dark}) {
     final Brightness brightness = dark ? Brightness.dark : Brightness.light;
     // 以主色为种子生成完整配色，再把「页面底 / 卡片面 / 文字 / 线条」按调色板校正。

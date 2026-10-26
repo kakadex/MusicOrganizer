@@ -1,4 +1,4 @@
-/// MusicBrainz 客户端 —— 移植自旧 net/MbClient.java。
+/// MusicBrainz 客户端。
 ///
 /// 只做一件事：按「歌名 + 歌手」查录音，返回抹平后的命中（title/artist/album/date/score）。
 /// 三条纪律：

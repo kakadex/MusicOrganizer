@@ -1,4 +1,4 @@
-/// 封面图片小工具 —— 移植自旧 core/CoverArt.java（纯字节处理，不依赖解码器）。
+/// 封面图片小工具（纯字节处理，不依赖解码器）。
 library;
 
 import 'dart:typed_data';

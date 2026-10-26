@@ -1,4 +1,4 @@
-/// 曲库清单导出（CSV）—— 移植自旧 core/CsvExport.java。
+/// 曲库清单导出（CSV）。
 ///
 /// 转义按 RFC 4180（含逗号/引号/换行加引号，内部引号翻倍），带 UTF-8 BOM。
 library;

@@ -1,4 +1,4 @@
-/// MP4 / M4A 标签读写（moov > udta > meta > ilst）—— 移植自旧 core/Mp4.java。
+/// MP4 / M4A 标签读写（moov > udta > meta > ilst）。
 ///
 /// 写：重建 udta>meta>ilst，算出新 moov 与旧 moov 长度差 delta；若 mdat 在 moov 之后，
 /// 把 stco/co64 里 offset >= moov 末尾的项全部加上 delta（偏移修正）。

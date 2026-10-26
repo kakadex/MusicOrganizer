@@ -1,4 +1,4 @@
-/// 歌词文档模型 —— 移植自旧 core/LyricsDoc.java。
+/// 歌词文档模型。
 ///
 /// 定义「行 = 时间戳 + 文本」的最小模型，并提供解析、清洗、合并翻译三件事。
 /// 输出仍是标准 LRC（双语就是同一时间点两行）。
@@ -137,7 +137,7 @@ abstract final class LyricsDoc {
     return n;
   }
 
-  /// 把任意歌词文本归一成标准 LRC。TTML 归一在 T13 落位 Ttml 后接入，目前原样返回。
+  /// 把任意歌词文本归一成标准 LRC。TTML 归一在  Ttml 后接入，目前原样返回。
   static String normalizeFormat(String? raw) => raw ?? '';
 
   /// 有时间轴的行数。

@@ -1,4 +1,4 @@
-/// 在线标签候选 —— 移植自旧 net/Sources.java 的 Candidate。
+/// 在线标签候选 的 Candidate。
 ///
 /// 各数据源字段不同，在这里抹平成统一结构。
 class Candidate {

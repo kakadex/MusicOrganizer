@@ -1,8 +1,8 @@
-/// lyrics.ovh 歌词源（T10b）—— 移植自旧 net/LyricSources.java 的 ovh() 段。
+/// lyrics.ovh 歌词源。
 ///
 /// 只有纯文本、没有时间轴，但当另外几家全空时，用户勾了「接受纯文本歌词」
 /// 至少还能拿到词。地址是**路径参数**（`/v1/{艺人}/{歌名}`），两段都要单独编码；
-/// 艺人读不到时按旧版填 `unknown`。
+/// 艺人读不到时填 `unknown`。
 library;
 
 import '../model/lyric_hit.dart';
@@ -18,7 +18,7 @@ class OvhLyricSource implements LyricSource {
   @override
   String get label => 'lyrics.ovh';
 
-  /// 艺人读不到时的占位（旧版 ovh() 里的 "unknown"）。
+  /// 艺人读不到时的占位。
   static const String unknownArtist = 'unknown';
 
   @override

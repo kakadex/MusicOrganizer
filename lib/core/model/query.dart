@@ -1,4 +1,4 @@
-/// 查询上下文 —— 移植自旧 net/Sources.java 的 Query。
+/// 查询上下文 的 Query。
 library;
 
 import '../match/name_weight.dart';

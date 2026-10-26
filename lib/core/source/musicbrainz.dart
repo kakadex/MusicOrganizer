@@ -1,4 +1,4 @@
-/// MusicBrainz 标签源（T10b）—— 移植自旧 net/Sources.java 的 MusicBrainz 部分。
+/// MusicBrainz 标签源。
 ///
 /// 定位是**海外锚点**：中文曲目召回弱（库里常是罗马字译名），但外文曲目与
 /// 「国内站没收的冷门歌」还得靠它。字段只有 title/artist/album/date，

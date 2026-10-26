@@ -523,7 +523,7 @@ void moSnack(BuildContext context, String message,
 
 /// 任务条：**只在有任务时出现**，结束 1.2 秒后自动隐藏。
 ///
-/// 旧版常年挂一条「就绪」占掉 40dp，还让列表跟着抖；这里改成按需滑入。
+/// 只在有任务时出现：常驻一条「就绪」会白占 40dp，还会让列表跟着抖。
 class TaskBar extends StatefulWidget {
   const TaskBar({super.key});
 

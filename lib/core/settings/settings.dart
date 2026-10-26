@@ -1,10 +1,10 @@
 /// 设置存储（Phase 0 纯 Dart 内存实现，零 Flutter 依赖）。
 ///
-/// 后续落位（T02/T13）：
+/// 后续落位：
 /// - SharedPreferences 持久化后端（`shared_preferences` 在白名单内）；
 /// - 类型化访问器：主题 id / 夜间模式 / 端点覆盖 / 文件级并发度 /
 ///   补全策略（disabled / supplement / overwrite）等；
-/// - `settings_backup.dart`：设置导入导出（T13）。
+/// - `settings_backup.dart`：设置导入导出。
 class SettingsStore {
   final Map<String, Object?> _values = <String, Object?>{};
 

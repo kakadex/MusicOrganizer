@@ -1,4 +1,4 @@
-/// 模型层（T04 落位）：不可变值对象 + copyWith。
+/// 模型层：不可变值对象 + copyWith。
 ///
 /// - `vfile.dart`：VFile（id / parentId / name / size / mtime / isDir；
 ///   缓存 tags? / hasCover / hasLyrics / durationMs / bitrateKbps；写盘后 clearMeta）；

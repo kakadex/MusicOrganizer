@@ -1,8 +1,8 @@
-/// QQ 音乐歌词源（T10b）—— 移植自旧 net/LyricSources.java 的 qq() 段。
+/// QQ 音乐歌词源。
 ///
 /// 搜索走网页版 `musicu.fcg`（`DoSearchForQQMusicDesktop`，旧的 client_search_cp
 /// 已返 500）拿 songmid，取歌词走 `fcg_query_lyric_new.fcg`。
-/// 两个照旧版保留的要点：
+/// 两个要点：
 ///   - 请求头要带 `Referer: y.qq.com`（搜索）/`y.qq.com/portal/player.html`（取词）；
 ///     本工程的取词回调只有 url + params 两个入参，请求头由上层客户端统一注入；
 ///   - 取词带 `nobase64=1`，但接口偶尔无视它仍返回 base64，所以这里做一次兜底解码；
@@ -26,7 +26,7 @@ class QqLyricSource implements LyricSource {
   @override
   String get label => 'QQ 音乐（歌词）';
 
-  /// 搜索返回条数（旧版 num_per_page=6）。
+  /// 搜索返回条数上限。
   static const int searchLimit = 6;
 
   /// 最多对几条候选去取歌词（每条都要再发一次请求）。
@@ -151,7 +151,7 @@ class QqLyricSource implements LyricSource {
     }
   }
 
-  /// 粗排打分（旧 net/LyricSources.java 的 roughScore）：只为决定先取哪几条歌词。
+  /// 粗排打分：只为决定先取哪几条歌词。
   static double _score(LyricQuery q, String title, String artist, double? dur) {
     final double ts = TextUtil.textSimilarity(q.title, title);
     final double a = q.artist.trim().isEmpty || artist.isEmpty
@@ -191,7 +191,7 @@ class QqLyricSource implements LyricSource {
   }
 }
 
-/// 一条待取歌词的搜索结果（旧 net/LyricSources.java 的 Pick）。
+/// 一条待取歌词的搜索结果。
 class _Pick {
   Map<dynamic, dynamic> node = const <dynamic, dynamic>{};
   String title = '';

@@ -1,4 +1,4 @@
-/// 统一歌词候选 —— 移植自旧 net/LyricSources.java 的 Hit。
+/// 统一歌词候选 的 Hit。
 ///
 /// 各源字段不同，在这里抹平。
 class LyricHit {

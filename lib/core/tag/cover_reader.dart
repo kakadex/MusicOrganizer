@@ -1,4 +1,4 @@
-/// 读内嵌封面（MP3 APIC / FLAC PICTURE / MP4 covr）—— 移植自旧 core/CoverReader.java。
+/// 读内嵌封面（MP3 APIC / FLAC PICTURE / MP4 covr）。
 ///
 /// 只读，纯字节，失败也只是「没有封面」，绝不拖累写入逻辑。
 library;

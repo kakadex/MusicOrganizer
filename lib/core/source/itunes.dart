@@ -1,4 +1,4 @@
-/// iTunes 标签源（T10a）—— 移植自旧 net/Sources.java 的 iTunes 部分。
+/// iTunes 标签源。
 ///
 /// 海外源之一：字段为 trackName / artistName / collectionName / releaseDate /
 /// trackTimeMillis / artworkUrl100。外文曲目的主力（中文曲目召回弱，靠 [SourceRank] 压后）。

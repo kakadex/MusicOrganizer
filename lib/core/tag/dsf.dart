@@ -1,4 +1,4 @@
-/// DSF（DSD Stream File）标签读写 —— 移植自旧 core/Dsf.java。
+/// DSF（DSD Stream File）标签读写。
 ///
 /// 布局：DSD chunk(28B) → fmt chunk(52B) → data chunk → metadata（裸 ID3v2，无 'ID3 ' 包装，
 /// 位置由 DSD chunk 的 metadataPointer 绝对偏移指定）。读写复用 Id3。

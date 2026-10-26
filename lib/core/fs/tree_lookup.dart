@@ -1,4 +1,4 @@
-/// 多根分派：按 docId 前缀匹配所属树（等价旧 Storage.TreeLookup）。
+/// 多根分派：按 docId 前缀匹配所属树。
 library;
 
 import 'tree_ref.dart';

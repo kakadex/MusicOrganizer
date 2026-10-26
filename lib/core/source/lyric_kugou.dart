@@ -1,11 +1,11 @@
-/// 酷狗歌词源（T10b）—— 移植自旧 net/LyricSources.java 的 kugou() 段。
+/// 酷狗歌词源（含 KRC 逐字解密）。
 ///
 /// 搜索（`krcs.kugou.com/search`）拿候选的 id 与 accesskey，再走
 /// `lyrics.kugou.com/download` 取歌词。取词两步：
 ///   1. 先要 `fmt=krc`（逐字），用 [Krc] 解开后转成只带行时间轴的 LRC；
 ///   2. 解不出来就退回 `fmt=lrc` 的明文歌词 —— **降级是常态，不是异常**
 ///      （线上 KRC 样本多一层加密，见 `Krc` 的类注释）。
-/// 「艺人 + 歌名」查不到时按旧版只用歌名再搜一次（关键词越长越容易空）。
+/// 「艺人 + 歌名」查不到时只用歌名再搜一次（关键词越长越容易空）。
 library;
 
 import 'dart:convert';
@@ -126,7 +126,7 @@ class KugouLyricSource implements LyricSource {
         synced: synced,
       );
 
-  /// 粗排打分（旧 net/LyricSources.java 的 roughScore）：只为决定先取哪几条歌词。
+  /// 粗排打分：只为决定先取哪几条歌词。
   static double _score(LyricQuery q, String title, String artist, double? dur) {
     final double ts = TextUtil.textSimilarity(q.title, title);
     final double a = q.artist.trim().isEmpty || artist.isEmpty
@@ -149,7 +149,7 @@ class KugouLyricSource implements LyricSource {
   }
 }
 
-/// 一条待取歌词的搜索结果（旧 net/LyricSources.java 的 Pick）。
+/// 一条待取歌词的搜索结果。
 class _Pick {
   String title = '';
   String artist = '';

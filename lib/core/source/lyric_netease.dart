@@ -1,7 +1,7 @@
-/// 网易云歌词源（T10b）—— 移植自旧 net/LyricSources.java 的 netease() 段。
+/// 网易云歌词源。
 ///
 /// 搜索（`/api/search/get`）→ 取前几条最像的候选 → 逐个取歌词（`/api/song/lyric`）。
-/// 照旧版保留的两个要点：
+/// 两个要点：
 ///   - 匿名搜索要带 `Referer: music.163.com` 与 `Cookie: appver=2.0.2`，否则接口
 ///     直接返 405「操作频繁」。本工程的取词回调只有 url + params 两个入参，
 ///     请求头由上层客户端统一注入；
@@ -24,7 +24,7 @@ class NeteaseLyricSource implements LyricSource {
   @override
   String get label => '网易云（歌词）';
 
-  /// 搜索返回条数（旧版 limit=6）。
+  /// 搜索返回条数上限。
   static const int searchLimit = 6;
 
   /// 最多对几条候选去取歌词（每条都要再发一次请求）。
@@ -100,7 +100,7 @@ class NeteaseLyricSource implements LyricSource {
     return TextUtil.joinArtists(names, ',');
   }
 
-  /// 粗排打分（旧 net/LyricSources.java 的 roughScore）：只为决定先取哪几条歌词。
+  /// 粗排打分：只为决定先取哪几条歌词。
   static double _score(
       LyricQuery q, String title, String artist, double? dur) {
     final double ts = TextUtil.textSimilarity(q.title, title);
@@ -124,7 +124,7 @@ class NeteaseLyricSource implements LyricSource {
   }
 }
 
-/// 一条待取歌词的搜索结果（旧 net/LyricSources.java 的 Pick）。
+/// 一条待取歌词的搜索结果。
 class _Pick {
   Map<dynamic, dynamic> node = const <dynamic, dynamic>{};
   String title = '';

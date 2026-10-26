@@ -1,4 +1,4 @@
-/// OGG Vorbis / Opus 的 Vorbis Comment 读写 —— 移植自旧 core/Ogg.java。
+/// OGG Vorbis / Opus 的 Vorbis Comment 读写。
 ///
 /// 每页头 27 字节 + 段表（lacing）；段值 255 表示「本包未结束」，<255 表示包结束。
 /// 注释包固定是第 2 个包。写入只重建「包含注释包的那一页」，仅拆页时才顺移后续页序号并重算 CRC。

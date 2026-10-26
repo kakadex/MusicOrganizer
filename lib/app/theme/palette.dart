@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// 主题方案标识 —— 对应旧项目 `core/Theme.java` 的 WARM / MINIMAL / LYRICO。
+/// 主题方案标识：暖橙 / 简紫 / 简蓝。
 enum MoThemeId {
   /// 暖橙黑胶：温润奶油底 + 暖橙强调。
   warm('暖橙'),

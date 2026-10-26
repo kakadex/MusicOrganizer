@@ -1,4 +1,4 @@
-/// 同基名的音频 + 歌词文件组 —— 移植自旧 core/TrackGroup.java。
+/// 同基名的音频 + 歌词文件组。
 library;
 
 import 'vfile.dart';
@@ -21,7 +21,7 @@ class TrackGroup {
     return i < 0 ? _audioExtOrder.length : i;
   }
 
-  /// 音频优先（按格式权重），歌词随后 —— 原子移动顺序与旧版一致。
+  /// 音频优先（按格式权重），歌词随后 —— 原子移动按此顺序。
   List<VFile> allFiles() {
     final List<VFile> a = List<VFile>.of(audio)
       ..sort((VFile x, VFile y) {

@@ -1,4 +1,4 @@
-/// WAV（RIFF/WAVE）标签读写 —— 移植自旧 core/Wav.java。
+/// WAV（RIFF/WAVE）标签读写。
 ///
 /// 读取优先 ID3（文件尾 `id3 ` 块），没有才退 LIST/INFO；写入统一写 ID3 块并清旧 INFO。
 /// 所有 chunk 小端长度；奇数长度要补 1 字节对齐。

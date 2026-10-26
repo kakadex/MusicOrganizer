@@ -3,36 +3,36 @@ import 'package:flutter/material.dart';
 import 'placeholder_page.dart';
 import 'theme/theme_controller.dart';
 
-/// 路由表（Phase 0 占位路由；feature 页面自 T12/T13 起落位）。
+/// 路由表（Phase 0 占位路由；feature 页面自  起落位）。
 abstract final class MoRoutes {
   /// 首页（曲库入口 + 主题切换演示）。
   static const String home = '/';
 
-  /// 曲库浏览（T12）。
+  /// 曲库浏览。
   static const String library = '/library';
 
-  /// 整理（T13）。
+  /// 整理。
   static const String organize = '/organize';
 
-  /// 批量标签（T11/T13）。
+  /// 批量标签。
   static const String tagBatch = '/tag_batch';
 
-  /// 批量歌词（T11/T13）。
+  /// 批量歌词。
   static const String lyricsBatch = '/lyrics_batch';
 
-  /// 封面批量（T13）。
+  /// 封面批量。
   static const String covers = '/covers';
 
-  /// 单文件编辑器（T12）。
+  /// 单文件编辑器。
   static const String editor = '/editor';
 
-  /// 撤销历史（T13）。
+  /// 撤销历史。
   static const String history = '/history';
 
-  /// 体检 / CSV（T13）。
+  /// 体检 / CSV。
   static const String health = '/health';
 
-  /// 设置（T13）。
+  /// 设置。
   static const String settings = '/settings';
 }
 

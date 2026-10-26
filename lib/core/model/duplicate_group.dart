@@ -1,6 +1,6 @@
-/// 文件名查重（模型与纯逻辑部分）—— 移植自旧 core/Duplicates.java。
+/// 文件名查重（模型与纯逻辑部分）。
 ///
-/// 完整分组算法（UnionFind + bigram 倒排，find()）在 T09 落位；这里先给出
+/// 完整分组算法（UnionFind + bigram 倒排，find()）在 ；这里先给出
 /// DuplicateGroup / DuplicateItem 模型与归一键、建议保留、摘要等纯逻辑。
 library;
 

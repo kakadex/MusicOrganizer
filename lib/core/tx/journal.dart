@@ -1,4 +1,4 @@
-/// 标签事务日志 —— 移植自旧 core/Journal.java（tag_journal.jsonl，2000 条上限）。
+/// 标签事务日志（tag_journal.jsonl，2000 条上限）。
 ///
 /// 简化：不做轮转，append 全量重写；保留近 2000 条。
 library;

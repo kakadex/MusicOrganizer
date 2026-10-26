@@ -1,4 +1,4 @@
-/// 统一标签结构 —— 移植自旧 core/Tags.java。
+/// 统一标签结构。
 ///
 /// 固定键集 [keys] 刻意不含 lyrics（见 [lyrics]）；year 写盘前截断 4 位（架构设计 §2.1）。
 class Tags {

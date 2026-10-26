@@ -1,6 +1,6 @@
-/// 标签事务日志条目 —— 移植自旧 core/Journal.java 的 Entry（jsonl 序列化）。
+/// 标签事务日志条目 的 Entry（jsonl 序列化）。
 ///
-/// 完整 Journal（文件读写 / 批次视图）在 T07 落位；这里先给出条目模型与
+/// 完整 Journal（文件读写 / 批次视图）在 ；这里先给出条目模型与
 /// 单行 jsonl 的序列化 / 反序列化（复用 lib/core/json/json.dart）。
 library;
 
@@ -17,7 +17,7 @@ class JournalEntry {
   String status = 'applied';
   String targetId = '';
 
-  /// 文件名（仅用于撤销历史列表展示；旧记录为空时由 T07 从 uri 推导）。
+  /// 文件名（仅用于撤销历史列表展示；旧记录为空时从 uri 推导）。
   String name = '';
 
   /// 序列化为单行 jsonl。

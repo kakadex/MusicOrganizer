@@ -1,4 +1,4 @@
-/// 垃圾文件识别 —— 移植自旧 core/Junk.java。
+/// 垃圾文件识别。
 ///
 /// 曲库整理久了会攒下一堆东西：`示例歌名.lrc.bak`（歌词偏移留的备份）、没下完的
 /// `.crdownload`、Windows 拷来的 `Thumbs.db`、以及从别处带来的 `.tmp`。留着既占
@@ -77,7 +77,7 @@ abstract final class Junk {
         lower.endsWith('.bak.txt')) {
       return JunkKind.backup;
     }
-    // 旧版按扩展名判定；这里补一条按名字判定的规则，覆盖「xxx.tmp.mp3」这类
+    // 除了扩展名，再按名字判定，覆盖「xxx.tmp.mp3」这类
     // 被临时工具改过扩展名的残留。
     if (_tempExts.contains(f.ext()) || lower.contains('.tmp.')) {
       return JunkKind.temp;

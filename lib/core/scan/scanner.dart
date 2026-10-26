@@ -1,6 +1,6 @@
-/// 目录遍历 + 标签 / 封面读取 —— 移植自旧 core/Scanner.java（可离线单测部分）。
+/// 目录遍历 + 标签 / 封面读取（可离线单测部分）。
 ///
-/// 要点（与旧版一致，别改）：
+/// 要点（改之前先跑 test/core/scan_test.dart）：
 /// 1. **同一个 docId 只收一次**：部分 provider 的 SAF 查询会把同一文档返回多次，
 ///    不去重会让整棵子树走两遍、库页把同一首列两条、曲目数翻倍；
 /// 2. **读标签先复制头部**：标签（ID3 / Vorbis Comment）都在文件头，
@@ -190,7 +190,7 @@ abstract final class Scanner {
 
   /// 读标签（带缓存）：命中缓存或库索引缓存就不碰磁盘。
   ///
-  /// 歌词字段可能被旧版本漏读进缓存：缓存里没有歌词时重读一次确认（只重读一次）。
+  /// 歌词字段可能没被读进缓存：缓存里没有歌词时重读一次确认（只重读一次）。
   static Future<Tags> readTags(FileStore st, VFile f) async {
     final String key = _key(f);
     if (f.metaCached()) {

@@ -1,4 +1,4 @@
-/// SAF 文档抽象 —— 移植自旧 core/VFile.java。
+/// SAF 文档抽象。
 ///
 /// 身份字段不可变（[copyWith] 生成新实例）；标签 / 封面 / 时长缓存可变
 /// （[cacheMeta] / [clearMeta]）。

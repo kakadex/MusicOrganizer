@@ -1,4 +1,4 @@
-/// 扫描层（T09 落位）：目录遍历 + 增量合并 + 搜索索引。
+/// 扫描层：目录遍历 + 增量合并 + 搜索索引。
 ///
 /// - `scanner.dart`：walkMusic（visited 去重，防 provider 重复返回）、
 ///   walkAll（全量遍历，深度上限 64）、readHead（标签 + 封面一次读完）；

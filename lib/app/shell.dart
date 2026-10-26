@@ -14,7 +14,7 @@ import '../feature/settings/settings_page.dart';
 /// 主界面骨架：底部三项导航（音乐库 / 整理 / 设置）+ 任务条。
 ///
 /// 为什么用底部导航而不是把功能藏进齿轮：整理与设置都是高频入口，
-/// 旧版走「齿轮 → 工具卡」要三次点击才能开始整理。
+/// 整理与设置都是高频入口，放底部导航比藏进齿轮菜单少两次点击。
 class MoShell extends StatefulWidget {
   const MoShell({super.key});
 

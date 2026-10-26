@@ -1,11 +1,11 @@
-/// LRCLIB 歌词源（T10b）—— 移植自旧 net/LrcClient.java 的「查询构造 + 结果解析」部分。
+/// LRCLIB 歌词源。
 ///
 /// 精确 `/api/get` 优先（带 track_name / artist_name / album_name / duration），
 /// 拿不到同步歌词再回退 `/api/search`（关键词 = 歌名 + 艺人）。
 /// 350ms 一票的节流、缓存、失败原因都留在客户端层，本文件只负责
 /// 「按查询造参数」与「把节点抹平成 [LyricHit]」。
 ///
-/// 排序沿用旧版：同步歌词优先 → 时长接近优先。
+/// 排序：同步歌词优先 → 时长接近优先。
 library;
 
 import '../model/lyric_hit.dart';
@@ -51,7 +51,7 @@ class LrclibSource implements LyricSource {
     final LyricHit? hit = _toHit(payload);
     if (hit != null) out.add(hit);
 
-    // 精确查询没给同步歌词时再走模糊搜索（旧版口径：hasSynced 为假才搜）
+    // 精确查询没给同步歌词时再走模糊搜索（hasSynced 为假才搜）
     if (hit == null || hit.synced.isEmpty) {
       final Object? found = await get(Endpoints.urlOf(key, 1),
           <String, String>{'q': '$title $artist'.trim()});

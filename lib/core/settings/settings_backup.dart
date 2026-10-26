@@ -1,6 +1,6 @@
-/// 设置备份 / 恢复 —— 移植自旧 core/SettingsBackup.java。
+/// 设置备份 / 恢复。
 ///
-/// 三条设计原则（继承旧版）：
+/// 三条设计原则：
 /// 1. 白名单：只导出认识键；设备相关键（tree_uri / notif_asked 等）必须排除；
 /// 2. 逐项容错：越界数字 clamp、失效地址丢弃、陌生键记 warnings/ignored；
 /// 3. 纯 Dart：零 Flutter 依赖，可离线回归。

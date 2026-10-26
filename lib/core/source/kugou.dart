@@ -1,4 +1,4 @@
-/// 酷狗音乐标签源（T10b）—— 移植自旧 net/Sources.java 的 kugou(Query) 一段。
+/// 酷狗音乐标签源。
 ///
 /// 移动端搜索接口，字段全小写下划线：songname / singername / album_name，
 /// duration 本来就是秒。这家不给年份、音轨与封面，只用来补标题 / 艺人 / 专辑 / 时长。

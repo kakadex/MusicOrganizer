@@ -1,4 +1,4 @@
-/// 文件名解析 —— 移植自旧 core/NameParser.java。
+/// 文件名解析。
 ///
 /// strip_name_noise / split_artist_title（居中分隔符优先、双向识别）/ 候选生成。
 library;

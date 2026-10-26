@@ -1,4 +1,4 @@
-/// Deezer 标签源（T10a）—— 移植自旧 net/Sources.java 的 Deezer 部分。
+/// Deezer 标签源。
 ///
 /// 海外源之一：字段干净（title / artist.name / album.title / duration），
 /// 还能给出封面地址（cover_xl → cover_big）。中文曲目召回弱，靠 [SourceRank] 压后。

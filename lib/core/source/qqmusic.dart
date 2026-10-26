@@ -1,4 +1,4 @@
-/// QQ 音乐标签源（T10b）—— 移植自旧 net/Sources.java 的 qqMusic(Query) 一段。
+/// QQ 音乐标签源。
 ///
 /// 接口是网页版在用的 musicu.fcg：整个请求包（comm + req 两层）序列化成 JSON
 /// 塞进 `data=` 参数，走 GET 出去。字段口径：index_album 就是专辑内曲序号
