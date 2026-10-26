@@ -1,8 +1,8 @@
-version=0.2.0
-tag=v0.2.0
+version=0.2.1
+tag=v0.2.1
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.0/musicorganizer-arm64-v8a.apk
-size=19052597
-sha256=ddcf48a15891488927bfd2a793183ff8bbb228506e90248ac005d90eaf93a7a8
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.0
-summary=曲库整理 / 批量匹配 / 自动整理 / 三套配色，Android + Windows 双端；本版起桌面版（Windows）同步发布。
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.1/musicorganizer-arm64-v8a.apk
+size=19066325
+sha256=3fd66d3c789da4a8c6f7e1d54aee510aeb742949a74c9e2f4592de5eeb2311f1
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.1
+summary=修复一批使用体验问题：查重更准、写标签前预览、批量页封面、联网失败提示等。
