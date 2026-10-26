@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart' hide Tags;
 import 'package:musicorganizer/app/repo.dart';
 import 'package:musicorganizer/app/theme/mo_theme.dart';
 import 'package:musicorganizer/app/theme/palette.dart';
+import 'package:musicorganizer/app/ui_kit.dart';
 import 'package:musicorganizer/core/model/tags.dart';
 import 'package:musicorganizer/core/fs/tree_ref.dart';
 import 'package:musicorganizer/core/model/vfile.dart';
@@ -170,5 +171,71 @@ void main() {
 
     expect(find.text('示例歌名'), findsOneWidget);
     expect(find.text('另一首'), findsNothing);
+  });
+
+  testWidgets('排序项里有「修改时间」和「标签完整度」', (WidgetTester tester) async {
+    final Repo repo = Repo.instance;
+    repo.resetForTest();
+    seed(repo);
+    await pumpPage(tester);
+
+    await tester.tap(find.byIcon(Icons.sort));
+    await tester.pumpAndSettle();
+
+    expect(find.text('修改时间'), findsOneWidget);
+    expect(find.text('标签完整度'), findsOneWidget);
+  });
+
+  testWidgets('搜索命中的词在标题里高亮（拆成多段渲染）',
+      (WidgetTester tester) async {
+    final Repo repo = Repo.instance;
+    repo.resetForTest();
+    seed(repo);
+    await pumpPage(tester);
+
+    await tester.enterText(find.byType(TextField), '示例歌名');
+    await tester.pumpAndSettle();
+
+    // 命中后标题用 Text.rich 渲染：命中词单独成段且加粗
+    final Finder richFinder =
+        find.descendant(of: find.byType(SongRow), matching: find.byType(RichText));
+    final List<TextSpan> runs = <TextSpan>[];
+    for (final Element e in richFinder.evaluate()) {
+      final RichText rt = e.widget as RichText;
+      final TextSpan? span = rt.text is TextSpan ? rt.text as TextSpan : null;
+      if (span == null || span.children == null) continue;
+      for (final InlineSpan c in span.children!) {
+        if (c is! TextSpan) continue;
+        // Text.rich 会再包一层：命中段落在内层
+        if (c.children != null) {
+          for (final InlineSpan g in c.children!) {
+            if (g is TextSpan) runs.add(g);
+          }
+        } else {
+          runs.add(c);
+        }
+      }
+    }
+    final Iterable<TextSpan> bold = runs.where(
+        (TextSpan s) => s.text == '示例歌名' && s.style?.fontWeight == FontWeight.w700);
+    expect(bold, isNotEmpty);
+  });
+
+  testWidgets('多选菜单里有批量改标签 / 改名 / 歌词工具 / 删除',
+      (WidgetTester tester) async {
+    final Repo repo = Repo.instance;
+    repo.resetForTest();
+    seed(repo);
+    await pumpPage(tester);
+
+    await tester.longPress(find.text('示例歌名'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('更多'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('批量改标签'), findsOneWidget);
+    expect(find.text('按标签改名'), findsOneWidget);
+    expect(find.text('歌词工具'), findsOneWidget);
+    expect(find.text('删除选中的文件'), findsOneWidget);
   });
 }

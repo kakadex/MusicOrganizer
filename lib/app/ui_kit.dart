@@ -277,18 +277,22 @@ Widget highlightText(
   }
   final Color hl = highlightColor;
   final List<InlineSpan> spans = <InlineSpan>[];
+  // 按「连续命中 / 连续未命中」切段：每段用它自己的状态决定样式
+  // （不能用当前位置的状态 —— 整段命中时末尾那次判定会取到 false）。
   int start = 0;
-  for (int i = 0; i <= hit.length; i++) {
+  bool cur = hit[0];
+  for (int i = 1; i <= hit.length; i++) {
     final bool on = i < hit.length && hit[i];
-    if (i == hit.length || on != hit[start]) {
+    if (i == hit.length || on != cur) {
       final String part = text.substring(start, i);
-      spans.add(on
+      spans.add(cur
           ? TextSpan(
               text: part,
               style: style.copyWith(
                   color: hl, fontWeight: highlightWeight ?? FontWeight.w700))
           : TextSpan(text: part, style: style));
       start = i;
+      cur = on;
     }
   }
   return Text.rich(TextSpan(children: spans),

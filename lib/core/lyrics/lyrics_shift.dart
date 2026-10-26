@@ -87,6 +87,7 @@ abstract final class LyricsShift {
     out.write(':');
     out.write(_pad(sec, 2));
     if (frac != null && frac.isNotEmpty) {
+      // 原有小数位：几位就写几位（[00:12.30] 加 500ms → [00:12.80]）
       out.write('.');
       if (frac.length == 1) {
         out.write(ms ~/ 100);
@@ -95,6 +96,11 @@ abstract final class LyricsShift {
       } else {
         out.write(_pad(ms, 3));
       }
+    } else if (ms != 0) {
+      // 原本没有小数位，但偏移后多出了毫秒 —— 必须写出来，
+      // 否则「[00:15] 往后推 500ms」会变成还是 [00:15]，偏移量被吞掉。
+      out.write('.');
+      out.write(_pad(ms, 3));
     }
     out.write(m.group(5));
     return out.toString();
