@@ -138,7 +138,10 @@ class _LibraryPageState extends State<LibraryPage> {
     final repo = Repo.instance;
     final bool ok = await repo.pickRoot();
     if (!mounted) return;
-    if (!ok) return;
+    if (!ok) {
+      if (repo.pickError != null) moSnack(context, repo.pickError!);
+      return;
+    }
     repo.files = <VFile>[];
     await _scan();
   }

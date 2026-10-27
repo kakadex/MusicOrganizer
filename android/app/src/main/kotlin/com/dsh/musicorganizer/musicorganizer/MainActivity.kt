@@ -269,8 +269,15 @@ class MainActivity : FlutterActivity() {
                 uri,
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             )
-        } catch (_: Exception) {
-            // 个别 provider 不支持持久授权：继续，后续访问可能失败
+        } catch (e: Exception) {
+            // 拿不到持久授权：本次会话里也许还能读，但重启后必然「丢目录」。
+            // 这里必须当场报错让用户换一个目录重选，不能静默成功把问题留到下次启动。
+            result?.error(
+                "E_NO_PERMISSION",
+                "系统未授予该目录的持久访问权限（${e.message}），请换一个目录重新选择",
+                null
+            )
+            return
         }
         result?.success(safPlugin.treeInfo(uri))
     }

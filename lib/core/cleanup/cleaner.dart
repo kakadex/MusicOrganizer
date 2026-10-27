@@ -1,7 +1,8 @@
 /// 文件名清理与改名：先出计划，用户确认后才动盘。
 ///
 /// 两种改名：
-/// - [planCleanup]：按清理规则改（去污染后缀、重编码标记、含中文去空格）；
+/// - [planCleanup]：按清理规则改（去广告前缀、轨道前缀、污染后缀、
+///   重编码标记，含中文再去空格）；
 /// - [planTemplate]：按模板改（`{artist} - {title}` 之类，用标签里的值拼）。
 ///
 /// 两条路都先算「改成什么」，再由界面列出来（旧名 → 新名），确认后调
@@ -62,7 +63,8 @@ class CleanerResult {
 
 /// 文件名清理与改名计划。
 abstract final class Cleaner {
-  /// 清理规则：去污染后缀 + 重编码标记；含中文再去掉全部空格。
+  /// 清理规则：去广告前缀 + 轨道前缀 + 污染后缀 + 重编码标记；
+  /// 含中文再去掉全部空格。详见 [TextUtil.normalizeStemForCleanup]。
   static Future<List<RenamePlan>> planCleanup(
       FileStore st, List<VFile> files) async {
     final Map<String, Set<String>> siblings =
@@ -295,15 +297,22 @@ abstract final class Flattener {
       done++;
       onProgress?.call(done, plans.length);
       try {
+        // 先在原地改名，再用「改名后的新位置」移动。VFile 的身份字段不可变，
+        // rename 之后 p.source 的 docId/name 已经失效，还拿它去 move 会在
+        // 旧路径上找不到文件 —— 「改名过的文件全部报失败」就是这个根因。
+        VFile src = p.source;
         if (p.renamed) {
-          final bool ok = await st.rename(p.source, p.targetName);
+          final bool ok = await st.rename(src, p.targetName);
           if (!ok) {
             r.failed++;
             r.errors.add('${p.source.name}：改名失败');
             continue;
           }
+          final String parent = src.parentId ?? _dirOf(src.docId);
+          src = src.copyWith(
+              docId: '$parent/${p.targetName}', name: p.targetName);
         }
-        final String? err = await st.move(p.source, root);
+        final String? err = await st.move(src, root);
         if (err != null) {
           r.failed++;
           r.errors.add('${p.source.name}：$err');
@@ -316,16 +325,38 @@ abstract final class Flattener {
         r.errors.add('${p.source.name}：$e');
       }
     }
-    // 清掉搬空的目录（只删空目录，删不掉就留着）
-    for (final String dirId in touchedDirs) {
-      try {
-        final VFile dir = VFile(docId: dirId, name: dirId, dir: true);
-        final List<VFile> kids = await st.children(dir);
-        if (kids.isEmpty && await st.delete(dir)) r.removedDirs++;
-      } catch (_) {
-        // 删不掉不影响结果
+    // 清掉搬空的目录：从直接父目录沿父链一路向上，直到根目录或遇到非空目录。
+    // 之前只删直接父目录，中间层（B 搬空后剩下的 A）会一直留在盘上。
+    final String rootPrefix =
+        root.docId.endsWith('/') ? root.docId : '${root.docId}/';
+    for (final String startId in touchedDirs) {
+      String cur = startId;
+      while (cur.isNotEmpty && cur.startsWith(rootPrefix)) {
+        try {
+          final VFile dir = VFile(docId: cur, name: _base(cur), dir: true);
+          final List<VFile> kids = await st.children(dir);
+          if (kids.isNotEmpty) break;
+          if (!await st.delete(dir)) break;
+          r.removedDirs++;
+          cur = _dirOf(cur);
+        } catch (_) {
+          // 删不掉不影响结果
+          break;
+        }
       }
     }
     return r;
+  }
+
+  /// docId 的上一级（两级实现都按「/」分段的 docId 走）。
+  static String _dirOf(String docId) {
+    final int slash = docId.lastIndexOf('/');
+    return slash <= 0 ? docId : docId.substring(0, slash);
+  }
+
+  /// docId 的最后一段（目录名 / 文件名）。
+  static String _base(String path) {
+    final int slash = path.lastIndexOf('/');
+    return slash < 0 ? path : path.substring(slash + 1);
   }
 }

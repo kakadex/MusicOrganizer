@@ -876,7 +876,12 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _pickRoot() async {
     final bool ok = await _repo.pickRoot();
     if (!mounted) return;
-    if (!ok) return;
+    if (!ok) {
+      if (_repo.pickError != null) {
+        moSnack(context, _repo.pickError!);
+      }
+      return;
+    }
     _repo.files = <VFile>[];
     setState(() {});
     moSnack(context, '已切换目录，回到「音乐库」会自动扫描');

@@ -78,6 +78,10 @@ class Repo extends ChangeNotifier {
   /// 上次确实登记过目录，但这次没能恢复（授权失效）——界面据此给提示。
   bool rootLost = false;
 
+  /// 最近一次选目录失败的原因（空 = 没失败）；界面据此给出准确提示，
+  /// 而不是笼统的「取消 / 已登记过」。
+  String? pickError;
+
   /// 扫描结果（音频 + 歌词，按目录名排序）。
   List<VFile> files = <VFile>[];
 
@@ -260,7 +264,14 @@ class Repo extends ChangeNotifier {
     try {
       granted = await st.roots();
     } catch (_) {
-      granted = <TreeRef>[];
+      // 通道暂时不可用 ≠ 没授权：崩溃恢复、平台通道还没就绪时这里会抖一下。
+      // 稍等重试一次，仍失败才按「系统侧无授权」处理，避免误报授权失效。
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      try {
+        granted = await st.roots();
+      } catch (_) {
+        granted = <TreeRef>[];
+      }
     }
     if (granted.isEmpty) {
       // 存过目录、系统却说没授权：多半是授权失效（换机 / 清数据 / 系统回收），
@@ -306,8 +317,21 @@ class Repo extends ChangeNotifier {
   /// 追加一个曲库目录；已存在则返回 false。
   Future<bool> addRoot([TreeRef? picked]) async {
     if (store == null) return false;
-    final TreeRef? t = picked ?? await store!.pickTree();
-    if (t == null) return false;
+    TreeRef? pickedRef;
+    try {
+      pickedRef = picked ?? await store!.pickTree();
+    } on FileStoreException catch (e) {
+      // 选目录失败（最常见：系统没给持久授权）要把原因透给界面，
+      // 不能吞成「没选」，否则下次启动表现为莫名其妙的丢目录。
+      pickError = e.message;
+      return false;
+    }
+    // 重新赋给新的局部变量：try 里赋值的变量不做类型提升
+    final TreeRef? t = pickedRef;
+    if (t == null) {
+      pickError = null;
+      return false;
+    }
     if (roots.any((TreeRef x) => x.rootDocId == t.rootDocId)) return false;
     // 新加的目录排到最前，立刻成为当前目录，省得再点一次切换
     setRoots(<TreeRef>[t, ...roots]);
@@ -430,8 +454,19 @@ class Repo extends ChangeNotifier {
   /// 让用户选目录；成功后登记为当前目录并返回 true。
   Future<bool> pickRoot() async {
     if (store == null) return false;
-    final TreeRef? t = await store!.pickTree();
-    if (t == null) return false;
+    TreeRef? pickedRef;
+    try {
+      pickedRef = await store!.pickTree();
+    } on FileStoreException catch (e) {
+      // 同 addRoot：授权拿不到要透传原因。
+      pickError = e.message;
+      return false;
+    }
+    final TreeRef? t = pickedRef;
+    if (t == null) {
+      pickError = null;
+      return false;
+    }
     rootLost = false;
     final bool has = roots.any((TreeRef x) => x.rootDocId == t.rootDocId);
     if (!has) {

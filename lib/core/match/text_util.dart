@@ -255,10 +255,10 @@ abstract final class TextUtil {
   // 尾部污染后缀 / 重编码标记
   // ------------------------------------------------------------------
 
-  /// _N / _N_N / (N) / （N） / _(N) / _副本 等混合污染链。
+  /// _N / _N_N / (N) / （N） / _(N) / _副本 / 「 - 副本」等混合污染链。
   static final RegExp _trailingSuffixRe = RegExp(
       r'(?:_\d+(?:[~.\-、 _]\d+|[\s\u3000]*[（(]\s*\d+\s*[)）])*'
-      r'|_(?:副本|拷贝|copy|複製|复制)\s*\d*'
+      r'|(?:[\s\u3000]*[-_][\s\u3000]*|[\s\u3000]+)(?:副本|拷贝|copy|複製|复制)\s*\d*'
       r'|[\s\u3000_]*[（(]\s*\d+\s*[)）])+$',
       caseSensitive: false);
 
@@ -304,16 +304,77 @@ abstract final class TextUtil {
   static final RegExp _spaceCharsRe =
       RegExp(r'[\s\u3000\u00a0\u2000-\u200b\u202f\u205f]+');
 
-  /// 清理归一化：去污染后缀 + 重编码标记；含中文则去全部空格。
+  /// 清理归一化：去广告前缀 + 轨道前缀 + 重编码标记 + 污染后缀；
+  /// 含中文则去全部空格。每一步都保守：拿不准就不动。
   static String normalizeStemForCleanup(String? stem) {
     if (stem == null || stem.isEmpty) return stem ?? '';
-    String cleaned = stripRecodeMarker(stem);
+    String cleaned = _stripAdPrefix(stem);
+    cleaned = _stripCleanupTrackPrefix(cleaned);
+    cleaned = stripRecodeMarker(cleaned);
     if (containsChinese(cleaned)) {
       final String noSpace = cleaned.replaceAll(_spaceCharsRe, '');
       if (noSpace.isNotEmpty) cleaned = noSpace;
     }
     if (cleaned.trim().isEmpty) return stem;
     return cleaned;
+  }
+
+  // ------------------------------------------------------------------
+  // 清理专用的前缀剥离（比匹配路径的剥法更保守）
+  // ------------------------------------------------------------------
+
+  /// 广告/来源前缀的关键词：括号内容带这些才认为是包装，否则不动 ——
+  /// 【某某音乐】 / [无损音乐网] 削；（晴天） 这种歌名前缀是正文，不能削。
+  static const List<String> _adPrefixKeywords = <String>[
+    '音乐', '无损', '高清', '音质', '推荐', '分享', '下载', '试听',
+    '官方', '资源', '网盘', '电台',
+  ];
+
+  /// 英文来源标记（带词边界，防止 Shadow 这类词被误伤）。
+  static final RegExp _adPrefixEnRe = RegExp(
+      r'\b(?:music|lossless|flac|mp3|wav|aac|320kbps|320|download|official|hq|sq)\b',
+      caseSensitive: false);
+
+  /// 开头连续的括号组：【…】 / […] / （…） / (…)，单组内容 ≤ 24 字符。
+  static final RegExp _leadingBracketRe =
+      RegExp(r'^\s*(?:[【\[（(][^【\[（(】\]）)]{0,24}[】\]）)]\s*)+');
+
+  /// 去开头的广告/来源括号前缀：只有括号内容带推广关键词才削。
+  static String _stripAdPrefix(String stem) {
+    final Match? m = _leadingBracketRe.firstMatch(stem);
+    if (m == null) return stem;
+    final String head = m.group(0)!;
+    bool promo = false;
+    for (final String kw in _adPrefixKeywords) {
+      if (head.contains(kw)) {
+        promo = true;
+        break;
+      }
+    }
+    if (!promo) promo = _adPrefixEnRe.hasMatch(head);
+    if (!promo) return stem;
+    final String rest = stem.substring(m.end);
+    return rest.trim().isEmpty ? stem : rest;
+  }
+
+  /// 清理用的轨道前缀：只认带标点/括号的「01. / 01- / (01) / [01]」，
+  /// 纯空格分隔的「01 歌名」不剥 —— 「7 years」这类真歌名会被误伤。
+  static final RegExp _cleanupTrackPrefixRe = RegExp(
+      r'^\s*(?:\[\s*\d{1,4}\s*\]|\(\s*\d{1,4}\s*\)|（\s*\d{1,4}\s*）|\d{1,4}\s*[.．、_\-]\s*)(?=\S)');
+
+  static String _stripCleanupTrackPrefix(String stem) {
+    final String candidate = stem.replaceFirst(_cleanupTrackPrefixRe, '').trim();
+    if (candidate.isEmpty || candidate == stem.trim()) return stem;
+    // 剥完必须还剩文字（中文/字母/假名），防止把「01」这类整名剥空
+    for (final int c in candidate.runes) {
+      if ((c >= 0x41 && c <= 0x5A) ||
+          (c >= 0x61 && c <= 0x7A) ||
+          (c >= 0x4E00 && c <= 0x9FFF) ||
+          (c >= 0x3040 && c <= 0x30FF)) {
+        return candidate;
+      }
+    }
+    return stem;
   }
 
   // ------------------------------------------------------------------

@@ -20,8 +20,19 @@ abstract final class TaskService {
   static void attach() {
     if (_attached) return;
     _attached = true;
-    TaskCenter.onStart = (String title) => update(title, 0, 0, '');
-    TaskCenter.onFinish = stop;
+    TaskCenter.onStart = (String title) {
+      // 新任务必须重置节流：上次任务的 key 留着会把本次的启动通知挡掉，
+      // 服务端就收不到 updateTask、不会重新进前台。
+      _lastKey = '';
+      _lastMs = 0;
+      update(title, 0, 0, '');
+    };
+    TaskCenter.onFinish = () {
+      stop().then((_) {
+        _lastKey = '';
+        _lastMs = 0;
+      });
+    };
     TaskControl.onReport = (int done, int total, String message) {
       final RunningTask? t = TaskCenter.current();
       if (t == null) return;

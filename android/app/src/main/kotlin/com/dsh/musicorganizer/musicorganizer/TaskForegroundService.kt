@@ -46,8 +46,17 @@ class TaskForegroundService : Service() {
                 val total = intent?.getIntExtra(EXTRA_TOTAL, 0) ?: 0
                 // 每次 startForegroundService 都必须在 5 秒内 startForeground，
                 // 否则系统直接杀进程（ForegroundServiceDidNotStartInTimeException）。
-                runCatching { startForegroundCompat(buildNotification(title, text, done, total)) }
-                running = true
+                val started = runCatching { startForegroundCompat(buildNotification(title, text, done, total)) }
+                if (started.isSuccess) {
+                    running = true
+                } else {
+                    // 进不了前台就诚实标记并停掉自己：running 说谎的话，后续
+                    // updateTask 会一直走「只刷通知」的分支，永远进不了前台，
+                    // 系统 5 秒后照样杀进程，且现场无迹可查。
+                    android.util.Log.e("MO", "startForeground failed", started.exceptionOrNull())
+                    running = false
+                    stopSelf()
+                }
             }
         }
         return START_NOT_STICKY
@@ -99,11 +108,13 @@ class TaskForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        // 先改状态再撤前台：updateTask 看到 running == false 会重新走
+        // startForegroundService，服务能重新进前台，不会撞 5 秒超时。
+        running = false
+        instance = null
         @Suppress("DEPRECATION")
         if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE)
         else stopForeground(true)
-        running = false
-        instance = null
         super.onDestroy()
     }
 

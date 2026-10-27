@@ -49,7 +49,8 @@ class _FolderPageState extends State<FolderPage> {
     if (!mounted) return;
     setState(() => _busy = false);
     if (!ok) {
-      moSnack(context, '没有新增目录（可能已经登记过，或取消了选择）');
+      moSnack(context,
+          _repo.pickError ?? '没有新增目录（可能已经登记过，或取消了选择）');
       return;
     }
     await _rescan();
