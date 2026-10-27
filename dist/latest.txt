@@ -1,8 +1,8 @@
-version=0.2.5
-tag=v0.2.5
+version=0.2.6
+tag=v0.2.6
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.5/musicorganizer-arm64-v8a.apk
-size=19543173
-sha256=22680450b2f2506c7ba1c084f28561539264080c91d1a8d3043648bcf9944df4
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.5
-summary=修复预览面板确认按钮被挤出屏幕导致无法写入；底部按钮改为固定，列表独立滚动，并新增关闭按钮与置灰提示。
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.6/musicorganizer-arm64-v8a.apk
+size=19543281
+sha256=ae53ed99f178475a23d87a8a70ad0ea2b525b66de9031dc2eca9abc82925f26a
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.6
+summary=修复取歌词中途返回崩溃、更新后目录丢失、提示条不消失；目录授权失效时给出明确提示，清理标签也改为逐项预览。

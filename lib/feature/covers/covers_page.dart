@@ -51,10 +51,19 @@ class _CoversPageState extends State<CoversPage> {
   int _skipped = 0;
   int _noCover = 0;
 
+  /// 当前任务控制器：退出页面时取消，避免关页后还在后台跑。
+  TaskControl? _control;
+
   @override
   void initState() {
     super.initState();
     _jobs = widget.files.map(CoverJob.new).toList();
+  }
+
+  @override
+  void dispose() {
+    if (_busy) _control?.cancel();
+    super.dispose();
   }
 
   @override
@@ -160,6 +169,7 @@ class _CoversPageState extends State<CoversPage> {
     });
 
     final running = TaskCenter.start('查找封面');
+    _control = running?.control;
     final control = running?.control;
     final int total = _jobs.length;
 
@@ -271,6 +281,7 @@ class _CoversPageState extends State<CoversPage> {
     final String batchId = 'covers-${DateTime.now().millisecondsSinceEpoch}';
     setState(() => _busy = true);
     final TaskControl? wc = TaskCenter.start('写入封面')?.control;
+    _control = wc;
     final int wt = picked.length;
     int wi = 0;
     for (final WriteTarget t in picked) {

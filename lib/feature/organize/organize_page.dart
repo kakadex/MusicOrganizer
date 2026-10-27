@@ -739,28 +739,38 @@ class _OrganizePageState extends State<OrganizePage> {
       moSnack(context, '没有需要清理的标签');
       return;
     }
-    // 预览确认：逐首展开旧值 → 新值。
-    final bool? go = await showMoSheet<bool>(
+    // 预览确认：逐首、逐字段列出旧值 → 新值，用户勾选后才写。
+    final List<WriteTarget> targets = <WriteTarget>[
+      for (final _TidyItem it in items)
+        WriteTarget(
+          docId: it.file.docId,
+          name: it.file.name,
+          path: _repo.relPath(it.file),
+          kind: WriteKind.tag,
+          note: '文本整理 · ${it.changes.length} 个字段',
+          lines: <WriteLine>[
+            for (final _TidyChange c in it.changes)
+              WriteLine(
+                label: _tidyFieldName(c.field),
+                oldText: c.oldValue,
+                newText: c.newValue,
+                key: c.field,
+              ),
+          ],
+          file: it.file,
+          data: it,
+        ),
+    ];
+    final List<WriteTarget>? picked = await WriteConfirmSheet.show(
       context,
-      title: '清理预览（${items.length} 首）',
-      children: <Widget>[
-        Padding(
-          padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 0, MoKit.pagePad, 8),
-          child: Text(
-            '仅做本地文本整理：去首尾空白 / 折叠多余空格 / 全角转半角 / 音轨号补零。'
-            '确认后才写盘，可撤销。',
-            style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context)),
-          ),
-        ),
-        for (final _TidyItem it in items.take(80)) _tidyPreviewRow(it),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 10, MoKit.pagePad, 8),
-          child: MoButton('执行清理（${items.length} 首）',
-              onPressed: () => Navigator.of(context).pop(true)),
-        ),
-      ],
+      title: '清理预览',
+      subtitle: '仅做本地文本整理：去首尾空白 / 折叠多余空格 / 全角转半角 / 音轨号补零',
+      targets: targets,
+      commitLabel: '执行清理',
+      unit: '首',
+      verb: '清理',
     );
-    if (go != true) return;
+    if (picked == null || picked.isEmpty || !mounted) return;
 
     // 第二遍：确认后才写盘。
     setState(() => _busy = true);
@@ -770,20 +780,22 @@ class _OrganizePageState extends State<OrganizePage> {
     int changed = 0;
     int failed = 0;
     int done = 0;
-    for (final _TidyItem it in items) {
+    for (final WriteTarget t in picked) {
       if (wControl?.isCancelled() ?? false) break;
-      final Map<String, String> plan = <String, String>{
-        for (final _TidyChange c in it.changes) c.field: c.newValue
-      };
-      final String err = await tx.apply(it.file, plan, record: true, batchId: batchId);
+      final Object? raw = t.file;
+      if (raw is! VFile) continue;
+      // 只写用户勾中的字段（逐字段取消勾选同样生效）
+      final Map<String, String> plan = t.toUpdates();
+      if (plan.isEmpty) continue;
+      final String err = await tx.apply(raw, plan, record: true, batchId: batchId);
       if (err.isEmpty) {
         changed++;
-        _repo.invalidate(it.file);
+        _repo.invalidate(raw);
       } else {
         failed++;
       }
       done++;
-      wControl?.report(done, items.length, it.file.name);
+      wControl?.report(done, picked.length, raw.name);
     }
     TaskCenter.finish();
     if (!mounted) return;
@@ -797,54 +809,6 @@ class _OrganizePageState extends State<OrganizePage> {
   }
 
   /// 预览里一首歌的改动清单。
-  Widget _tidyPreviewRow(_TidyItem it) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(MoKit.pagePad, 0, MoKit.pagePad, 8),
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-      decoration: BoxDecoration(
-        color: MoKit.card(context),
-        borderRadius: BorderRadius.circular(MoKit.radiusRow),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(it.file.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                  fontSize: MoKit.fsBody,
-                  fontWeight: FontWeight.w500,
-                  color: MoKit.text(context))),
-          const SizedBox(height: 4),
-          for (final _TidyChange c in it.changes)
-            Padding(
-              padding: const EdgeInsets.only(top: 3),
-              child: Text.rich(TextSpan(children: <TextSpan>[
-                TextSpan(
-                    text: '${_tidyFieldName(c.field)}：',
-                    style: TextStyle(
-                        fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
-                TextSpan(
-                    text: c.oldValue.isEmpty ? '（空）' : c.oldValue,
-                    style: TextStyle(
-                        fontSize: MoKit.fsBody, color: MoKit.faint(context))),
-                TextSpan(
-                    text: '  →  ',
-                    style: TextStyle(
-                        fontSize: MoKit.fsBody, color: MoKit.faint(context))),
-                TextSpan(
-                    text: c.newValue,
-                    style: TextStyle(
-                        fontSize: MoKit.fsBody,
-                        fontWeight: FontWeight.w500,
-                        color: MoKit.text(context))),
-              ])),
-            ),
-        ],
-      ),
-    );
-  }
-
   String _tidyFieldName(String key) {
     switch (key) {
       case 'title':

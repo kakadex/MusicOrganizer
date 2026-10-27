@@ -588,14 +588,37 @@ Future<T?> showMoSheet<T>(
 }
 
 /// 轻提示（带可选操作，用于「写入成功 · 撤销」）。
+/// 提示条序号：只有最新一条到点才允许自动摘除。
+int _snackSeq = 0;
+
 void moSnack(BuildContext context, String message,
-    {String? actionLabel, VoidCallback? onAction}) {
+    {String? actionLabel,
+    VoidCallback? onAction,
+    double extraBottom = 0}) {
   final ScaffoldMessengerState m = ScaffoldMessenger.of(context);
+  // 只留一条：连着弹两条时，用户看到的是上一条在闪
   m.hideCurrentSnackBar();
+  final double bottomInset = MediaQuery.of(context).viewPadding.bottom;
+  final int seconds = actionLabel == null ? 3 : 5;
+  // 自带兜底计时器：SnackBar 自己的倒计时在「带按钮 + 路由刚切过」这类情况下
+  // 会不启动（实测停在屏幕上一直不走），所以到点直接把它从队列里摘掉。
+  final int seq = ++_snackSeq;
+  Timer(Duration(seconds: seconds + 1), () {
+    if (seq != _snackSeq) return; // 已经有更新的提示了，别误伤
+    m.removeCurrentSnackBar();
+  });
   m.showSnackBar(SnackBar(
-    content: Text(message, style: const TextStyle(fontSize: MoKit.fsBody)),
+    // 点一下就收：底部提示挡住操作条时，不用等它自己走
+    content: Listener(
+      // Listener 不参与手势竞争，提示条上轻轻一碰就能收掉
+      behavior: HitTestBehavior.opaque,
+      onPointerDown: (_) => m.removeCurrentSnackBar(),
+      child: Text(message, style: const TextStyle(fontSize: MoKit.fsBody)),
+    ),
     behavior: SnackBarBehavior.floating,
-    margin: const EdgeInsets.all(12),
+    margin: EdgeInsets.fromLTRB(12, 12, 12, 12 + bottomInset + extraBottom),
+    duration: Duration(seconds: seconds),
+    dismissDirection: DismissDirection.down,
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     action: actionLabel == null
         ? null

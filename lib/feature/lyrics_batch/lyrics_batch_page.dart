@@ -60,6 +60,16 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
   int get _selectedCount =>
       _rows.where((LyricRow r) => r.selected && r.choice != null).length;
 
+  /// 当前取词 / 写盘用的控制器（关页时取消，避免后台空跑）。
+  TaskControl? _control;
+
+  @override
+  void dispose() {
+    // 关页时把任务停掉：否则循环会继续跑，下一轮还会摸已卸载的 State。
+    if (_fetching || _writing) _control?.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -188,6 +198,7 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
 
     final running = TaskCenter.start('取歌词');
     final control = running?.control;
+    _control = control;
     final int total = _rows.length;
     int found = 0;
     // 累计各源失败原因（去重），用于「一首都没拿到」时判断是不是联网挂了。
@@ -205,7 +216,8 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
         continue;
       }
       row.status = '搜索歌词…';
-      setState(() {});
+      // 页面可能已经被返回键关掉：此时 setState 会因 State 已卸载而崩
+      if (mounted) setState(() {});
       try {
         final Tags tags = await Scanner.readTags(store, row.file);
         final Query q = LocalQuery.forFile(row.file, tags);

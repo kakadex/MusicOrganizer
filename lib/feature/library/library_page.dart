@@ -545,13 +545,18 @@ class _LibraryPageState extends State<LibraryPage> {
 
   Widget _body(Repo repo) {
     if (!repo.hasRoot) {
+      // 上次登记过、这次没恢复：多半是授权失效。要直说，否则用户以为曲库被吞了。
+      final bool lost = repo.rootLost;
       return EmptyState(
-        icon: Icons.folder_open,
-        text: '还没有选择曲库目录',
-        hint: Repo.isDesktop
-            ? '选一个装着音乐的文件夹，所有读写都只在这个目录内进行'
-            : '用系统文件选择器授权一个文件夹，应用只在你授权的范围内读写',
-        action: MoButton('选择目录', icon: Icons.add, onPressed: _pickRoot),
+        icon: lost ? Icons.link_off : Icons.folder_open,
+        text: lost ? '上次的曲库目录授权已失效' : '还没有选择曲库目录',
+        hint: lost
+            ? '重新选一次同一个目录即可，曲库里的文件没有被改动、也没有被删除'
+            : (Repo.isDesktop
+                ? '选一个装着音乐的文件夹，所有读写都只在这个目录内进行'
+                : '用系统文件选择器授权一个文件夹，应用只在你授权的范围内读写'),
+        action: MoButton(lost ? '重新选择目录' : '选择目录',
+            icon: Icons.add, onPressed: _pickRoot),
       );
     }
     if (_shown.isEmpty) {

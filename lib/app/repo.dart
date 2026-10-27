@@ -74,6 +74,9 @@ class Repo extends ChangeNotifier {
   /// 当前曲库目录（可空 = 还没授权）；[roots] 为空时为 null。
   TreeRef? get root => roots.isEmpty ? null : roots.first;
 
+  /// 上次确实登记过目录，但这次没能恢复（授权失效）——界面据此给提示。
+  bool rootLost = false;
+
   /// 扫描结果（音频 + 歌词，按目录名排序）。
   List<VFile> files = <VFile>[];
 
@@ -213,16 +216,11 @@ class Repo extends ChangeNotifier {
     final List<String> order = _savedOrder(prefs);
 
     if (isDesktop) {
-      // 一次性迁移：旧版本把「上次打开的目录」存在全局偏好里（%APPDATA%），
-      // 换包 / 重装后仍会恢复它，开发机上可能是测试曲库——新安装的包一打开就看到无关目录。
-      // 升级后首次启动清掉旧的记住目录，让用户重新选择；之后照常记忆最后一次选择。
-      if (!(prefs.getBool('desktop_root_migrated_v1') ?? false)) {
-        await prefs.remove('root_doc_id');
-        await prefs.remove('root_tree_uri');
-        await prefs.setBool('desktop_root_migrated_v1', true);
-        return false;
-      }
-      // 桌面没有「授权」概念：登记过的目录还在就直接用（不存在的顺手忘掉）
+      // 桌面没有「授权」概念：登记过的目录还在就直接用（不存在的顺手忘掉）。
+      //
+      // 曾经这里做过一次「升级后首次启动清掉记住的目录」的迁移，结果是用户
+      // 更新一次就丢一次曲库。已经删掉：升级不该动用户的数据，只有目录真的
+      // 不存在了才忘掉（由下面的 existsSync 判断）。
       final List<String> kept = <String>[];
       for (final String path in order) {
         if (Directory(path).existsSync()) kept.add(path);
@@ -232,13 +230,13 @@ class Repo extends ChangeNotifier {
         kept.add(legacy);
       }
       if (kept.isEmpty) {
-        if (legacy != null) {
-          await prefs.remove('root_doc_id');
-          await prefs.remove('root_tree_uri');
-        }
+        // 记住的目录这次不可用（被删 / 改名 / 外接盘没插）：**只提示，不清记录**。
+        // 清掉就意味着「移动硬盘拔一次，曲库目录就永久没了」。
+        if (legacy != null || order.isNotEmpty) rootLost = true;
         return false;
       }
       setRoots(kept.map((String p) => TreeRef(treeUri: 'file://$p', rootDocId: p)).toList());
+      rootLost = false;
       return true;
     }
 
@@ -248,7 +246,13 @@ class Repo extends ChangeNotifier {
     } catch (_) {
       granted = <TreeRef>[];
     }
-    if (granted.isEmpty) return false;
+    if (granted.isEmpty) {
+      // 存过目录、系统却说没授权：多半是授权失效（换机 / 清数据 / 系统回收），
+      // 让界面明确告诉用户「重新选一次就好」，而不是装作从没选过。
+      rootLost = order.isNotEmpty ||
+          (prefs.getString('root_doc_id') ?? '').isNotEmpty;
+      return false;
+    }
     // 按上次登记的顺序排：先当前目录，再其余
     final List<TreeRef> ordered = <TreeRef>[];
     for (final String id in order) {
@@ -262,6 +266,7 @@ class Repo extends ChangeNotifier {
       if (!ordered.any((TreeRef x) => x.rootDocId == t.rootDocId)) ordered.add(t);
     }
     setRoots(ordered);
+    rootLost = false;
     return true;
   }
 
@@ -353,6 +358,7 @@ class Repo extends ChangeNotifier {
     if (store == null) return false;
     final TreeRef? t = await store!.pickTree();
     if (t == null) return false;
+    rootLost = false;
     final bool has = roots.any((TreeRef x) => x.rootDocId == t.rootDocId);
     if (!has) {
       setRoots(<TreeRef>[t, ...roots]);
@@ -554,6 +560,7 @@ class Repo extends ChangeNotifier {
   void resetForTest() {
     store = null;
     roots.clear();
+    rootLost = false;
     files = <VFile>[];
     index.clear();
     journal = null;
