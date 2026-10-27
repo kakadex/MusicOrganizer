@@ -39,19 +39,31 @@ class MainActivity : FlutterActivity() {
                     if (TaskForegroundService.running && live != null) {
                         runCatching { live.update(title, text, done, total) }
                     } else {
-                        val intent = Intent(this, TaskForegroundService::class.java).apply {
+                        // 服务还没起来（或有挂起的启动）：这是新任务的开端，
+                        // 清掉之前记下的「待停止」，让服务起来后接着干活。
+                        TaskForegroundService.stopRequested = false
+                        val taskIntent = Intent(this, TaskForegroundService::class.java).apply {
                             putExtra(TaskForegroundService.EXTRA_TITLE, title)
                             putExtra(TaskForegroundService.EXTRA_TEXT, text)
                             putExtra(TaskForegroundService.EXTRA_DONE, done)
                             putExtra(TaskForegroundService.EXTRA_TOTAL, total)
                         }
-                        runCatching { startForegroundServiceCompat(intent) }
+                        runCatching { startForegroundServiceCompat(taskIntent) }
                     }
                     result.success(null)
                 }
                 "stopTask" -> {
-                    runCatching {
-                        stopService(Intent(this, TaskForegroundService::class.java))
+                    val live = TaskForegroundService.instance
+                    if (TaskForegroundService.running && live != null) {
+                        runCatching {
+                            stopService(Intent(this, TaskForegroundService::class.java))
+                        }
+                    } else {
+                        // 服务还没完成 startForeground：此刻 stopService 会被系统当成
+                        // 「startForegroundService 之后没调 startForeground」直接杀进程
+                        // （ForegroundServiceDidNotStartInTime，Android 12+ 实测）。
+                        // 记下停请求，等服务在 onStartCommand 里进完前台后自己停。
+                        TaskForegroundService.stopRequested = true
                     }
                     result.success(null)
                 }

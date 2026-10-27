@@ -49,6 +49,8 @@ class TaskForegroundService : Service() {
                 val started = runCatching { startForegroundCompat(buildNotification(title, text, done, total)) }
                 if (started.isSuccess) {
                     running = true
+                    // stopTask 在服务还没起来时就到过：现在前台契约已满足，可以安全停了
+                    if (stopRequested) stopSelf()
                 } else {
                     // 进不了前台就诚实标记并停掉自己：running 说谎的话，后续
                     // updateTask 会一直走「只刷通知」的分支，永远进不了前台，
@@ -110,6 +112,9 @@ class TaskForegroundService : Service() {
     override fun onDestroy() {
         // 先改状态再撤前台：updateTask 看到 running == false 会重新走
         // startForegroundService，服务能重新进前台，不会撞 5 秒超时。
+        // 注意 stopRequested 不在这里重置：若系统把挂起的启动重投递过来，
+        // onStartCommand 会再走一遍「进前台 → 自停」完成自愈；
+        // 新任务开始时由 updateTask 主动清掉它。
         running = false
         instance = null
         @Suppress("DEPRECATION")
@@ -127,6 +132,14 @@ class TaskForegroundService : Service() {
         @Volatile
         var instance: TaskForegroundService? = null
             private set
+
+        /// stopTask 在服务完成 startForeground 之前就到了。
+        /// Android 12+ 上这段时间里调 stopService 会被系统当成
+        /// 「startForegroundService 之后没调 startForeground」直接杀进程
+        /// （ForegroundServiceDidNotStartInTimeException，实测连 5 秒都不等）。
+        /// 所以停请求先记在这里，等 onStartCommand 进完前台后由服务自己 stopSelf。
+        @Volatile
+        var stopRequested = false
 
         const val CHANNEL_ID = "mo_task"
         const val NOTIFICATION_ID = 7701

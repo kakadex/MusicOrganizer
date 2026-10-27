@@ -1,8 +1,8 @@
-version=0.2.9
-tag=v0.2.9
+version=0.2.10
+tag=v0.2.10
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.9/musicorganizer-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.10/musicorganizer-arm64-v8a.apk
 size=19608877
-sha256=27ba8dbc5a208d50f3fd7f84f0733b0adcf6806e07bffb88113f821d27859c4e
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.9
-summary=修复连续执行批量任务闪退、选目录授权失败被静默（重启后目录丢失）；文件名清理补齐广告前缀、轨道序号、「- 副本」后缀；扁平化修复改名文件报失败并删净中间层空目录。
+sha256=fc80604378a17ba13d41dcac46c4d051e396703f5a0b9f0a69ac7c55ea279bf0
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.10
+summary=修复连续执行批量任务（尤其秒级完成的小任务）时被系统以「前台服务未按时启动」杀进程的问题；任务开始与结束背靠背时通知生命周期依然完整。
