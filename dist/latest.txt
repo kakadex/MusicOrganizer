@@ -1,8 +1,8 @@
-version=0.2.8
-tag=v0.2.8
+version=0.2.9
+tag=v0.2.9
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.8/musicorganizer-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.9/musicorganizer-arm64-v8a.apk
 size=19608877
-sha256=7e8d4b1ed43a71b5ff6ed96c5fce7551a5d40401b55d8ae488fe287a9ef86e4a
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.8
-summary=修复 M4A 大文件卡顿、封面丢失、删除不刷新、坏图红屏、任务卡死等一批稳定性问题；批量补封面与取词改为并发。
+sha256=27ba8dbc5a208d50f3fd7f84f0733b0adcf6806e07bffb88113f821d27859c4e
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.9
+summary=修复连续执行批量任务闪退、选目录授权失败被静默（重启后目录丢失）；文件名清理补齐广告前缀、轨道序号、「- 副本」后缀；扁平化修复改名文件报失败并删净中间层空目录。
