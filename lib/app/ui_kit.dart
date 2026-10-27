@@ -241,7 +241,13 @@ class CoverBox extends StatelessWidget {
                 fit: BoxFit.cover,
                 gaplessPlayback: true,
                 cacheWidth: cachePx,
-                cacheHeight: cachePx),
+                cacheHeight: cachePx,
+                // 字节只保证「来自文件」，不保证是合法图片：
+                // 损坏的 cover.jpg 或写坏的 APIC 会让 Image 抛错，不兜底就整屏红
+                errorBuilder: (BuildContext c, Object e, StackTrace? st) => Icon(
+                    Icons.music_note,
+                    size: size * 0.42,
+                    color: MoKit.faint(c))),
       ),
     );
   }

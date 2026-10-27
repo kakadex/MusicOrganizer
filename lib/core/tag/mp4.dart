@@ -219,14 +219,18 @@ abstract final class Mp4 {
           hdlr ?? _defaultHdlr(),
           newIlst,
         ]));
+    // 关键：udta 的「去 meta」要取它的**子节点**重新包一层，
+    // 不能用 _withoutChild(udta,'meta')（那会返回一个完整 udta，再包就成 udta 套 udta）。
     final Uint8List newUdta = udta == null
         ? _atom('udta', newMeta)
-        : _atom('udta', _concat(<Uint8List>[_withoutChild(udta, 'meta'), newMeta]));
+        : _atom('udta', _concat(<Uint8List>[
+            _join(_childrenWithout(_split(udta, 8, udta.length), 'meta')),
+            newMeta,
+          ]));
+    // 同理：moov 的「去 udta」用子节点列表，不能再包一层 moov
     final Uint8List newMoov = _atom(
         'moov',
-        udta == null
-            ? _concat(<Uint8List>[_join(children), newUdta])
-            : _concat(<Uint8List>[_withoutChild(moov, 'udta'), newUdta]));
+        _concat(<Uint8List>[_join(_childrenWithout(children, 'udta')), newUdta]));
     return newMoov;
   }
 
@@ -361,11 +365,6 @@ abstract final class Mp4 {
       if (type != _typeOf(child)) out.add(child);
     }
     return out;
-  }
-
-  static Uint8List _withoutChild(Uint8List parent, String type) {
-    final List<Uint8List> keep = _childrenWithout(_split(parent, 8, parent.length), type);
-    return _atom(_typeOf(parent), keep.isEmpty ? Uint8List(0) : _join(keep));
   }
 
   static Uint8List _join(List<Uint8List> parts) {

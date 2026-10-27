@@ -17,6 +17,7 @@ import '../../core/fs/raw_write.dart';
 import '../../core/model/tags.dart';
 import '../../core/model/vfile.dart';
 import '../../core/scan/scanner.dart';
+import '../../core/tag/cover_art.dart';
 import '../../core/tx/write_preview.dart';
 import '../common/write_confirm_sheet.dart';
 import 'editor_cover_card.dart';
@@ -244,6 +245,15 @@ class _EditorPageState extends State<EditorPage> {
     try {
       final XFile? picked = await openFile(acceptedTypeGroups: <XTypeGroup>[images]);
       if (picked == null) return;
+      // 超大图先拒绝，别把几百 MB 直接 readAsBytes 读进内存
+      final int len = await picked.length();
+      if (len > CoverArt.maxBytes) {
+        if (mounted) {
+          moSnack(context,
+              '图片太大（${CoverArt.sizeText(len)}），请换一张 ≤ 4MB 的');
+        }
+        return;
+      }
       final Uint8List bytes = await picked.readAsBytes();
       if (bytes.isEmpty) {
         if (mounted) moSnack(context, '这个文件读不出内容');

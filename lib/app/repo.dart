@@ -98,6 +98,7 @@ class Repo extends ChangeNotifier {
   bool _initialized = false;
   bool _scanning = false;
   bool _metaLoading = false;
+  final List<Completer<void>> _metaWaiters = <Completer<void>>[];
 
   bool get isInitialized => _initialized;
   bool get scanning => _scanning;
@@ -450,6 +451,9 @@ class Repo extends ChangeNotifier {
     final String p = path.trim();
     if (p.isEmpty) return false;
     if (!Directory(p).existsSync()) return false;
+    // DesktopFileStore 自己也有一份 _roots：只改 Repo 会让两套记录不一致
+    final FileStore? st = store;
+    if (st is DesktopFileStore) st.addRoot(p);
     setRoots(<TreeRef>[TreeRef(treeUri: 'file://$p', rootDocId: p)]);
     files = <VFile>[];
     index.clear();
@@ -584,7 +588,14 @@ class Repo extends ChangeNotifier {
     void Function(int done, int total)? onProgress,
   }) async {
     final FileStore? st = store;
-    if (st == null || _metaLoading) return;
+    if (st == null) return;
+    // 正在加载时**等待**而不是直接返回：否则并发刷新会以为加载完了，
+    // 列表里只剩文件名、元数据一直不出现
+    if (_metaLoading) {
+      _metaWaiters.add(Completer<void>());
+      await _metaWaiters.last.future;
+      return;
+    }
     final List<VFile> todo = (only ?? files)
         .where((VFile f) => !f.dir && f.audio() && !f.metaCached())
         .toList();
@@ -605,6 +616,10 @@ class Repo extends ChangeNotifier {
       });
     } finally {
       _metaLoading = false;
+      for (final Completer<void> c in _metaWaiters) {
+        if (!c.isCompleted) c.complete();
+      }
+      _metaWaiters.clear();
       notifyListeners();
     }
   }

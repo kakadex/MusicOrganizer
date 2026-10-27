@@ -292,15 +292,18 @@ class _OrganizePageState extends State<OrganizePage> {
     setState(() => _busy = true);
     final RunningTask? task = TaskCenter.start('自动整理');
     final TaskControl? control = task?.control;
-    final OrganizeResult r = await Organizer.execute(_repo.store!, doList,
-        onProgress: (int done, int total) => control?.report(done, total, '移动中'),
-        cancel: control);
-    TaskCenter.finish();
-    if (!mounted) return;
-    setState(() => _busy = false);
-    if (r.ok > 0) await _repo.rescan();
-    if (!mounted) return;
-    moSnack(context, r.summary());
+    try {
+      final OrganizeResult r = await Organizer.execute(_repo.store!, doList,
+          onProgress: (int done, int total) => control?.report(done, total, '移动中'),
+          cancel: control);
+      if (!mounted) return;
+      setState(() => _busy = false);
+      if (r.ok > 0) await _repo.rescan();
+      if (!mounted) return;
+      moSnack(context, r.summary());
+    } finally {
+      TaskCenter.finish();
+    }
   }
 
   /// 文件名清理 / 改名：先选规则或模板，出计划，确认后才动盘。
@@ -651,25 +654,28 @@ class _OrganizePageState extends State<OrganizePage> {
     int moved = 0;
     int removedDirs = 0;
     int failed = 0;
-    for (final MapEntry<String, List<FlattenPlan>> e in byRoot.entries) {
-      final VFile rootDir = VFile(docId: e.key, name: e.key, dir: true);
-      final FlattenResult r = await Flattener.execute(
-        st,
-        root: rootDir,
-        plans: e.value,
-        onProgress: (int done, int total) =>
-            control?.report(done, total, '移动中'),
-      );
-      moved += r.moved;
-      removedDirs += r.removedDirs;
-      failed += r.failed;
+    try {
+      for (final MapEntry<String, List<FlattenPlan>> e in byRoot.entries) {
+        final VFile rootDir = VFile(docId: e.key, name: e.key, dir: true);
+        final FlattenResult r = await Flattener.execute(
+          st,
+          root: rootDir,
+          plans: e.value,
+          onProgress: (int done, int total) =>
+              control?.report(done, total, '移动中'),
+        );
+        moved += r.moved;
+        removedDirs += r.removedDirs;
+        failed += r.failed;
+      }
+      if (!mounted) return;
+      await _repo.rescan();
+      if (!mounted) return;
+      moSnack(context, '已移动 $moved 个 · 删空目录 $removedDirs 个'
+          '${failed > 0 ? ' · 失败 $failed 个' : ''}');
+    } finally {
+      TaskCenter.finish();
     }
-    TaskCenter.finish();
-    if (!mounted) return;
-    await _repo.rescan();
-    if (!mounted) return;
-    moSnack(context, '已移动 $moved 个 · 删空目录 $removedDirs 个'
-        '${failed > 0 ? ' · 失败 $failed 个' : ''}');
   }
 
   Future<void> _junk() async {
@@ -749,20 +755,23 @@ class _OrganizePageState extends State<OrganizePage> {
     // 第一遍：只算计划，不写盘。
     final List<_TidyItem> items = <_TidyItem>[];
     int i = 0;
-    for (final VFile f in files) {
-      if (control.isCancelled()) break;
-      i++;
-      control.report(i, files.length, f.name);
-      final Tags tags = await Scanner.readTags(_repo.store!, f);
-      final Map<String, String> plan = TagFix.plan(tags, ops);
-      if (plan.isEmpty) continue;
-      final List<_TidyChange> changes = <_TidyChange>[];
-      for (final MapEntry<String, String> e in plan.entries) {
-        changes.add(_TidyChange(e.key, tags.get(e.key), e.value));
+    try {
+      for (final VFile f in files) {
+        if (control.isCancelled()) break;
+        i++;
+        control.report(i, files.length, f.name);
+        final Tags tags = await Scanner.readTags(_repo.store!, f);
+        final Map<String, String> plan = TagFix.plan(tags, ops);
+        if (plan.isEmpty) continue;
+        final List<_TidyChange> changes = <_TidyChange>[];
+        for (final MapEntry<String, String> e in plan.entries) {
+          changes.add(_TidyChange(e.key, tags.get(e.key), e.value));
+        }
+        items.add(_TidyItem(f, changes));
       }
-      items.add(_TidyItem(f, changes));
+    } finally {
+      TaskCenter.finish();
     }
-    TaskCenter.finish();
     if (!mounted) return;
     setState(() => _busy = false);
     if (items.isEmpty) {
@@ -810,24 +819,27 @@ class _OrganizePageState extends State<OrganizePage> {
     int changed = 0;
     int failed = 0;
     int done = 0;
-    for (final WriteTarget t in picked) {
-      if (wControl?.isCancelled() ?? false) break;
-      final Object? raw = t.file;
-      if (raw is! VFile) continue;
-      // 只写用户勾中的字段（逐字段取消勾选同样生效）
-      final Map<String, String> plan = t.toUpdates();
-      if (plan.isEmpty) continue;
-      final String err = await tx.apply(raw, plan, record: true, batchId: batchId);
-      if (err.isEmpty) {
-        changed++;
-        _repo.invalidate(raw);
-      } else {
-        failed++;
+    try {
+      for (final WriteTarget t in picked) {
+        if (wControl?.isCancelled() ?? false) break;
+        final Object? raw = t.file;
+        if (raw is! VFile) continue;
+        // 只写用户勾中的字段（逐字段取消勾选同样生效）
+        final Map<String, String> plan = t.toUpdates();
+        if (plan.isEmpty) continue;
+        final String err = await tx.apply(raw, plan, record: true, batchId: batchId);
+        if (err.isEmpty) {
+          changed++;
+          _repo.invalidate(raw);
+        } else {
+          failed++;
+        }
+        done++;
+        wControl?.report(done, picked.length, raw.name);
       }
-      done++;
-      wControl?.report(done, picked.length, raw.name);
+    } finally {
+      TaskCenter.finish();
     }
-    TaskCenter.finish();
     if (!mounted) return;
     setState(() => _busy = false);
     moSnack(context, '改动 $changed 首，失败 $failed 首',

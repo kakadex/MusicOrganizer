@@ -162,6 +162,12 @@ abstract final class SettingsBackup {
       keyLayout: 0,
       keyNetFiles: NetTuning.defaultFileConcurrency,
       keyNetTimeout: NetTuning.defaultTimeoutPercent,
+      // 代理与扫描过滤也纳入「恢复默认」：否则点恢复后这些仍保留，用户以为都重置了
+      keyProxyMode: 0,
+      keyProxyHost: '',
+      keyProxyPort: '',
+      keyScanExclude: '',
+      'scan_ignore_video': false,
     };
   }
 

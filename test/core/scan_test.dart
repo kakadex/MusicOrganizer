@@ -262,12 +262,13 @@ void main() {
       expect(t.get('title'), '写入后');
     });
 
-    test('无封面格式直接判无，不碰 IO', () async {
+    test('无封面格式（非音频）直接判无，不碰 IO', () async {
       final MemoryFileStore st = MemoryFileStore();
-      final VFile wma = file('r/a.wma', 'a.wma', size: 1024);
-      st.bytes[wma.docId] = Uint8List.fromList(List<int>.filled(64, 0x30));
-      expect(await Scanner.hasCover(st, wma), isFalse);
-      expect(await Scanner.readCover(st, wma), isNull);
+      // WMA 虽不可写但可读封面，这里用非音频扩展名验证「完全不碰 IO」的快速路径
+      final VFile txt = file('r/a.txt', 'a.txt', size: 1024);
+      st.bytes[txt.docId] = Uint8List.fromList(List<int>.filled(64, 0x30));
+      expect(await Scanner.hasCover(st, txt), isFalse);
+      expect(await Scanner.readCover(st, txt), isNull);
       expect(st.headCalls, 0);
     });
   });

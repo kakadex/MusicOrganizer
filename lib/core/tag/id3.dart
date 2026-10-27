@@ -466,8 +466,9 @@ abstract final class Id3 {
   }
 
   static void _putApicFrame(BytesBuilder out, int version, Uint8List image) {
-    final String mime = CoverArt.mimeOf(image);
-    if (mime.isEmpty) return;
+    // 不是 JPEG/PNG 等已知格式也不丢：MIME 兜底成 image/jpeg，
+    // 内容不变——宁可「类型标错」也不能让旧 APIC 被删掉后新封面没写进去
+    final String mime = CoverArt.mimeOf(image).isEmpty ? 'image/jpeg' : CoverArt.mimeOf(image);
     final BytesBuilder data = BytesBuilder();
     data.addByte(0);
     data.add(asciiBytes(mime));

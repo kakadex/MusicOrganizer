@@ -170,7 +170,12 @@ abstract final class Http {
       if (body.isEmpty) return null;
       return body;
     } catch (e) {
-      breaker.noteFail(host, e.runtimeType.toString());
+      // 「响应超过上限」是内容问题，不是网络问题：记进熔断会把整个源误判成不可用
+      final bool tooBig =
+          e is FormatException && e.message.contains('响应超过上限');
+      if (!tooBig) {
+        breaker.noteFail(host, e.runtimeType.toString());
+      }
       _note(_describe(e));
       return null;
     }

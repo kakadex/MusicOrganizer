@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import '../../app/repo.dart';
 import '../../app/ui_kit.dart';
 import '../../core/match/local_query.dart';
+import '../../core/net/net.dart';
 import '../../core/model/query.dart';
 import '../../core/model/tags.dart';
 import '../../core/model/task_control.dart';
@@ -173,56 +174,59 @@ class _CoversPageState extends State<CoversPage> {
     final control = running?.control;
     final int total = _jobs.length;
 
-    // ① 先把所有封面抓到内存（这一步不动盘）
-    for (int i = 0; i < total; i++) {
-      if (control?.isCancelled() ?? false) break;
-      await _waitIfPaused(control);
-      final CoverJob job = _jobs[i];
-      control?.report(i, total, job.file.name);
-      if (!TagIO.canWrite(job.file.ext())) {
-        _skipped++;
-        _update(job, CoverPhase.skipped, '跳过：${job.file.ext()} 不支持写标签');
-        control?.report(i + 1, total, job.file.name);
-        continue;
-      }
-      _update(job, CoverPhase.working, '查找在线封面…');
-      try {
-        final Tags tags = await Scanner.readTags(store, job.file);
-        final Query q = LocalQuery.forFile(job.file, tags);
-        final AggregateResult agg = await Aggregator.tagCandidates(
-            q, chinese: LocalQuery.chinese(q));
-        final String url = CoverPick.urlOf(agg.candidates);
-        if (url.isEmpty) {
-          _noCover++;
-          _update(job, CoverPhase.noCover, '没有带封面的候选');
+    // ① 先把所有封面抓到内存（这一步不动盘）。
+    // 用文件级并发（默认 3）跑：500 首串行要 20-40 分钟，这里压到几分钟。
+    try {
+      await Net.mapIndexed<CoverJob, void>(
+          _jobs, Net.fileConcurrency(), control, (int i, CoverJob job) async {
+        if (control?.isCancelled() ?? false) return;
+        await _waitIfPaused(control);
+        control?.report(i, total, job.file.name);
+        if (!TagIO.canWrite(job.file.ext())) {
+          _skipped++;
+          _update(job, CoverPhase.skipped, '跳过：${job.file.ext()} 不支持写标签');
           control?.report(i + 1, total, job.file.name);
-          continue;
+          return;
         }
-        _update(job, CoverPhase.working, '下载封面…');
-        final Uint8List? bytes = await Http.getBytes(
-            url, null, null, Http.readTimeoutOverseasMs, _maxDownloadBytes);
-        if (bytes == null || !CoverPick.looksLikeImage(bytes)) {
+        _update(job, CoverPhase.working, '查找在线封面…');
+        try {
+          final Tags tags = await Scanner.readTags(store, job.file);
+          final Query q = LocalQuery.forFile(job.file, tags);
+          final AggregateResult agg = await Aggregator.tagCandidates(
+              q, chinese: LocalQuery.chinese(q));
+          final String url = CoverPick.urlOf(agg.candidates);
+          if (url.isEmpty) {
+            _noCover++;
+            _update(job, CoverPhase.noCover, '没有带封面的候选');
+            control?.report(i + 1, total, job.file.name);
+            return;
+          }
+          _update(job, CoverPhase.working, '下载封面…');
+          final Uint8List? bytes = await Http.getBytes(
+              url, null, null, Http.readTimeoutOverseasMs, _maxDownloadBytes);
+          if (bytes == null || !CoverPick.looksLikeImage(bytes)) {
+            _failed++;
+            _update(job, CoverPhase.failed,
+                bytes == null ? '下载失败' : '返回的不是图片');
+            control?.report(i + 1, total, job.file.name);
+            return;
+          }
+          job.pendingBytes = bytes;
+          job.previousBytes = await Scanner.readCover(store, job.file);
+          _update(
+              job,
+              CoverPhase.ready,
+              '待确认：${(bytes.lengthInBytes / 1024).round()} KB'
+                  '${job.previousBytes == null ? '' : '（将覆盖已有封面）'}');
+        } catch (e) {
           _failed++;
-          _update(job, CoverPhase.failed,
-              bytes == null ? '下载失败' : '返回的不是图片');
-          control?.report(i + 1, total, job.file.name);
-          continue;
+          _update(job, CoverPhase.failed, '出错：$e');
         }
-        job.pendingBytes = bytes;
-        job.previousBytes = await Scanner.readCover(store, job.file);
-        _update(
-            job,
-            CoverPhase.ready,
-            '待确认：${(bytes.lengthInBytes / 1024).round()} KB'
-                '${job.previousBytes == null ? '' : '（将覆盖已有封面）'}');
-      } catch (e) {
-        _failed++;
-        _update(job, CoverPhase.failed, '出错：$e');
-      }
-      control?.report(i + 1, total, job.file.name);
+        control?.report(i + 1, total, job.file.name);
+      });
+    } finally {
+      TaskCenter.finish();
     }
-
-    TaskCenter.finish();
     if (!mounted) return;
     setState(() => _busy = false);
 
@@ -284,30 +288,33 @@ class _CoversPageState extends State<CoversPage> {
     _control = wc;
     final int wt = picked.length;
     int wi = 0;
-    for (final WriteTarget t in picked) {
-      final CoverJob? j = t.data as CoverJob?;
-      if (j == null) continue;
-      wc?.report(wi, wt, j.file.name);
-      final String err = await tx.apply(
-        j.file,
-        const <String, String>{},
-        cover: j.pendingBytes,
-        batchId: batchId,
-      );
-      if (err.isEmpty) {
-        _written++;
-        repo.invalidate(j.file);
-        _undo.add(CoverUndo(j.file, j.previousBytes));
-        _update(j, CoverPhase.written, '已写入内嵌封面');
-      } else {
-        _failed++;
-        _update(j, CoverPhase.failed, err);
+    try {
+      for (final WriteTarget t in picked) {
+        final CoverJob? j = t.data as CoverJob?;
+        if (j == null) continue;
+        wc?.report(wi, wt, j.file.name);
+        final String err = await tx.apply(
+          j.file,
+          const <String, String>{},
+          cover: j.pendingBytes,
+          batchId: batchId,
+        );
+        if (err.isEmpty) {
+          _written++;
+          repo.invalidate(j.file);
+          _undo.add(CoverUndo(j.file, j.previousBytes));
+          _update(j, CoverPhase.written, '已写入内嵌封面');
+        } else {
+          _failed++;
+          _update(j, CoverPhase.failed, err);
+        }
+        j.pendingBytes = null;
+        wi++;
+        wc?.report(wi, wt, j.file.name);
       }
-      j.pendingBytes = null;
-      wi++;
-      wc?.report(wi, wt, j.file.name);
+    } finally {
+      TaskCenter.finish();
     }
-    TaskCenter.finish();
 
     // 写完刷新这些文件的元数据（封面标记 / 列表封面都要重新读）
     await repo.loadMeta(only: _jobs.map((CoverJob j) => j.file));
@@ -337,15 +344,18 @@ class _CoversPageState extends State<CoversPage> {
     setState(() => _busy = true);
     TaskCenter.start('撤销封面');
     int restored = 0;
-    for (final CoverUndo item in List<CoverUndo>.of(_undo)) {
-      final String err = await tx.apply(item.file, const <String, String>{},
-          cover: item.previous ?? Uint8List(0));
-      if (err.isEmpty) {
-        restored++;
-        repo.invalidate(item.file);
+    try {
+      for (final CoverUndo item in List<CoverUndo>.of(_undo)) {
+        final String err = await tx.apply(item.file, const <String, String>{},
+            cover: item.previous ?? Uint8List(0));
+        if (err.isEmpty) {
+          restored++;
+          repo.invalidate(item.file);
+        }
       }
+    } finally {
+      TaskCenter.finish();
     }
-    TaskCenter.finish();
     await repo.loadMeta(only: _undo.map((CoverUndo u) => u.file));
     if (!mounted) return;
     setState(() {

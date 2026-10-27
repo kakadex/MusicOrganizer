@@ -120,6 +120,21 @@ abstract final class ArtistRules {
         key == TextUtil.normCompare(TextUtil.unrecognizedDir);
   }
 
+  /// 通用目录名：这些一级目录**不是歌手**，不能进「已知歌手目录」。
+  static const Set<String> _genericFolders = <String>{
+    'music', 'musics', 'audio', 'audios', 'sound', 'sounds', 'song', 'songs',
+    'download', 'downloads', 'media', 'mymusic', 'musiclibrary',
+    '音乐', '歌曲', '音频', '我的音乐', '音乐库', '本地音乐', '下载', '下载音乐',
+    '新建文件夹', '未分类', '其他', '其它', '杂项', '合集', '专辑', 'album', 'albums',
+  };
+
+  /// 目录名是不是「通用容器名」（不是歌手）。
+  static bool isGenericFolder(String? text) {
+    final String key = TextUtil.normCompare(text ?? '');
+    if (key.isEmpty) return true;
+    return _genericFolders.contains(key);
+  }
+
   /// 歌手目录的归一键：写法不同、实际同一艺人的名字要落到同一个目录。
   static String folderKey(String? text) {
     final String n = TextUtil.normCompare(TextUtil.toSimplified(text ?? ''));

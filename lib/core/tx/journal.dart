@@ -26,38 +26,58 @@ class Journal {
   /// 单文件 2000 条上限。
   static const int maxEntries = 2000;
 
-  /// 追加一条记录（全量重写）。
+  /// 内存缓存：启动后读一次磁盘，之后 append 走追加写，不再每次全量读写。
+  List<JournalEntry>? _cache;
+  bool _loaded = false;
+
+  Future<void> _ensureLoaded() async {
+    if (_loaded) return;
+    _cache = <JournalEntry>[];
+    if (await file.exists()) {
+      final List<String> lines = await file.readAsLines();
+      for (final String line in lines) {
+        final String t = line.trim();
+        if (t.isEmpty) continue;
+        try {
+          _cache!.add(JournalEntry.fromJsonLine(t));
+        } catch (_) {}
+      }
+    }
+    _loaded = true;
+  }
+
+  /// 追加一条记录。常态下只追加一行 jsonl；只有超过 [maxEntries] 才整体重写修剪。
   Future<bool> append(JournalEntry entry) async {
     try {
-      final List<JournalEntry> all = await readAll();
-      all.add(entry);
-      while (all.length > maxEntries) {
-        all.removeAt(0);
+      await _ensureLoaded();
+      _cache!.add(entry);
+      if (_cache!.length > maxEntries) {
+        _cache!.removeRange(0, _cache!.length - maxEntries);
+        await _rewriteAll();
+      } else {
+        // jsonl 天然追加友好：只写新这一行，避免批量写 500 首时 O(n²) 重写
+        await file.writeAsString('${entry.toJsonLine()}\n',
+            mode: FileMode.append, flush: true);
       }
-      final StringBuffer sb = StringBuffer();
-      for (final JournalEntry e in all) {
-        sb.writeln(e.toJsonLine());
-      }
-      await file.writeAsString(sb.toString(), flush: true);
       return true;
     } catch (_) {
       return false;
     }
   }
 
+  /// 全量重写（只在修剪或回滚时用）。
+  Future<void> _rewriteAll() async {
+    final StringBuffer sb = StringBuffer();
+    for (final JournalEntry e in _cache!) {
+      sb.writeln(e.toJsonLine());
+    }
+    await file.writeAsString(sb.toString(), flush: true);
+  }
+
   /// 读出全部记录（坏行跳过）。
   Future<List<JournalEntry>> readAll() async {
-    final List<JournalEntry> out = <JournalEntry>[];
-    if (!await file.exists()) return out;
-    final List<String> lines = await file.readAsLines();
-    for (final String line in lines) {
-      final String t = line.trim();
-      if (t.isEmpty) continue;
-      try {
-        out.add(JournalEntry.fromJsonLine(t));
-      } catch (_) {}
-    }
-    return out;
+    await _ensureLoaded();
+    return <JournalEntry>[..._cache!];
   }
 
   /// 最近一个可撤销的 applied 记录。

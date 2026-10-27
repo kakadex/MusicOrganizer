@@ -247,6 +247,8 @@ class _LibraryPageState extends State<LibraryPage> {
       _busy = false;
       _selected.clear();
       _selectMode = false;
+      // rescan 只刷新 repo.files / index，_shown 不重建的话删掉的歌还挂在列表里
+      _applyFilter();
     });
     moSnack(context, '已删除 $ok 个${fail > 0 ? '，失败 $fail 个' : ''}');
   }
@@ -309,14 +311,18 @@ class _LibraryPageState extends State<LibraryPage> {
       return;
     }
     TaskCenter.start('归类到歌手目录');
-    final OrganizeResult r = await Organizer.execute(store, <MovePlan>[p]);
-    TaskCenter.finish();
-    if (!mounted) return;
-    await repo.rescan();
-    if (!mounted) return;
-    moSnack(context, r.ok > 0
-        ? '已归类到 ${p.targetPath}'
-        : '没搬动：${r.errors.isNotEmpty ? r.errors.first : r.summary()}');
+    try {
+      final OrganizeResult r = await Organizer.execute(store, <MovePlan>[p]);
+      if (!mounted) return;
+      await repo.rescan();
+      if (!mounted) return;
+      setState(_applyFilter);
+      moSnack(context, r.ok > 0
+          ? '已归类到 ${p.targetPath}'
+          : '没搬动：${r.errors.isNotEmpty ? r.errors.first : r.summary()}');
+    } finally {
+      TaskCenter.finish();
+    }
   }
 
   Future<void> _matchSelected({bool ignoreMemory = false}) async {
@@ -344,18 +350,22 @@ class _LibraryPageState extends State<LibraryPage> {
       }
       runner.queue?.clearFinished();
     }
-    final List<FilePlan> plans = await runner.match(
-      files,
-      control: control,
-      modes: repo.tagModes(),
-      ignoreMemory: ignoreMemory,
-      onPlan: (int done, int total, FilePlan plan) {
-        partial.addAt(indexOf[plan.file.docId] ?? done, plan);
-        control?.report(done, total, plan.file.name);
-      },
-    );
+    final List<FilePlan> plans;
+    try {
+      plans = await runner.match(
+        files,
+        control: control,
+        modes: repo.tagModes(),
+        ignoreMemory: ignoreMemory,
+        onPlan: (int done, int total, FilePlan plan) {
+          partial.addAt(indexOf[plan.file.docId] ?? done, plan);
+          control?.report(done, total, plan.file.name);
+        },
+      );
+    } finally {
+      TaskCenter.finish();
+    }
     final bool stopped = control?.isCancelled() ?? false;
-    TaskCenter.finish();
     if (!mounted) return;
     setState(() => _busy = false);
     // 中途停下来的：把已经拿到的部分交出来给用户，别让跑到一半的活儿白费

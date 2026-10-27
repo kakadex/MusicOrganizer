@@ -32,6 +32,11 @@ abstract final class Flac {
     'UNSYNCED_LYRICS': 'lyrics',
   };
 
+  /// 读端会把各种歌词键都映射成 lyrics，写端替换时也要认全，别留冗余。
+  static const Set<String> _lyricKeys = <String>{
+    'LYRICS', 'UNSYNCEDLYRICS', 'LYRIC', 'UNSYNCED LYRICS', 'UNSYNCED_LYRICS',
+  };
+
   static const Map<String, String> writeKeys = <String, String>{
     'title': 'TITLE',
     'artist': 'ARTIST',
@@ -160,11 +165,14 @@ abstract final class Flac {
           bool replaced = false;
           for (final MapEntry<String, String> e in values.entries) {
             final String? wk = writeKeys[e.key];
-            if (wk != null && wk == key) {
-              replaced = true;
-              break;
-            }
-            if (e.key == 'lyrics' && key == 'UNSYNCEDLYRICS') {
+            if (e.key == 'lyrics') {
+              // 老字段可能叫 LYRIC / UNSYNCED LYRICS / UNSYNCED_LYRICS，
+              // 都要被新的 LYRICS 替换掉，否则文件里越堆越多
+              if (_lyricKeys.contains(key)) {
+                replaced = true;
+                break;
+              }
+            } else if (wk != null && wk == key) {
               replaced = true;
               break;
             }

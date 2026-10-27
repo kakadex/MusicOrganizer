@@ -3,11 +3,8 @@ import 'package:flutter/material.dart';
 import '../../app/repo.dart';
 import '../../app/ui_kit.dart';
 import '../../core/match/tag_plan.dart';
-import '../../core/model/journal_entry.dart';
-import '../../core/model/vfile.dart';
+import '../../core/task/match_runner.dart';
 import '../../core/task/task_center.dart';
-import '../../core/tx/journal.dart';
-import '../../core/tx/tag_transaction.dart';
 import '../history/undo_flow.dart';
 
 /// 写入前预览：逐首展开「旧值 → 新值」，勾选后才写盘。
@@ -215,8 +212,12 @@ class _PreviewBodyState extends State<_PreviewBody> {
     final RunningTask? task = TaskCenter.start('写入标签');
     final control = task?.control;
     final String batchId = runner.newBatchId();
-    final report = await runner.write(_plans, control: control, batchId: batchId);
-    TaskCenter.finish();
+    final WriteReport report;
+    try {
+      report = await runner.write(_plans, control: control, batchId: batchId);
+    } finally {
+      TaskCenter.finish();
+    }
     if (!mounted) return;
     setState(() {
       _busy = false;
@@ -245,38 +246,6 @@ class _PreviewBodyState extends State<_PreviewBody> {
     ));
     Navigator.of(context).pop(true);
   }
-}
-
-/// 按批次撤销（把 before 写回去）。
-///
-/// 逆序回滚：同一字段被多次改写时，最后写的那条先回退，才不会互相覆盖。
-Future<int> undoBatch(String batchId) async {
-  final Repo repo = Repo.instance;
-  final Journal? journal = repo.journal;
-  final TagTransaction? tx = repo.tx;
-  if (journal == null || tx == null) return 0;
-  int ok = 0;
-  await journal.revertBatch(batchId, revertOne: (JournalEntry entry) async {
-    // 旧日志只写了 uri（同一份 docId），这里两个都认，否则撤销会静默 0 条
-    final String key = entry.targetId.isNotEmpty ? entry.targetId : entry.uri;
-    VFile? target;
-    for (final VFile f in repo.files) {
-      if (f.docId == key) {
-        target = f;
-        break;
-      }
-    }
-    if (target == null) return false;
-    final String err =
-        await tx.apply(target, Map<String, String>.from(entry.before), record: false);
-    if (err.isEmpty) {
-      ok++;
-      repo.invalidate(target);
-      return true;
-    }
-    return false;
-  });
-  return ok;
 }
 
 /// 字段名 → 中文（预览里用短名，别把整列挤满）。

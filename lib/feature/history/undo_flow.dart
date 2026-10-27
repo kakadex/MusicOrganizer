@@ -113,8 +113,13 @@ Future<int?> undoBatchWithPreview(
         ok++;
         return true;
       }
-      final String err = await tx.apply(f, updates, record: false);
-      if (err.isNotEmpty) return false;
+      try {
+        final String err = await tx.apply(f, updates, record: false);
+        if (err.isNotEmpty) return false;
+      } catch (_) {
+        // SAF 通道断 / 文件被删等异常：当成这一首撤销失败，别让整批崩掉
+        return false;
+      }
       ok++;
       repo.invalidate(f);
       return true;

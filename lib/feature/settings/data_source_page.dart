@@ -15,6 +15,25 @@ class DataSourcePage extends StatefulWidget {
 }
 
 class _DataSourcePageState extends State<DataSourcePage> {
+  /// 按 endpointKey 缓存输入控制器。
+  ///
+  /// 原来每次 build 都 new 一个、且从不 dispose：既泄漏内存，
+  /// 又会在用户正输入时被重建顶掉（点上面的开关 → 文字被重置回默认值）。
+  final Map<String, TextEditingController> _ctls =
+      <String, TextEditingController>{};
+
+  TextEditingController _ctlFor(String key) => _ctls.putIfAbsent(
+      key, () => TextEditingController(text: Endpoints.url(key)));
+
+  @override
+  void dispose() {
+    for (final TextEditingController c in _ctls.values) {
+      c.dispose();
+    }
+    _ctls.clear();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final List<EndpointSource> all = Endpoints.sources;
@@ -106,8 +125,7 @@ class _DataSourcePageState extends State<DataSourcePage> {
   Widget _endpointEditor(EndpointSource s, int index) {
     final String key = s.endpointKey(index);
     final String def = s.defaultUrl(index);
-    final TextEditingController ctl =
-        TextEditingController(text: Endpoints.url(key));
+    final TextEditingController ctl = _ctlFor(key);
     return Padding(
       padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 6, MoKit.pagePad, 0),
       child: Column(
@@ -157,6 +175,16 @@ class _DataSourcePageState extends State<DataSourcePage> {
       return;
     }
     Endpoints.config?.setOverride(key, v.isEmpty ? null : v);
+    // 留空保存 = 恢复默认：把框里的文字同步成最终生效的地址
+    final TextEditingController? ctl = _ctls[key];
+    if (ctl != null) {
+      final String effective = Endpoints.url(key);
+      if (ctl.text != effective) {
+        ctl.value = TextEditingValue(
+            text: effective,
+            selection: TextSelection.collapsed(offset: effective.length));
+      }
+    }
     setState(() {});
     moSnack(context, v.isEmpty ? '已恢复默认地址' : '已保存（下次请求生效）');
   }
@@ -181,6 +209,14 @@ class _DataSourcePageState extends State<DataSourcePage> {
     if (go != true) return;
     Endpoints.resetAll();
     if (!mounted) return;
+    for (final MapEntry<String, TextEditingController> e in _ctls.entries) {
+      final String effective = Endpoints.url(e.key);
+      if (e.value.text != effective) {
+        e.value.value = TextEditingValue(
+            text: effective,
+            selection: TextSelection.collapsed(offset: effective.length));
+      }
+    }
     setState(() {});
     moSnack(context, '已恢复默认地址');
   }

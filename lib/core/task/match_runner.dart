@@ -169,7 +169,9 @@ class MatchRunner {
         'confidence': '${best.confidence}',
       });
       if (memory != null) {
-        memory!.record(f.docId, f.size, f.lastModified, BatchMemory.done);
+        // 这里只是「查到了候选」，用户可能取消写入：
+        // 记 done 会让这首歌在下次被 shouldSkip 永久跳过
+        memory!.record(f.docId, f.size, f.lastModified, BatchMemory.matched);
       }
     }
     return TagPlan.buildFor(

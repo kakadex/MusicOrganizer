@@ -61,6 +61,9 @@ class BatchMemory {
   static const String noHit = 'nohit';
   static const String rejected = 'reject';
   static const String done = 'done';
+
+  /// 查到了候选但还没写盘：**不算已处理**，下次仍要重新匹配/重试。
+  static const String matched = 'matched';
   /// 条目上限 / 落盘间隔（超出按插入顺序淘汰最旧）。
   static const int maxEntries = 20000;
   static const int saveEvery = 40;

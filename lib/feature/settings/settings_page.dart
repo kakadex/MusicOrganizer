@@ -812,6 +812,8 @@ class _SettingsPageState extends State<SettingsPage> {
       await _repo.setSetting(_fromBackupKey[k] ?? k, v);
     }
     if (!mounted) return;
+    // 代理可能被重置回直连了，立即生效，别等重启
+    _repo.applyProxy();
     setState(() {});
     moSnack(context, '已恢复 ${diff.length} 项默认设置');
   }
@@ -907,6 +909,8 @@ class _SettingsPageState extends State<SettingsPage> {
       await _repo.setSetting(_fromBackupKey[e.key] ?? e.key, e.value);
     }
     if (!mounted) return;
+    // 导入的代理配置立即生效，不用等重启
+    _repo.applyProxy();
     setState(() {});
     moSnack(context, '已导入 ${parsed.count} 项（重启应用后主题类设置完全生效）');
     if (parsed.warnings.isNotEmpty || parsed.ignored.isNotEmpty) {

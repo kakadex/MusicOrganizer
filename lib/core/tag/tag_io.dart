@@ -29,6 +29,78 @@ abstract final class TagIO {
     return out;
   }
 
+  /// MP4 家族的标签在 moov 里，而 moov 可能在文件**尾部**（录音/转码常见），
+  /// 所以不能靠「头 N 字节够不够」来一刀切。
+  static bool isMp4(String ext) {
+    final String e = ext.toLowerCase();
+    return e == '.m4a' || e == '.mp4';
+  }
+
+  /// 当前缓冲还需不需要更多字节（扫描/读标签据此决定要不要继续读）。
+  static bool needsMore(Uint8List copy, String ext) {
+    if (isMp4(ext)) return mp4MoovIn(copy) == null;
+    return !tagFitsCopy(copy, ext);
+  }
+
+  /// 在缓冲里找**完整的**顶层 moov；返回 (起点, 长度)，没有返回 null。
+  ///
+  /// 只读原子头做判断，不解析内部，因此对截断的缓冲也是安全的。
+  static (int, int)? mp4MoovIn(Uint8List b) {
+    int pos = 0;
+    while (pos + 8 <= b.length) {
+      int size = (b[pos] << 24) | (b[pos + 1] << 16) | (b[pos + 2] << 8) | b[pos + 3];
+      final String type = String.fromCharCodes(b, pos + 4, pos + 8);
+      int header = 8;
+      if (size == 1) {
+        // 64 位 largesize：只有高 4 字节为 0 时才当普通长度处理
+        if (pos + 16 > b.length) return null;
+        if (b[pos + 8] != 0 || b[pos + 9] != 0 || b[pos + 10] != 0 || b[pos + 11] != 0) {
+          return null;
+        }
+        size = (b[pos + 12] << 24) |
+            (b[pos + 13] << 16) |
+            (b[pos + 14] << 8) |
+            b[pos + 15];
+        header = 16;
+      } else if (size == 0) {
+        // size=0 表示「一直到文件末尾」，在本缓冲里无法确认完整
+        return null;
+      }
+      if (size < header) return null;
+      if (type == 'moov') {
+        return pos + size <= b.length ? (pos, size) : null;
+      }
+      if (pos + size > b.length) return null; // 下一个原子还没读进来
+      pos += size;
+    }
+    return null;
+  }
+
+  /// 从「尾部缓冲」里切出以 moov 开头的独立片段。
+  ///
+  /// 返回的片段可以直接交给 [readLocal] / `CoverReader.read`：
+  /// 它们都从偏移 0 开始按顶层原子扫描，切片正好是 moov 本身。
+  static Uint8List? mp4MoovFromTail(Uint8List tail) {
+    for (int i = tail.length - 4; i >= 4; i--) {
+      // 找 'moov'
+      if (tail[i] != 0x6D ||
+          tail[i + 1] != 0x6F ||
+          tail[i + 2] != 0x6F ||
+          tail[i + 3] != 0x76) {
+        continue;
+      }
+      final int start = i - 4;
+      final int size = (tail[start] << 24) |
+          (tail[start + 1] << 16) |
+          (tail[start + 2] << 8) |
+          tail[start + 3];
+      if (size < 16) continue;
+      if (start + size > tail.length) continue;
+      return Uint8List.sublistView(tail, start, start + size);
+    }
+    return null;
+  }
+
   /// 头部副本里是否已包含完整标签。
   static bool tagFitsCopy(Uint8List copy, String ext) {
     final String e = ext.isEmpty ? '' : ext.toLowerCase();
@@ -151,6 +223,12 @@ abstract final class TagIO {
         e == '.wv' ||
         e == '.mpc' ||
         e == '.dsf';
+  }
+
+  /// 该格式能否**读取**标签与封面（WMA 只读，但能读出封面）。
+  static bool canRead(String ext) {
+    final String e = extOf(ext);
+    return canWrite(e) || e == '.wma';
   }
 
   /// 该格式是否有内嵌歌词字段（WAV / DSF 只有常规标签，没有歌词）。

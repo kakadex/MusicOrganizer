@@ -174,18 +174,38 @@ abstract final class Scanner {
     return s;
   }
 
+  /// 整文件读取的上限：超过它宁可不读标签，也不把一个几百 MB 的文件吞进内存。
+  static const int _maxWholeRead = 48 * 1024 * 1024;
+
+  /// 按格式取「够用」的字节。
+  ///
+  /// MP3/FLAC 靠标签头长度判断；MP4 家族特殊——moov 可能在**文件尾部**，
+  /// 所以先看头，找不到再读尾部 2MB 把 moov 切出来，**绝不整文件读**。
+  static Future<Uint8List> loadForTags(FileStore st, VFile f, String ext) async {
+    Uint8List data = await st.headBytes(f, headSmall);
+    if (data.length < headSmall) return data; // 文件本身就这么大，已读完
+    if (!TagIO.needsMore(data, ext)) return data;
+
+    data = await st.headBytes(f, headBytes);
+    if (data.length < headBytes) return data;
+    if (!TagIO.needsMore(data, ext)) return data;
+
+    if (TagIO.isMp4(ext)) {
+      final Uint8List tail = await st.tailBytes(f, headBytes);
+      final Uint8List? moov = TagIO.mp4MoovFromTail(tail);
+      if (moov != null) return moov;
+    }
+    // 兜底：小文件才允许整读；大文件宁可返回已读到的头，也不 OOM
+    if (f.size > _maxWholeRead) return data;
+    return st.headBytes(f, f.size > 0 ? f.size : headBytes);
+  }
+
   /// 一次读取同时得到标签与封面（v0.1.54 的旧经验：列表每首复制两次文件头太慢）。
   static Future<ScannerHead> readHead(FileStore st, VFile f) async {
     final ScannerHead out = ScannerHead();
     try {
       final String ext = TagIO.extOf(f.name);
-      Uint8List data = await st.headBytes(f, headSmall);
-      if (data.length >= headSmall && !TagIO.tagFitsCopy(data, ext)) {
-        data = await st.headBytes(f, headBytes);
-        if (data.length >= headBytes && !TagIO.tagFitsCopy(data, ext)) {
-          data = await st.headBytes(f, f.size > 0 ? f.size : headBytes);
-        }
-      }
+      final Uint8List data = await loadForTags(st, f, ext);
       out.tags = TagIO.readLocal(data, ext);
       out.cover = CoverReader.read(data, ext);
       out.ok = true;
@@ -211,10 +231,7 @@ abstract final class Scanner {
     Tags tags = Tags();
     try {
       final String ext = TagIO.extOf(f.name);
-      Uint8List data = await st.headBytes(f, headBytes);
-      if (data.length >= headBytes && !TagIO.tagFitsCopy(data, ext)) {
-        data = await st.headBytes(f, f.size > 0 ? f.size : headBytes);
-      }
+      final Uint8List data = await loadForTags(st, f, ext);
       tags = TagIO.readLocal(data, ext);
     } catch (_) {
       tags = Tags();
@@ -227,7 +244,8 @@ abstract final class Scanner {
 
   /// 有没有内嵌封面（只对可写格式判断，其它格式写了也不支持）。
   static Future<bool> hasCover(FileStore st, VFile f) async {
-    if (f.dir || !TagIO.canWrite(f.ext())) return false;
+    // WMA 只读但能读封面：这里按「可读」判断，不是「可写」
+    if (f.dir || !TagIO.canRead(f.ext())) return false;
     if (f.metaCached()) return f.cachedHasCover;
     final String key = _key(f);
     final bool? cached = _coverCache[key];
@@ -240,17 +258,16 @@ abstract final class Scanner {
 
   /// 读出内嵌封面的字节；没有则返回 null。
   static Future<Uint8List?> readCover(FileStore st, VFile f) async {
-    if (f.dir || !TagIO.canWrite(f.ext())) return null;
+    if (f.dir || !TagIO.canRead(f.ext())) return null;
     return _readCoverBytes(st, f, false);
   }
 
   static Future<Uint8List?> _readCoverBytes(FileStore st, VFile f, bool probeOnly) async {
     try {
       final String ext = TagIO.extOf(f.name);
-      Uint8List data = await st.headBytes(f, headBytes);
-      if (!probeOnly && data.length >= headBytes && !TagIO.tagFitsCopy(data, ext)) {
-        data = await st.headBytes(f, f.size > 0 ? f.size : headBytes);
-      }
+      final Uint8List data = probeOnly
+          ? await st.headBytes(f, headBytes)
+          : await loadForTags(st, f, ext);
       if (probeOnly) return CoverReader.has(data, ext) ? Uint8List(0) : null;
       return CoverReader.read(data, ext);
     } catch (_) {

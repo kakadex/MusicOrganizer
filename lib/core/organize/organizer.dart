@@ -238,6 +238,8 @@ abstract final class Organizer {
       final String name = _topDirName(f, rootDocId);
       if (name.isEmpty) continue;
       if (ArtistRules.isGenericArtist(name)) continue;
+      // Music / 下载 / 歌曲 这类容器目录不是歌手，混进来会污染「谁是歌手」的判断
+      if (ArtistRules.isGenericFolder(name)) continue;
       out.add(ArtistRules.folderKey(name));
     }
     return out;

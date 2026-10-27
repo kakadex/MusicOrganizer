@@ -134,9 +134,8 @@ abstract final class Aggregator {
   /// 取歌词候选：并发问各家，返回按 [offerScore] 排好序的命中（越靠前越可信）。
   ///
   /// 最终「取不取、取哪条」由匹配链路决定，这里只负责并发与排序。
-  /// 与 [tagCandidates] 不同，歌词聚合**不**按 `Endpoints.enabled` 过滤——
-  /// 歌词源没有「关掉某一家」的设置项；但会把每家失败原因带出来，
-  /// 调用方若一首都没拿到，可据此判断是「真没词」还是「联网挂了」。
+  /// 与 [tagCandidates] 一致，按 `Endpoints.enabled` 过滤被关闭的歌词源；
+  /// 每家失败原因带出来，调用方若一首都没拿到，可据此判断是「真没词」还是「联网挂了」。
   static Future<LyricAggregateResult> lyricCandidates(
     LyricQuery q, {
     LyricScorer? score,
@@ -146,7 +145,9 @@ abstract final class Aggregator {
   }) async {
     final List<Future<List<LyricHit>>> tasks = <Future<List<LyricHit>>>[];
     final Map<String, String> errors = <String, String>{};
-    final List<LyricSource> sources = SourceRegistry.lyrics(only: only);
+    final List<LyricSource> sources = SourceRegistry.lyrics(only: only)
+        .where((LyricSource s) => Endpoints.enabled(s.key))
+        .toList();
     for (final LyricSource s in sources) {
       tasks.add(() async {
         try {

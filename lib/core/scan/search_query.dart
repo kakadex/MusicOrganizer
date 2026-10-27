@@ -109,7 +109,7 @@ class SearchQuery {
   /// "10m" / "1.5g" / "800k" / "4096" → 字节；解析失败返回 -1。
   static int parseBytes(String v) {
     if (v.isEmpty) return -1;
-    final String last = v[v.length - 1];
+    final String last = v[v.length - 1].toLowerCase();
     int unit = 1;
     String num = v;
     if (last == 'k' || last == 'm' || last == 'g' || last == 'b') {

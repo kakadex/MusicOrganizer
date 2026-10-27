@@ -19,10 +19,43 @@ abstract final class CoverArt {
       b[2] == 0x4E &&
       b[3] == 0x47;
 
-  /// MIME；不认识的图片返回空串。
+  /// WebP：RIFF....WEBP。
+  static bool isWebp(Uint8List? b) {
+    if (b == null || b.length < 12) return false;
+    return b[0] == 0x52 &&
+        b[1] == 0x49 &&
+        b[2] == 0x46 &&
+        b[3] == 0x46 &&
+        b[8] == 0x57 &&
+        b[9] == 0x45 &&
+        b[10] == 0x42 &&
+        b[11] == 0x50;
+  }
+
+  /// GIF：`GIF87a` / `GIF89a`。
+  static bool isGif(Uint8List? b) {
+    if (b == null || b.length < 6) return false;
+    return b[0] == 0x47 && b[1] == 0x49 && b[2] == 0x46 && b[3] == 0x38 &&
+        (b[4] == 0x37 || b[4] == 0x39) && b[5] == 0x61;
+  }
+
+  /// BMP：`BM` 魔数。
+  static bool isBmp(Uint8List? b) {
+    if (b == null || b.length < 2) return false;
+    return b[0] == 0x42 && b[1] == 0x4D;
+  }
+
+  /// 是不是引擎能解的图片（JPEG / PNG / WebP / GIF / BMP）。
+  static bool isImage(Uint8List? b) =>
+      isJpeg(b) || isPng(b) || isWebp(b) || isGif(b) || isBmp(b);
+
+  /// MIME；不认识的返回空串。
   static String mimeOf(Uint8List? b) {
     if (isJpeg(b)) return 'image/jpeg';
     if (isPng(b)) return 'image/png';
+    if (isWebp(b)) return 'image/webp';
+    if (isGif(b)) return 'image/gif';
+    if (isBmp(b)) return 'image/bmp';
     return '';
   }
 

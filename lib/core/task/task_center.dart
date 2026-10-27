@@ -15,10 +15,14 @@ import '../model/task_control.dart';
 
 /// 一个运行中的任务。
 class RunningTask {
-  RunningTask(this.title, this.control, {this.partial});
+  RunningTask(this.title, this.control, {this.partial})
+      : startedAt = DateTime.now().millisecondsSinceEpoch;
 
   final String title;
   final TaskControl control;
+
+  /// 启动时间：用来识别「异常路径忘了 finish 而永久 busy」的陈旧任务。
+  final int startedAt;
 
   /// 部分结果缓冲区（支持「暂停时先看已获取的部分」）。
   final PartialSink<Object>? partial;
@@ -34,9 +38,22 @@ abstract final class TaskCenter {
   /// 平台层钩子：任务结束。
   static void Function()? onFinish;
 
+  /// 任务异常退出、没人调 finish 时会永久 busy；超过此时长视为陈旧，自动收掉。
+  static const int staleAfterMs = 60 * 60 * 1000;
+
   /// 启动一个任务；已有任务在跑返回 null（不排队、不覆盖）。
   static RunningTask? start(String title, {PartialSink<Object>? partial}) {
-    if (_current != null) return null;
+    final RunningTask? cur = _current;
+    if (cur != null) {
+      final int now = DateTime.now().millisecondsSinceEpoch;
+      if (now - cur.startedAt > staleAfterMs) {
+        // 异常路径没走到 finish：宁可按陈旧任务清理，也不能让所有后续任务被永久卡死
+        _current = null;
+        onFinish?.call();
+      } else {
+        return null;
+      }
+    }
     final TaskControl control = TaskControl();
     _current = RunningTask(title, control, partial: partial);
     onStart?.call(title);

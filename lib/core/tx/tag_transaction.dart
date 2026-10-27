@@ -50,11 +50,24 @@ class TagTransaction {
     return _serialized(() => _apply(f, updates, cover, record, batchId));
   }
 
+  /// 与 `Tags.put` 一致的归一化：去首尾空白，year 只留前 4 位。
+  static String _normalize(String key, String raw) {
+    String v = raw.trim();
+    if (key == 'year' && v.length > 4) v = v.substring(0, 4);
+    return v;
+  }
+
   Future<String> _apply(VFile f, Map<String, String> updates, Uint8List? cover,
       bool record, String batchId) async {
     final String ext = TagIO.extOf(f.name);
     if (!TagIO.canWrite(ext)) return '该格式不支持写标签：$ext';
     if (updates.isEmpty && cover == null) return '无变更，跳过写入';
+    // 先把值按 Tags 的规则归一化（year 截 4 位、去首尾空白）。
+    // 否则写入成功、回读校验却拿到截断后的值，事务会误判失败并回滚。
+    updates = <String, String>{
+      for (final MapEntry<String, String> e in updates.entries)
+        e.key: _normalize(e.key, e.value),
+    };
 
     final Tags before = await _readTags(f, ext);
 
@@ -113,7 +126,9 @@ class TagTransaction {
           ..targetId = f.docId
           ..name = f.name
           ..batchId = batchId;
-        for (final String k in Tags.keys) {
+        // lyrics 刻意不在 Tags.keys 里，但要单独记进日志：
+        // 否则写了歌词再撤销，歌词不会被还原（before/after 里没有它）
+        for (final String k in <String>[...Tags.keys, Tags.lyrics]) {
           entry.before[k] = before.get(k);
           entry.after[k] = after.get(k);
         }

@@ -13,8 +13,10 @@ import '../../core/model/query.dart';
 import '../../core/model/tags.dart';
 import '../../core/model/task_control.dart';
 import '../../core/model/vfile.dart';
+import '../../core/net/net.dart';
 import '../../core/scan/scanner.dart';
 import '../../core/source/aggregator.dart';
+import '../../core/source/source_registry.dart';
 import '../../core/tag/tag_io.dart';
 import '../../core/task/task_center.dart';
 import '../../core/tx/write_preview.dart';
@@ -204,55 +206,72 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
     // 累计各源失败原因（去重），用于「一首都没拿到」时判断是不是联网挂了。
     final Map<String, String> netErrors = <String, String>{};
 
-    for (int i = 0; i < total; i++) {
-      if (control?.isCancelled() ?? false) break;
-      await _waitIfPaused(control);
-      final LyricRow row = _rows[i];
-      control?.report(i, total, row.file.name);
-      if (!TagIO.canWriteLyrics(row.file.ext())) {
-        row.status = '跳过：${row.file.ext()} 不支持内嵌歌词';
+    try {
+      // 文件级并发取词：500 首串行要半小时以上，这里按 Net.fileConcurrency 压到几分钟
+      await Net.mapIndexed<LyricRow, void>(
+          _rows, Net.fileConcurrency(), control, (int i, LyricRow row) async {
+        if (control?.isCancelled() ?? false) return;
+        await _waitIfPaused(control);
+        control?.report(i, total, row.file.name);
+        if (!TagIO.canWriteLyrics(row.file.ext())) {
+          row.status = '跳过：${row.file.ext()} 不支持内嵌歌词';
+          control?.report(i + 1, total, row.file.name);
+          if (mounted) setState(() {});
+          return;
+        }
+        row.status = '搜索歌词…';
+        // 页面可能已经被返回键关掉：此时 setState 会因 State 已卸载而崩
+        if (mounted) setState(() {});
+        try {
+          final Tags tags = await Scanner.readTags(store, row.file);
+          // 读到的标签写回文件对象：预览要拿它显示「原歌词 → 新歌词」，
+          // 否则 cachedTags 一直是 null，旧值永远显示为空
+          // cacheMeta 会把封面/歌词标记一起重置，这里显式把原值带上
+          row.file.cacheMeta(tags,
+              cover: row.file.cachedHasCover,
+              lyrics: row.file.cachedHasLyrics ||
+                  tags.get(Tags.lyrics).trim().isNotEmpty,
+              durationMs: row.file.cachedDurationMs,
+              bitrateKbps: row.file.cachedBitrateKbps);
+          final Query q = LocalQuery.forFile(row.file, tags);
+          final LyricAggregateResult agg = await Aggregator.lyricCandidates(
+              LocalQuery.lyric(q, album: tags.get('album')));
+          netErrors.addAll(agg.errors);
+          final LyricChoice? best = LyricPick.best(q, agg.hits);
+          if (best != null) {
+            best.simplify = _simplify;
+            best.bilingual = _bilingual;
+          }
+          row.choice = best;
+          row.selected = best != null && !best.low;
+          row.status = best == null
+              ? '没有合格歌词'
+              : (best.low ? '低置信，默认不勾选' : '已选中');
+          if (best != null) found++;
+        } catch (e) {
+          row.status = '搜索失败：$e';
+        }
         control?.report(i + 1, total, row.file.name);
         if (mounted) setState(() {});
-        continue;
-      }
-      row.status = '搜索歌词…';
-      // 页面可能已经被返回键关掉：此时 setState 会因 State 已卸载而崩
-      if (mounted) setState(() {});
-      try {
-        final Tags tags = await Scanner.readTags(store, row.file);
-        final Query q = LocalQuery.forFile(row.file, tags);
-        final LyricAggregateResult agg = await Aggregator.lyricCandidates(
-            LocalQuery.lyric(q, album: tags.get('album')));
-        netErrors.addAll(agg.errors);
-        final LyricChoice? best = LyricPick.best(q, agg.hits);
-        if (best != null) {
-          best.simplify = _simplify;
-          best.bilingual = _bilingual;
-        }
-        row.choice = best;
-        row.selected = best != null && !best.low;
-        row.status = best == null
-            ? '没有合格歌词'
-            : (best.low ? '低置信，默认不勾选' : '已选中');
-        if (best != null) found++;
-      } catch (e) {
-        row.status = '搜索失败：$e';
-      }
-      control?.report(i + 1, total, row.file.name);
-      if (mounted) setState(() {});
+      });
+    } finally {
+      TaskCenter.finish();
     }
-
-    TaskCenter.finish();
     if (!mounted) return;
     setState(() {
       _fetching = false;
       _fetched = true;
     });
-    if (found == 0 && netErrors.isNotEmpty) {
-      // 一首都没拿到、但联网源报了错 → 明确告诉用户是网络问题，而不是「没词」。
+    final int enabled = SourceRegistry.lyrics().length;
+    final bool allDown = enabled > 0 && netErrors.length >= enabled;
+    if (found == 0 && allDown) {
+      // 所有启用的源都报错，才能说是网络问题；只有一家挂了别让用户去改代理
       final String why = netErrors.values.first;
       moSnack(context,
           '联网取词失败：$why。请检查网络连接或代理设置（设置 → 网络与并发）');
+    } else if (found == 0 && netErrors.isNotEmpty) {
+      moSnack(context,
+          '没有找到合格歌词（${netErrors.length}/$enabled 个源不可用，其余源没返回结果）');
     } else {
       moSnack(context, '找到 $found 首歌词，确认后再写入');
     }
@@ -343,46 +362,48 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
     int failed = 0;
     int done = 0;
 
-    for (final WriteTarget t in picked) {
-      if (control?.isCancelled() ?? false) break;
-      await _waitIfPaused(control);
-      final LyricPlan? plan = t.data as LyricPlan?;
-      if (plan == null) continue;
-      final String text = plan.choice.text;
-      final bool wantLrc = _writeLrc &&
-          t.lines.any((WriteLine l) => l.key == _lrcKey && l.selected && l.changed);
-      final String err = await tx.apply(
-        plan.file,
-        <String, String>{'lyrics': text},
-        batchId: batchId,
-      );
-      if (err.isEmpty) {
-        inlineOk++;
-        repo.invalidate(plan.file);
-        String lrcErr = '';
-        if (wantLrc) {
-          lrcErr = await LyricLrcWriter.write(store, plan.file, text);
-          if (lrcErr.isEmpty) {
-            lrcOk++;
-          } else {
-            failed++;
+    try {
+      for (final WriteTarget t in picked) {
+        if (control?.isCancelled() ?? false) break;
+        await _waitIfPaused(control);
+        final LyricPlan? plan = t.data as LyricPlan?;
+        if (plan == null) continue;
+        final String text = plan.choice.text;
+        final bool wantLrc = _writeLrc &&
+            t.lines.any((WriteLine l) => l.key == _lrcKey && l.selected && l.changed);
+        final String err = await tx.apply(
+          plan.file,
+          <String, String>{'lyrics': text},
+          batchId: batchId,
+        );
+        if (err.isEmpty) {
+          inlineOk++;
+          repo.invalidate(plan.file);
+          String lrcErr = '';
+          if (wantLrc) {
+            lrcErr = await LyricLrcWriter.write(store, plan.file, text);
+            if (lrcErr.isEmpty) {
+              lrcOk++;
+            } else {
+              failed++;
+            }
           }
+          _setStatus(
+              plan.file,
+              lrcErr.isNotEmpty
+                  ? '歌词已写入，.lrc 失败：$lrcErr'
+                  : (wantLrc ? '已写入内嵌歌词与 .lrc' : '已写入内嵌歌词'));
+        } else {
+          failed++;
+          _setStatus(plan.file, '写入失败：$err');
         }
-        _setStatus(
-            plan.file,
-            lrcErr.isNotEmpty
-                ? '歌词已写入，.lrc 失败：$lrcErr'
-                : (wantLrc ? '已写入内嵌歌词与 .lrc' : '已写入内嵌歌词'));
-      } else {
-        failed++;
-        _setStatus(plan.file, '写入失败：$err');
+        done++;
+        control?.report(done, picked.length, plan.file.name);
+        if (mounted) setState(() {});
       }
-      done++;
-      control?.report(done, picked.length, plan.file.name);
-      if (mounted) setState(() {});
+    } finally {
+      TaskCenter.finish();
     }
-
-    TaskCenter.finish();
     await repo.loadMeta(only: picked
         .map((WriteTarget t) => t.data)
         .whereType<LyricPlan>()

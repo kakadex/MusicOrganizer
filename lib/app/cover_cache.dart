@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import '../core/model/vfile.dart';
+import '../core/tag/cover_art.dart';
 import '../core/scan/scanner.dart';
 import 'repo.dart';
 
@@ -67,6 +68,12 @@ class CoverCache {
       if (store == null) return null;
       final Uint8List? art = await Scanner.readCover(store, f);
       if (art == null || art.isEmpty) {
+        _miss.add(key);
+        return null;
+      }
+      // 不是 JPEG/PNG/WebP 的字节直接当「没有封面」：
+      // 与其让 Image 解码时报错，不如显示音符占位
+      if (!CoverArt.isImage(art)) {
         _miss.add(key);
         return null;
       }
