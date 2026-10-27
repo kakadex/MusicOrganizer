@@ -1,8 +1,8 @@
-version=0.2.12
-tag=v0.2.12
+version=0.2.13
+tag=v0.2.13
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.12/musicorganizer-arm64-v8a.apk
-size=19608933
-sha256=e5c6b5c05d5a0e878c005a4cf268f9adb3b0fdefb29c914903bf85b043d9fed7
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.12
-summary=启动秒开（扫描结果与标签落盘，冷启动先渲染列表再后台补扫）；曲库缓存分批保存互不覆盖，坏条目只跳过自己；曲库目录授权分级判定；发布包缺正式签名时直接构建失败。
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.13/musicorganizer-arm64-v8a.apk
+size=19674617
+sha256=4f4851a55b3bbb4a89299023efe9d2ba822bfba2f5146d5e7e6674682a5cbefe
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.13
+summary=自动整理支持目录规则模板（四套内置）；批量匹配可对当前筛选结果整批处理；Windows 版可手动关联音频扩展名，双击直接进编辑；目录读不到时单独提示。

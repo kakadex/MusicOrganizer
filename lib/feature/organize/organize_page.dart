@@ -14,6 +14,7 @@ import '../../core/model/duplicate_group.dart';
 import '../../core/model/tags.dart';
 import '../../core/model/task_control.dart';
 import '../../core/model/vfile.dart';
+import '../../core/organize/folder_template.dart';
 import '../../core/organize/organizer.dart';
 import '../../core/scan/scanner.dart';
 import '../../core/task/task_center.dart';
@@ -129,9 +130,15 @@ class _OrganizePageState extends State<OrganizePage> {
           ],
         ),
         const SizedBox(height: 8),
+        MoButton(
+          '目录规则：${FolderTemplate.of(_template).name}',
+          primary: false,
+          onPressed: _busy ? null : _pickTemplate,
+        ),
+        const SizedBox(height: 8),
         Text(
-          '自动整理只做三件事：按「歌手 / 专辑」算目标目录、给出移动计划、你确认后才动文件。'
-          '同名文件一律跳过，绝不覆盖。',
+          '自动整理只做三件事：按选定规则算目标目录、给出移动计划、你确认后才动文件。'
+          '认不出歌手的不搬，同名文件一律跳过，绝不覆盖。',
           style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context)),
         ),
       ],
@@ -229,6 +236,44 @@ class _OrganizePageState extends State<OrganizePage> {
     moSnack(context, out.summary());
   }
 
+  /// 当前目录规则；没设过或存的模板不合法时回到默认的「歌手 / 专辑」。
+  String get _template {
+    final String? saved = _repo.settings.get<String>('organize_template');
+    if (saved == null || FolderTemplate.validate(saved) != null) {
+      return FolderTemplate.builtin.first.pattern;
+    }
+    return saved;
+  }
+
+  Future<void> _pickTemplate() async {
+    final String current = _template;
+    final String? picked = await showMoSheet<String>(
+      context,
+      title: '归类目录规则',
+      children: <Widget>[
+        for (final FolderTemplate t in FolderTemplate.builtin)
+          ListTile(
+            title: Text(t.name),
+            subtitle: Text(t.pattern),
+            trailing: t.pattern == current
+                ? Icon(Icons.check, color: MoKit.primary(context))
+                : null,
+            onTap: () => Navigator.of(context).pop(t.pattern),
+          ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 8, MoKit.pagePad, 12),
+          child: Text(
+            '认不出歌手的曲目一律不搬；同一目标目录里有同名文件时跳过，绝不覆盖。',
+            style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context)),
+          ),
+        ),
+      ],
+    );
+    if (picked == null || !mounted) return;
+    await _repo.setSetting('organize_template', picked);
+    if (mounted) setState(() {});
+  }
+
   Future<void> _organize() async {
     if (_busy) return;
     if (TaskCenter.isBusy()) {
@@ -245,8 +290,12 @@ class _OrganizePageState extends State<OrganizePage> {
       moSnack(context, '曲库里还没有曲目');
       return;
     }
-    final List<MovePlan> plans =
-        Organizer.plan(files, rootDocId: rootId, onlyUnorganized: true);
+    final List<MovePlan> plans = Organizer.plan(
+      files,
+      rootDocId: rootId,
+      onlyUnorganized: true,
+      template: _template,
+    );
     if (plans.isEmpty) {
       moSnack(context, '没有需要归位的曲目');
       return;

@@ -10,6 +10,7 @@ library;
 
 import '../fs/file_store.dart';
 import '../match/artist_rules.dart';
+import 'folder_template.dart';
 import '../match/name_parser.dart';
 import '../match/text_util.dart';
 import '../model/cancel_token.dart';
@@ -81,23 +82,36 @@ abstract final class Organizer {
   /// 冲突只在批内判断（同目标目录 + 同名）；目标目录里是否已有同名文件，由
   /// [execute] 按目录实况再判一次，两处都不覆盖。
   static List<MovePlan> plan(List<VFile> files, {required String rootDocId,
-      bool byAlbum = true, bool onlyUnorganized = true}) {
+      bool byAlbum = true, bool onlyUnorganized = true, String? template}) {
     final List<MovePlan> out = <MovePlan>[];
     final Set<String> taken = <String>{};
+    // 给了模板就按模板算，没给就沿用旧的「歌手 / 专辑」两条固定规则
+    final FolderTemplate? tpl = (template == null || template.trim().isEmpty)
+        ? null
+        : FolderTemplate.of(template);
     // 曲库里已有的一级目录 = 已经确认过的歌手目录。用来纠正「歌名-歌手」这种
     // 把歌手写在后面的命名：两侧候选里命中已有目录的那个才是歌手。
     final Set<String> knownDirs = _knownArtistDirs(files, rootDocId);
     for (final VFile f in files) {
       if (f.dir || !f.music()) continue;
-      final String artistSeg = _segment(_artistOf(f, knownDirs));
+      final String artistRaw = _artistOf(f, knownDirs);
+      final String artistSeg = _segment(artistRaw);
       if (artistSeg.isEmpty) continue;
-      String path = artistSeg;
-      String reason = '按歌手归位';
-      if (byAlbum) {
-        final String albumSeg = _segment(_albumOf(f));
-        if (albumSeg.isNotEmpty) {
-          path = '$artistSeg/$albumSeg';
-          reason = '按歌手 / 专辑归位';
+      String path;
+      String reason;
+      if (tpl != null) {
+        path = tpl.apply(f.cachedTags, artist: artistRaw, album: _albumOf(f));
+        if (path.isEmpty) continue;
+        reason = '按「${tpl.name}」归位';
+      } else {
+        path = artistSeg;
+        reason = '按歌手归位';
+        if (byAlbum) {
+          final String albumSeg = _segment(_albumOf(f));
+          if (albumSeg.isNotEmpty) {
+            path = '$artistSeg/$albumSeg';
+            reason = '按歌手 / 专辑归位';
+          }
         }
       }
       if (onlyUnorganized && _samePath(_dirOf(f, rootDocId), path)) continue;

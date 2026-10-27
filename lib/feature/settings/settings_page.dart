@@ -26,6 +26,7 @@ import 'folder_page.dart';
 import '../library/media_import_sheet.dart';
 import '../history/history_page.dart';
 import 'update_sheet.dart';
+import '../../platform/windows_file_assoc.dart';
 
 /// 设置页：偏好 / 主题 / 维护 / 备份 / 关于。
 ///
@@ -54,7 +55,15 @@ class _SettingsPageState extends State<SettingsPage> {
     _proxyPort = TextEditingController(text: port > 0 ? '$port' : '');
     _excludeCtl = TextEditingController(
         text: _repo.settings.get<String>('scan_exclude', fallback: '') ?? '');
+    if (WindowsFileAssoc.supported) {
+      WindowsFileAssoc.isEnabled().then((bool on) {
+        if (mounted) setState(() => _assocEnabled = on);
+      });
+    }
   }
+
+  /// Windows 上是否已经把音频默认打开方式指向本应用。
+  bool _assocEnabled = false;
 
   @override
   void dispose() {
@@ -85,6 +94,7 @@ class _SettingsPageState extends State<SettingsPage> {
               _scanCard(),
               _netCard(),
               _themeCard(),
+              if (WindowsFileAssoc.supported) _fileAssocCard(),
               _maintainCard(),
               _backupCard(),
               _aboutCard(),
@@ -681,6 +691,42 @@ class _SettingsPageState extends State<SettingsPage> {
     await Log.clear();
     if (!mounted) return;
     moSnack(context, '日志已清空');
+  }
+
+  Future<void> _toggleAssoc() async {
+    final bool ok = _assocEnabled
+        ? await WindowsFileAssoc.disable()
+        : await WindowsFileAssoc.enable();
+    if (!mounted) return;
+    final bool now = await WindowsFileAssoc.isEnabled();
+    if (!mounted) return;
+    setState(() => _assocEnabled = now);
+    moSnack(
+      context,
+      ok
+          ? (now ? '已关联，双击音频即可进本应用' : '已取消关联，默认程序已还原')
+          : '系统拒绝了注册表写入（可能是组策略限制）',
+    );
+  }
+
+  Widget _fileAssocCard() {
+    return SectionCard(
+      title: 'Windows 文件关联',
+      subtitle: _assocEnabled ? '双击音频会用本应用打开' : '未接管，系统默认程序保持不变',
+      children: <Widget>[
+        MoButton(
+          _assocEnabled ? '取消关联' : '关联音频文件',
+          primary: !_assocEnabled,
+          onPressed: _toggleAssoc,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '只改当前用户的默认打开方式（mp3 / flac / m4a / wav / ogg / ape 等），'
+          '取消时把原来的程序还回去。便携使用不建议开。',
+          style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context)),
+        ),
+      ],
+    );
   }
 
   Widget _backupCard() {

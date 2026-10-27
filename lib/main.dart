@@ -12,9 +12,12 @@ import 'core/fs/desktop_file_store.dart';
 import 'core/fs/file_store.dart';
 import 'core/log/log.dart';
 import 'feature/crash/crash_screen.dart';
+import 'platform/external_open.dart';
 
 /// 应用入口：初始化全局仓库 → 恢复主题 → 挂载 [MoApp]。
-Future<void> main() async {
+Future<void> main(List<String> args) async {
+  // 桌面端双击音频时，系统把文件路径作为启动参数传进来（安卓走 intent，不用这个）
+  ExternalOpen.rememberLaunchArgs(args);
   WidgetsFlutterBinding.ensureInitialized();
   // 全局错误处理：记日志 + 弹崩溃页，别让 app 直接崩掉。
   FlutterError.onError = (FlutterErrorDetails details) {

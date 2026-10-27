@@ -338,9 +338,12 @@ class _LibraryPageState extends State<LibraryPage> {
     final runner = repo.runner;
     if (runner == null) return;
     final List<VFile> files = <VFile>[];
+    // 没有勾选任何条目时，把当前筛选结果整批交出去；勾了就只处理勾中的
+    final bool byFilter = _selected.isEmpty;
     for (final Entry e in _shown) {
       final VFile? f = e.file;
-      if (f != null && _selected.contains(e.docId)) files.add(f);
+      if (f == null) continue;
+      if (byFilter || _selected.contains(e.docId)) files.add(f);
     }
     if (files.isEmpty) return;
     setState(() => _busy = true);
@@ -485,6 +488,13 @@ class _LibraryPageState extends State<LibraryPage> {
               ? '${_shown.length} 首${_status.isEmpty ? '' : ' · $_status'}'
               : '还没有选择曲库目录',
           actions: <Widget>[
+            // 先筛后批：当前筛选/搜索出来的这一批，直接就能送去匹配，不用再全选一遍
+            if (repo.hasRoot && _shown.isNotEmpty)
+              _icon(
+                Icons.auto_fix_high,
+                '批量匹配当前 ${_shown.length} 首',
+                _busy ? null : () => _matchSelected(),
+              ),
             _icon(Icons.sort, '排序', _showSort, key: _sortKey),
             _icon(Icons.refresh, '重新扫描', _busy ? null : _scan),
           ],
@@ -593,6 +603,16 @@ class _LibraryPageState extends State<LibraryPage> {
                     : '用系统文件选择器授权一个文件夹，应用只在你授权的范围内读写')),
         action: MoButton(lost ? '重新选择目录' : '选择目录',
             icon: Icons.add, onPressed: _pickRoot),
+      );
+    }
+    if (_shown.isEmpty && repo.rootUnavailable) {
+      // 目录读不到（盘没插 / 被移走）：说清楚，别让用户以为曲库被吞了，
+      // 也别引导他去重新授权（记录还在，恢复后重扫即可）
+      return EmptyState(
+        icon: Icons.sd_card_alert,
+        text: '曲库目录暂时读不到',
+        hint: '外置存储可能没插上、或目录被移走了。记录一直保留着，恢复后点「重新扫描」即可',
+        action: MoButton('重新扫描', icon: Icons.refresh, onPressed: _scan),
       );
     }
     if (_shown.isEmpty) {

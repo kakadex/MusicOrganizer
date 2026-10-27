@@ -295,8 +295,6 @@ class Repo extends ChangeNotifier {
       // 再等一拍确认：启动极早期、外置存储刚插上都可能只是暂时读不到
       await Future<void>.delayed(const Duration(milliseconds: 500));
       final String again = saved.isEmpty ? 'REVOKED' : await st.authState(saved);
-      rootLost = false;
-      rootUnavailable = everSaved;
       if (again == 'VALID') {
         try {
           granted = await st.roots();
@@ -304,7 +302,15 @@ class Repo extends ChangeNotifier {
           granted = <TreeRef>[];
         }
       }
-      if (granted.isEmpty) return false;
+      if (granted.isEmpty) {
+        // 复查之后仍然读不到授权表，说明不是「启动早期还没就绪」，而是真被撤销了
+        // —— 这时候必须让用户重选，不能一直说「暂时读不到」把人晾着。
+        // 只有 UNAVAILABLE（授权在、盘读不到）才保留记录等下次。
+        rootLost = again != 'UNAVAILABLE' && everSaved;
+        rootUnavailable = again == 'UNAVAILABLE';
+        return false;
+      }
+      rootLost = false;
       rootUnavailable = false;
     }
     // 按上次登记的顺序排：先当前目录，再其余
@@ -662,6 +668,19 @@ class Repo extends ChangeNotifier {
       }
       final ScanMergeResult merge =
           ScanMerge.merge(incremental ? files : null, all);
+      // 一个文件都没扫到时，要分清「目录里真的没音乐」和「目录读不到」：
+      // 后者（外置盘没插、目录被移走）如果只说「没有曲目」，用户会以为曲库被吞了。
+      if (all.isEmpty) {
+        bool readable = true;
+        try {
+          readable = await st.stat(roots.first.rootDocId) != null;
+        } catch (_) {
+          readable = false;
+        }
+        rootUnavailable = !readable;
+      } else {
+        rootUnavailable = false;
+      }
       FolderCover.invalidate();
       SidecarCover.invalidate();
       files = merge.files;
@@ -670,7 +689,13 @@ class Repo extends ChangeNotifier {
       // 扫完就落盘：下次启动直接拿它撑起列表，不必再等这一轮
       unawaited(saveLibraryCache());
       final ScanStats stats = Scanner.statsOf(files);
-      return ScanOutcome(files, stats, merge, dup, '');
+      return ScanOutcome(
+        files,
+        stats,
+        merge,
+        dup,
+        rootUnavailable ? '曲库目录暂时读不到' : '',
+      );
     } catch (e) {
       return ScanOutcome(<VFile>[], ScanStats(), empty, 0, '扫描失败：$e');
     } finally {

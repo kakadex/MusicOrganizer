@@ -5,6 +5,8 @@
 /// 找不到就提示用户授权它所在的目录（授权后重扫即可编辑）。
 library;
 
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -19,6 +21,27 @@ abstract final class ExternalOpen {
   static const MethodChannel _ch = MethodChannel('com.dsh.musicorganizer/host');
 
   static bool _listening = false;
+
+  /// 桌面端启动参数（双击文件时系统把路径塞在这里）。
+  static List<String> _launchArgs = const <String>[];
+
+  static void rememberLaunchArgs(List<String> args) {
+    _launchArgs = List<String>.of(args);
+  }
+
+  /// 桌面端：从启动参数里挑出第一个像音频文件的参数。
+  static String? _audioPathFromArgs() {
+    for (final String a in _launchArgs) {
+      if (a.isEmpty || a.startsWith('-')) continue;
+      final String p = a.startsWith('file://') ? Uri.parse(a).toFilePath() : a;
+      if (!File(p).existsSync()) continue;
+      final String lower = p.toLowerCase();
+      for (final String ext in VFile.audioExts) {
+        if (lower.endsWith(ext)) return p;
+      }
+    }
+    return null;
+  }
 
   /// 装上监听（main 里调一次）；应用已在前台时新 intent 从这里进来。
   static void listen(void Function(String uri) onUri) {
@@ -36,6 +59,8 @@ abstract final class ExternalOpen {
   /// 启动时带进来的文件 uri（没有返回 null）。
   static Future<String?> takeInitialIntent() async {
     if (kIsWeb) return null;
+    // 桌面端没有通道：双击文件时路径就在启动参数里
+    if (!Platform.isAndroid) return _audioPathFromArgs();
     try {
       return await _ch.invokeMethod<String>('takeInitialIntent');
     } on MissingPluginException {
@@ -48,6 +73,15 @@ abstract final class ExternalOpen {
   /// 文件的显示名与大小。
   static Future<Map<String, Object?>?> uriInfo(String uri) async {
     if (kIsWeb) return null;
+    // 桌面端拿到的是本地路径，直接问文件系统
+    if (!Platform.isAndroid) {
+      final File f = File(uri);
+      if (!f.existsSync()) return null;
+      return <String, Object?>{
+        'name': f.uri.pathSegments.isEmpty ? uri : f.uri.pathSegments.last,
+        'size': f.lengthSync(),
+      };
+    }
     try {
       final Map<Object?, Object?>? m =
           await _ch.invokeMethod<Map<Object?, Object?>>('uriInfo', <String, Object?>{'uri': uri});

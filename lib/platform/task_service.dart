@@ -4,6 +4,8 @@
 /// 任务结束立刻撤掉。桌面与不支持的平台上是空操作。
 library;
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -30,7 +32,7 @@ abstract final class TaskService {
       _seq++;
       update(title, 0, 0, '');
     };
-    TaskCenter.onFinish = stop;
+    TaskCenter.onFinish = () => unawaited(_finishAndVerify());
     TaskControl.onReport = (int done, int total, String message) {
       final RunningTask? t = TaskCenter.current();
       if (t == null) return;
@@ -74,6 +76,44 @@ abstract final class TaskService {
     } on PlatformException {
       // 通知权限没给：不影响任务本身
     }
+  }
+
+  /// 前台服务当前状态：RUNNING（已进前台）/ STARTING（服务在，还没进前台）/ STOPPED。
+  ///
+  /// 桌面与测试环境没有这个通道，一律按 STOPPED 处理。
+  static Future<String> state() async {
+    if (kIsWeb) return 'STOPPED';
+    try {
+      final Object? r = await _ch.invokeMethod<Object?>('serviceState');
+      return r is String ? r : 'STOPPED';
+    } on MissingPluginException {
+      return 'STOPPED';
+    } on PlatformException {
+      return 'STOPPED';
+    }
+  }
+
+  /// 等前台服务真正退出（最多 [timeout]）。
+  static Future<bool> awaitStopped({
+    Duration timeout = const Duration(milliseconds: 800),
+  }) async {
+    final int deadline =
+        DateTime.now().millisecondsSinceEpoch + timeout.inMilliseconds;
+    while (DateTime.now().millisecondsSinceEpoch < deadline) {
+      if (await state() == 'STOPPED') return true;
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+    return await state() == 'STOPPED';
+  }
+
+  /// 任务收尾：先请服务停，再确认它真的退了。
+  ///
+  /// 停止请求是异步投递的，任务结束时若服务还没退干净，通知会残留到下一次
+  /// 任务开始。这里补一次停止，把「发后即忘」变成「发后确认」。
+  static Future<void> _finishAndVerify() async {
+    await stop();
+    if (await awaitStopped()) return;
+    await stop();
   }
 
   /// 撤掉通知。

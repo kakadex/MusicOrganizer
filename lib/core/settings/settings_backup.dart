@@ -99,6 +99,7 @@ abstract final class SettingsBackup {
   static const String keyProxyHost = 'proxy_host';
   static const String keyProxyPort = 'proxy_port';
   static const String keyScanExclude = 'scan_exclude';
+  static const String keyOrganizeTemplate = 'organize_template';
 
   static const String prefixEndpoint = 'ep:';
   static const String prefixSourceOn = 'ep_on:';
@@ -122,7 +123,9 @@ abstract final class SettingsBackup {
         key == keyProxyPort) {
       return SettingsKind.intKey;
     }
-    if (key == keyProxyHost || key == keyScanExclude) {
+    if (key == keyProxyHost ||
+        key == keyScanExclude ||
+        key == keyOrganizeTemplate) {
       return SettingsKind.stringKey;
     }
     if (key.startsWith(prefixFieldMode)) {

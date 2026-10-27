@@ -52,10 +52,15 @@ class MainActivity : FlutterActivity() {
                             TaskForegroundService.TRACE_TAG,
                             "startForegroundService seq=$seq ts=${android.os.SystemClock.uptimeMillis()}"
                         )
-                        // API 31+ 从后台启动前台服务会被拒；起不来就退回普通服务 + 通知，
-                        // 任务还在前台窗口内时照样能跑完，总比直接抛异常强。
-                        runCatching { startForegroundServiceCompat(taskIntent) }
-                            .onFailure { runCatching { startService(taskIntent) } }
+                        // API 31+ 从后台启前台服务会被系统拒绝。先看界面是否可见：
+                        // 不可见就直接走普通服务（任务多半是秒级收尾，不需要前台保护），
+                        // 不再依赖「抛异常再补救」这条路。
+                        if (android.os.Build.VERSION.SDK_INT >= 31 && !resumed) {
+                            runCatching { startService(taskIntent) }
+                        } else {
+                            runCatching { startForegroundServiceCompat(taskIntent) }
+                                .onFailure { runCatching { startService(taskIntent) } }
+                        }
                     }
                     result.success(null)
                 }
@@ -218,6 +223,8 @@ class MainActivity : FlutterActivity() {
                     )
                 }
                 "requestAudioPermission" -> requestAudioPermission(result)
+                // 给 Dart 侧一个可查的前台服务状态，任务结束后不必靠猜
+                "serviceState" -> result.success(TaskForegroundService.state())
                 else -> result.notImplemented()
             }
         }
@@ -233,9 +240,24 @@ class MainActivity : FlutterActivity() {
     private var pendingExportText: String? = null
     private var pendingExportResult: MethodChannel.Result? = null
 
+    /// 界面此刻是否可见。API 31+ 禁止从后台启前台服务，起服务前要先看这个，
+    /// 而不是等抛了 ForegroundServiceStartNotAllowedException 再补救。
+    @Volatile
+    private var resumed = false
+
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
         initialFileUri = fileUriFrom(intent)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        resumed = true
+    }
+
+    override fun onPause() {
+        resumed = false
+        super.onPause()
     }
 
     override fun onNewIntent(intent: Intent) {

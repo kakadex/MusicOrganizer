@@ -74,6 +74,8 @@ class TaskForegroundService : Service() {
         if (started.isSuccess) {
             foregroundStarted = true
             trace("startForeground ok")
+            // 契约必须已经满足，否则后面的「只刷通知」分支永远进不了前台
+            assertState(foregroundStarted, "ACTION_START 处理完但未标记已进前台")
             // 停止命令可能比这次启动排得更早：契约已经满足，现在可以收尾了
             if (pendingStop) {
                 trace("pendingStop -> stopSelf")
@@ -96,9 +98,25 @@ class TaskForegroundService : Service() {
             // 服务是被停止命令唤醒的，没有启动在排队：别让服务空转在那儿
             !sawStart -> stopSelf()
             // 启动命令还在后面排队：契约由它来满足，这里只记一笔
-            else -> pendingStop = true
+            else -> {
+                pendingStop = true
+                // 这条分支绝不允许直接 stopSelf：那正是 Android 12+ 杀进程的路径
+                assertState(pendingStop, "停止命令早于启动时未记录待停止标记")
+            }
         }
     }
+
+    /// 只在 debug 构建里生效的状态机自检：release 里整段被编译成空操作，
+    /// 但 debug 与 CI 能第一时间暴露回归。
+    private fun assertState(condition: Boolean, message: String) {
+        if (isDebuggable() && !condition) {
+            throw IllegalStateException("FGS 状态机异常：$message")
+        }
+    }
+
+    /// 用 debuggable 标志而不是 BuildConfig：AGP 8 默认不生成 BuildConfig。
+    private fun isDebuggable(): Boolean =
+        (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
 
     /**
      * Android 15（API 35）起 dataSync 这类前台服务有累计运行时长上限，
@@ -163,6 +181,7 @@ class TaskForegroundService : Service() {
         pendingStop = false
         sawStart = false
         instance = null
+        assertState(!foregroundStarted && !pendingStop && !sawStart, "onDestroy 后状态未复位")
         @Suppress("DEPRECATION")
         if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE)
         else stopForeground(true)
@@ -187,6 +206,13 @@ class TaskForegroundService : Service() {
 
         /// 服务是否已经满足前台契约（决定「停止」能不能直接 stopService）。
         fun isForeground(): Boolean = instance?.foregroundStarted == true
+
+        /// 给 Dart 侧看的状态：RUNNING（已进前台）/ STARTING（服务在，但还没进前台）/ STOPPED。
+        fun state(): String = when {
+            instance?.foregroundStarted == true -> "RUNNING"
+            instance != null -> "STARTING"
+            else -> "STOPPED"
+        }
 
         const val CHANNEL_ID = "mo_task"
         const val NOTIFICATION_ID = 7701
