@@ -60,3 +60,7 @@ app.*.map.json
 
 # Gradle 构建产物（android/build 是本地生成，不入库）
 /android/build/
+
+# 交接文档（含本机路径，永不入库）
+/START-HERE.md
+/HANDOFF.md
