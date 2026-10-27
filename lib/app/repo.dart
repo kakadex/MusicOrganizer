@@ -21,6 +21,7 @@ import '../core/model/vfile.dart';
 import '../core/net/http_client.dart';
 import '../core/net/net.dart';
 import '../core/net/proxy_settings.dart';
+import '../core/scan/library_cache.dart';
 import '../core/scan/scan_filter.dart';
 import '../core/scan/scan_merge.dart';
 import '../core/scan/scan_stats.dart';
@@ -77,6 +78,11 @@ class Repo extends ChangeNotifier {
 
   /// 上次确实登记过目录，但这次没能恢复（授权失效）——界面据此给提示。
   bool rootLost = false;
+
+  /// 目录记录还在、只是这次读不到（外置存储没插、目录被移走、系统授权表
+  /// 暂时读不出来）。与 [rootLost] 的区别：这种情况**不引导重新授权**，
+  /// 记录一直保留，下次启动自动再试。
+  bool rootUnavailable = false;
 
   /// 最近一次选目录失败的原因（空 = 没失败）；界面据此给出准确提示，
   /// 而不是笼统的「取消 / 已登记过」。
@@ -274,11 +280,32 @@ class Repo extends ChangeNotifier {
       }
     }
     if (granted.isEmpty) {
-      // 存过目录、系统却说没授权：多半是授权失效（换机 / 清数据 / 系统回收），
-      // 让界面明确告诉用户「重新选一次就好」，而不是装作从没选过。
-      rootLost = order.isNotEmpty ||
+      final bool everSaved = order.isNotEmpty ||
           (prefs.getString('root_doc_id') ?? '').isNotEmpty;
-      return false;
+      final String saved = prefs.getString('root_tree_uri') ?? '';
+      // 「授权真被撤销」「存储暂时读不到」「系统授权表还没就绪」三种情况
+      // 应对完全不同：只有第一种才该让用户重新选，后两种清掉记录就永久丢了
+      // 用户的曲库目录（拔一次移动硬盘就没了）。
+      final String state = saved.isEmpty ? 'REVOKED' : await st.authState(saved);
+      if (state != 'NOT_READY' && state != 'UNAVAILABLE') {
+        rootLost = everSaved;
+        rootUnavailable = false;
+        return false;
+      }
+      // 再等一拍确认：启动极早期、外置存储刚插上都可能只是暂时读不到
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      final String again = saved.isEmpty ? 'REVOKED' : await st.authState(saved);
+      rootLost = false;
+      rootUnavailable = everSaved;
+      if (again == 'VALID') {
+        try {
+          granted = await st.roots();
+        } catch (_) {
+          granted = <TreeRef>[];
+        }
+      }
+      if (granted.isEmpty) return false;
+      rootUnavailable = false;
     }
     // 按上次登记的顺序排：先当前目录，再其余
     final List<TreeRef> ordered = <TreeRef>[];
@@ -294,9 +321,88 @@ class Repo extends ChangeNotifier {
     }
     setRoots(ordered);
     rootLost = false;
+    rootUnavailable = false;
     // 顺手把镜像补齐：下次 prefs 出问题还能靠它恢复
     unawaited(_writeRootsMirror());
     return true;
+  }
+
+  /// 路径归一：桌面端根目录记的是 `/`、文档 docId 记的是 `\`，比较前必须统一。
+  static String _normPath(String p) => p.replaceAll('\\', '/');
+
+  /// 曲库缓存文件（上次扫到的条目 + 读过的标签）。
+  Future<File> _libraryCacheFile() async {
+    final Directory dir = await _dataDir();
+    return File('${dir.path}${Platform.pathSeparator}library_cache.json');
+  }
+
+  /// 文件属于哪个根目录（都不匹配返回 null）。
+  String? _rootOf(VFile f) {
+    final String id = _normPath(f.docId);
+    for (final TreeRef r in roots) {
+      final String root = _normPath(r.rootDocId);
+      final String prefix = root.endsWith('/') ? root : '$root/';
+      if (id.startsWith(prefix)) return root;
+    }
+    return null;
+  }
+
+  /// 用上次的缓存先把列表撑起来，不等后台扫描。
+  ///
+  /// 返回恢复的条目数；0 表示没有可用缓存，调用方照旧走全量扫描。
+  /// 缓存里只有音频条目，目录树由随后的增量扫描补齐——界面看的是音频列表，
+  /// 组织类操作等扫描完成即可用。
+  Future<int> restoreLibraryCache() async {
+    if (roots.isEmpty) return 0;
+    try {
+      final File f = await _libraryCacheFile();
+      if (!f.existsSync()) return 0;
+      final Map<String, List<VFile>> byRoot =
+          LibraryCache.decode(jsonDecode(await f.readAsString()));
+      if (byRoot.isEmpty) return 0;
+      final List<VFile> restored = <VFile>[];
+      final Set<String> seen = <String>{};
+      for (final TreeRef r in roots) {
+        final List<VFile>? list = byRoot[_normPath(r.rootDocId)];
+        if (list == null) continue;
+        for (final VFile item in list) {
+          if (seen.add(item.docId)) restored.add(item);
+        }
+      }
+      if (restored.isEmpty) return 0;
+      files = restored;
+      _rebuildIndex();
+      notifyListeners();
+      return restored.length;
+    } catch (_) {
+      // 缓存坏了就当没有：最坏是这次多扫一遍，绝不能让启动卡在这里
+      return 0;
+    }
+  }
+
+  /// 把当前曲库写进缓存（临时产物 → 自检 → 覆盖）。
+  Future<void> saveLibraryCache() async {
+    if (roots.isEmpty) return;
+    try {
+      final Map<String, List<VFile>> byRoot = <String, List<VFile>>{};
+      for (final VFile f in files) {
+        final String? owner = _rootOf(f);
+        if (owner == null) continue;
+        byRoot.putIfAbsent(owner, () => <VFile>[]).add(f);
+      }
+      final String text = jsonEncode(LibraryCache.encode(byRoot));
+      // 自检：解不回来就别写，写坏的文件只会让下次启动白白多扫一遍
+      if (LibraryCache.decode(jsonDecode(text)).isEmpty &&
+          files.any((VFile f) => !f.dir && f.audio())) {
+        return;
+      }
+      final File target = await _libraryCacheFile();
+      final File tmp = File('${target.path}.tmp');
+      await tmp.writeAsString(text);
+      await tmp.rename(target.path);
+    } catch (_) {
+      // 缓存写不进去不影响主流程
+    }
   }
 
   /// 上次登记的目录顺序（换行分隔）。
@@ -534,6 +640,8 @@ class Repo extends ChangeNotifier {
       files = merge.files;
       _rebuildIndex();
       notifyListeners();
+      // 扫完就落盘：下次启动直接拿它撑起列表，不必再等这一轮
+      unawaited(saveLibraryCache());
       final ScanStats stats = Scanner.statsOf(files);
       return ScanOutcome(files, stats, merge, dup, '');
     } catch (e) {
@@ -646,6 +754,9 @@ class Repo extends ChangeNotifier {
             lyrics: tags.get(Tags.lyrics).trim().isNotEmpty);
         index.find(f.docId)?.applyTags(tags, f.cachedHasCover);
         done++;
+        // 分批落盘：长任务中途被取消 / 被杀，已经读过的部分仍然留得下，
+        // 下次启动不必从零开始
+        if (done % 100 == 0) unawaited(saveLibraryCache());
         onProgress?.call(done, todo.length);
         return true;
       });

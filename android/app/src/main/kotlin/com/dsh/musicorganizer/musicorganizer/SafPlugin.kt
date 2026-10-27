@@ -28,8 +28,46 @@ class SafPlugin(private val resolver: ContentResolver) {
         return mapOf("treeUri" to treeUri.toString(), "rootDocId" to rootDocId)
     }
 
+    /**
+     * 已授权的目录树列表。
+     *
+     * 只认真正的目录树：系统这份授权表里还会混进单个文件的授权（例如用户在
+     * 文件管理器里「用本应用打开」某个音频时顺手拿的持久授权）。对非目录树
+     * 的 URI 调 getTreeDocumentId 会直接抛异常，让整次查询失败，Dart 侧就会
+     * 误判成「授权失效」而提示重新选目录。所以这里先筛后解析，且逐条容错。
+     */
     fun listRoots(): List<Map<String, String>> =
-        resolver.persistedUriPermissions.map { perm -> treeInfo(perm.uri) }
+        resolver.persistedUriPermissions
+            .map { perm -> perm.uri }
+            .filter { DocumentsContract.isTreeUri(it) }
+            .mapNotNull { uri ->
+                runCatching { treeInfo(uri) }.getOrNull()?.takeIf {
+                    it["rootDocId"].orEmpty().isNotEmpty()
+                }
+            }
+
+    /**
+     * 单个目录树的授权状态。
+     *
+     * 「系统没给授权」「授权在但盘没插」「授权表暂时读不出来」这三件事的
+     * 应对完全不同，不能一律当成授权失效：只有 REVOKED 才该让用户重选，
+     * 其余一律保留记录、等下次再试——把记录清掉，用户就永久丢了曲库目录。
+     *
+     * - VALID：授权在、根目录读得到 → 正常恢复
+     * - REVOKED：系统授权表里没有这棵树 → 只能重新授权
+     * - UNAVAILABLE：授权在但读不到（外置存储没插 / 目录被删）→ 保留并重试
+     * - NOT_READY：授权表暂时读不出来（启动极早期）→ 延迟重试，不动状态
+     */
+    fun authState(treeUri: String): String {
+        if (resolver.persistedUriPermissions.isEmpty()) return "NOT_READY"
+        val uri = runCatching { Uri.parse(treeUri) }.getOrNull() ?: return "REVOKED"
+        val granted = resolver.persistedUriPermissions.any { perm -> perm.uri == uri }
+        if (!granted) return "REVOKED"
+        val docId = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
+        if (docId.isNullOrEmpty()) return "REVOKED"
+        val root = runCatching { stat(treeUri, docId) }.getOrNull()
+        return if (root == null) "UNAVAILABLE" else "VALID"
+    }
 
     fun stat(treeUri: String, docId: String?): Map<String, Any>? {
         if (docId.isNullOrEmpty()) return null

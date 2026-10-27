@@ -99,17 +99,20 @@ class _LibraryPageState extends State<LibraryPage> {
       return;
     }
     if (repo.files.isNotEmpty) {
+      // 列表已经用上次的缓存撑起来了：后台再增量扫一遍补差，不挡着界面。
       _applyFilter();
+      unawaited(_scan(silent: true));
       return;
     }
     await _scan();
   }
 
-  Future<void> _scan() async {
+  /// [silent] = 后台补扫：不动「正在扫描」状态、不弹提示，扫完静默刷新列表。
+  Future<void> _scan({bool silent = false}) async {
     final repo = Repo.instance;
     setState(() {
       _busy = true;
-      _status = '正在扫描…';
+      if (!silent) _status = '正在扫描…';
     });
     final ScanOutcome out = await repo.rescan();
     if (!mounted) return;
@@ -120,9 +123,9 @@ class _LibraryPageState extends State<LibraryPage> {
       });
       return;
     }
-    setState(() => _status = '读取标签…');
+    if (!silent) setState(() => _status = '读取标签…');
     await repo.loadMeta(onProgress: (int done, int total) {
-      if (!mounted) return;
+      if (!mounted || silent) return;
       setState(() => _status = '读取标签 $done/$total');
     });
     if (!mounted) return;
@@ -131,6 +134,8 @@ class _LibraryPageState extends State<LibraryPage> {
       _status = '';
     });
     _applyFilter();
+    // 后台补扫只在真的有增删改动时才出声，否则每次启动都弹一条很吵
+    if (silent && out.merge.fresh == 0 && out.merge.removed == 0) return;
     moSnack(context, out.summary());
   }
 
@@ -568,16 +573,24 @@ class _LibraryPageState extends State<LibraryPage> {
 
   Widget _body(Repo repo) {
     if (!repo.hasRoot) {
-      // 上次登记过、这次没恢复：多半是授权失效。要直说，否则用户以为曲库被吞了。
+      // 上次登记过、这次没恢复：要分清是「授权失效」还是「暂时读不到」，
+      // 否则用户会以为曲库被吞了、或者白重新授权一次。
       final bool lost = repo.rootLost;
+      final bool unavailable = repo.rootUnavailable;
       return EmptyState(
-        icon: lost ? Icons.link_off : Icons.folder_open,
-        text: lost ? '上次的曲库目录授权已失效' : '还没有选择曲库目录',
+        icon: lost
+            ? Icons.link_off
+            : (unavailable ? Icons.sd_card_alert : Icons.folder_open),
+        text: lost
+            ? '上次的曲库目录授权已失效'
+            : (unavailable ? '曲库目录暂时读不到' : '还没有选择曲库目录'),
         hint: lost
             ? '重新选一次同一个目录即可，曲库里的文件没有被改动、也没有被删除'
-            : (Repo.isDesktop
-                ? '选一个装着音乐的文件夹，所有读写都只在这个目录内进行'
-                : '用系统文件选择器授权一个文件夹，应用只在你授权的范围内读写'),
+            : (unavailable
+                ? '外置存储可能没插上、或目录被移走了。记录一直保留着，插上后重开应用即可'
+                : (Repo.isDesktop
+                    ? '选一个装着音乐的文件夹，所有读写都只在这个目录内进行'
+                    : '用系统文件选择器授权一个文件夹，应用只在你授权的范围内读写')),
         action: MoButton(lost ? '重新选择目录' : '选择目录',
             icon: Icons.add, onPressed: _pickRoot),
       );

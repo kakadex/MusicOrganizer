@@ -27,6 +27,11 @@ abstract class FileStore {
   /// 已授权（或已登记）的目录树。
   Future<List<TreeRef>> roots();
 
+  /// 单个目录树的授权状态：VALID / REVOKED / UNAVAILABLE / NOT_READY。
+  ///
+  /// 桌面没有「授权」这回事，目录在就是 VALID；只有安卓需要分级。
+  Future<String> authState(String treeUri) async => 'VALID';
+
   /// 选择一棵树（安卓：OpenDocumentTree；桌面：目录选择器）。
   Future<TreeRef?> pickTree();
 

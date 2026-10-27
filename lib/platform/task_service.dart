@@ -16,23 +16,21 @@ abstract final class TaskService {
 
   static bool _attached = false;
 
+  /// 任务序号：每次任务开始自增，通知与停止请求都带上它。
+  ///
+  /// 有了它，平台侧能区分「新任务的启动」和「上一个任务迟到的停止」，
+  /// 节流器也就不用再兼顾「任务边界标记」这个职责。
+  static int _seq = 0;
+
   /// 把任务中心的生命周期接到通知栏上（main 里调一次）。
   static void attach() {
     if (_attached) return;
     _attached = true;
     TaskCenter.onStart = (String title) {
-      // 新任务必须重置节流：上次任务的 key 留着会把本次的启动通知挡掉，
-      // 服务端就收不到 updateTask、不会重新进前台。
-      _lastKey = '';
-      _lastMs = 0;
+      _seq++;
       update(title, 0, 0, '');
     };
-    TaskCenter.onFinish = () {
-      stop().then((_) {
-        _lastKey = '';
-        _lastMs = 0;
-      });
-    };
+    TaskCenter.onFinish = stop;
     TaskControl.onReport = (int done, int total, String message) {
       final RunningTask? t = TaskCenter.current();
       if (t == null) return;
@@ -41,7 +39,10 @@ abstract final class TaskService {
   }
 
   /// 上次推送时间与文案：进度回调是「每首一次」，全推过去会刷爆通道。
+  ///
+  /// 只做频率限制——「是不是新任务」由 [_seq] 决定，不靠这里的 key。
   static int _lastMs = 0;
+  static int _lastSeq = -1;
   static String _lastKey = '';
 
   /// 更新通知（没起服务时顺手起一个）。
@@ -52,18 +53,17 @@ abstract final class TaskService {
     String message,
   ) async {
     if (kIsWeb) return;
-    // 同一条进度 300ms 内只推一次；换了标题（新任务）立刻推。
-    final String key = '$title|$done|$total';
+    final String key = '$_seq|$title|$done|$total';
     final int now = DateTime.now().millisecondsSinceEpoch;
     if (key == _lastKey) return;
-    if (now - _lastMs < 300 && _lastKey.isNotEmpty &&
-        _lastKey.split('|').first == title) {
-      return;
-    }
+    // 同一个任务内 300ms 只推一次；换了任务立刻推
+    if (_lastSeq == _seq && now - _lastMs < 300) return;
     _lastKey = key;
+    _lastSeq = _seq;
     _lastMs = now;
     try {
       await _ch.invokeMethod<void>('updateTask', <String, Object?>{
+        'seq': _seq,
         'title': title,
         'text': message,
         'done': done,
@@ -80,7 +80,7 @@ abstract final class TaskService {
   static Future<void> stop() async {
     if (kIsWeb) return;
     try {
-      await _ch.invokeMethod<void>('stopTask');
+      await _ch.invokeMethod<void>('stopTask', <String, Object?>{'seq': _seq});
     } on MissingPluginException {
       // 同上
     } on PlatformException {

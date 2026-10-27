@@ -36,6 +36,17 @@ class SafFileStore implements FileStore {
   }
 
   @override
+  Future<String> authState(String treeUri) async {
+    if (treeUri.isEmpty) return 'REVOKED';
+    try {
+      return await _channel.authState(treeUri);
+    } catch (_) {
+      // 通道异常不等于授权失效：按「暂不可用」处理，保留记录等下次再试
+      return 'NOT_READY';
+    }
+  }
+
+  @override
   Future<TreeRef?> pickTree() async {
     final Map<String, String>? m = await _channel.pickTree();
     if (m == null) return null;

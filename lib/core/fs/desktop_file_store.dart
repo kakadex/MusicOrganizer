@@ -25,6 +25,14 @@ class DesktopFileStore implements FileStore {
   @override
   Future<List<TreeRef>> roots() async => List<TreeRef>.of(_roots);
 
+  @override
+  Future<String> authState(String treeUri) async {
+    // 桌面没有「授权」这回事：目录还在就能用；不在多半是盘没插或目录被移走，
+    // 属于「暂时读不到」——保留记录等下次再试，不能当成授权失效清掉
+    if (treeUri.isEmpty) return 'UNAVAILABLE';
+    return Directory(_normalize(treeUri)).existsSync() ? 'VALID' : 'UNAVAILABLE';
+  }
+
   /// 登记一个根目录（也供测试直接注入）。
   void addRoot(String path) {
     if (path.isEmpty) return;

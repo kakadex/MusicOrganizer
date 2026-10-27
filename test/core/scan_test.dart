@@ -24,6 +24,9 @@ class MemoryFileStore implements FileStore {
   }
 
   @override
+  Future<String> authState(String treeUri) async => 'VALID';
+
+  @override
   Future<List<TreeRef>> roots() async => <TreeRef>[];
 
   @override

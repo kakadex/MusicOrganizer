@@ -32,38 +32,55 @@ class MainActivity : FlutterActivity() {
                     val text = call.argument<String>("text") ?: ""
                     val done = call.argument<Int>("done") ?: 0
                     val total = call.argument<Int>("total") ?: 0
-                    // 服务已经在跑：只刷通知，绝不再 startForegroundService。
-                    // 重复启动会让系统要求「5 秒内必须 startForeground」，超时直接杀进程
-                    // （实测连点「清理标签文本」就踩到 ForegroundServiceDidNotStartInTime）。
+                    val seq = call.argument<Int>("seq") ?: 0
+                    // 服务已经进过前台：只刷通知，绝不再 startForegroundService。
+                    // 重复启动会不断刷新「5 秒内必须 startForeground」的计时，
+                    // 超时系统直接杀进程（ForegroundServiceDidNotStartInTime）。
                     val live = TaskForegroundService.instance
-                    if (TaskForegroundService.running && live != null) {
+                    if (TaskForegroundService.isForeground() && live != null) {
                         runCatching { live.update(title, text, done, total) }
                     } else {
-                        // 服务还没起来（或有挂起的启动）：这是新任务的开端，
-                        // 清掉之前记下的「待停止」，让服务起来后接着干活。
-                        TaskForegroundService.stopRequested = false
                         val taskIntent = Intent(this, TaskForegroundService::class.java).apply {
+                            action = TaskForegroundService.ACTION_START
+                            putExtra(TaskForegroundService.EXTRA_SEQ, seq)
                             putExtra(TaskForegroundService.EXTRA_TITLE, title)
                             putExtra(TaskForegroundService.EXTRA_TEXT, text)
                             putExtra(TaskForegroundService.EXTRA_DONE, done)
                             putExtra(TaskForegroundService.EXTRA_TOTAL, total)
                         }
+                        android.util.Log.d(
+                            TaskForegroundService.TRACE_TAG,
+                            "startForegroundService seq=$seq ts=${android.os.SystemClock.uptimeMillis()}"
+                        )
+                        // API 31+ 从后台启动前台服务会被拒；起不来就退回普通服务 + 通知，
+                        // 任务还在前台窗口内时照样能跑完，总比直接抛异常强。
                         runCatching { startForegroundServiceCompat(taskIntent) }
+                            .onFailure { runCatching { startService(taskIntent) } }
                     }
                     result.success(null)
                 }
                 "stopTask" -> {
-                    val live = TaskForegroundService.instance
-                    if (TaskForegroundService.running && live != null) {
-                        runCatching {
-                            stopService(Intent(this, TaskForegroundService::class.java))
-                        }
+                    val seq = call.argument<Int>("seq") ?: 0
+                    val stopIntent = Intent(this, TaskForegroundService::class.java).apply {
+                        action = TaskForegroundService.ACTION_STOP
+                        putExtra(TaskForegroundService.EXTRA_SEQ, seq)
+                    }
+                    android.util.Log.d(
+                        TaskForegroundService.TRACE_TAG,
+                        "stopTask seq=$seq foreground=${TaskForegroundService.isForeground()} " +
+                            "ts=${android.os.SystemClock.uptimeMillis()}"
+                    )
+                    if (TaskForegroundService.isForeground()) {
+                        // 契约已经满足，直接停是安全的
+                        runCatching { stopService(stopIntent) }
                     } else {
-                        // 服务还没完成 startForeground：此刻 stopService 会被系统当成
-                        // 「startForegroundService 之后没调 startForeground」直接杀进程
-                        // （ForegroundServiceDidNotStartInTime，Android 12+ 实测）。
-                        // 记下停请求，等服务在 onStartCommand 里进完前台后自己停。
-                        TaskForegroundService.stopRequested = true
+                        // 服务还没进前台：此刻 stopService 会被系统当成
+                        // 「起了服务却没调 startForeground」直接杀进程。
+                        // 改成投递一条停止命令：它排在启动命令之后，由同一个服务
+                        // 按顺序消费，进完前台自己收尾。
+                        val delivered = runCatching { startService(stopIntent) }.isSuccess
+                        // 后台启动限制下 startService 会被拒：这时服务多半已经起来了，退回直接停
+                        if (!delivered) runCatching { stopService(stopIntent) }
                     }
                     result.success(null)
                 }
@@ -103,6 +120,9 @@ class MainActivity : FlutterActivity() {
                     )
                 }
                 "listRoots" -> safCall(result) { safPlugin.listRoots() }
+                "authState" -> safCall(result) {
+                    safPlugin.authState(call.argument<String>("treeUri") ?: "")
+                }
                 "stat" -> safCall(result) {
                     safPlugin.stat(call.argument<String>("treeUri") ?: "", call.argument<String>("docId"))
                 }

@@ -63,6 +63,13 @@ class SafChannel {
     }
   }
 
+  /// 单个目录树的授权状态：VALID / REVOKED / UNAVAILABLE / NOT_READY。
+  Future<String> authState(String treeUri) async {
+    final Object? r = await safChannel.invokeMethod(
+        'authState', <String, Object?>{'treeUri': treeUri});
+    return r is String ? r : 'NOT_READY';
+  }
+
   /// 单个文档信息；不存在返回 null。
   Future<Map<String, Object?>?> stat(String treeUri, String docId) async {
     try {

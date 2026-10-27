@@ -78,6 +78,10 @@ class MemStore implements FileStore {
   Future<VFile?> stat(String id) async => docs[id];
 
   @override
+  @override
+  Future<String> authState(String treeUri) async => 'VALID';
+
+  @override
   Future<List<TreeRef>> roots() async => <TreeRef>[];
 
   @override

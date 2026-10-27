@@ -1,8 +1,8 @@
-version=0.2.10
-tag=v0.2.10
+version=0.2.11
+tag=v0.2.11
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.10/musicorganizer-arm64-v8a.apk
-size=19608877
-sha256=fc80604378a17ba13d41dcac46c4d051e396703f5a0b9f0a69ac7c55ea279bf0
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.10
-summary=修复连续执行批量任务（尤其秒级完成的小任务）时被系统以「前台服务未按时启动」杀进程的问题；任务开始与结束背靠背时通知生命周期依然完整。
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.11/musicorganizer-arm64-v8a.apk
+size=19608933
+sha256=4f9836439b19fb0c7c706c7748288465cc3fccb6850a85d288b47101d041072c
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.11
+summary=启动秒开：扫描结果与已读标签落盘，下次打开先用它渲染列表、后台再增量补扫；曲库目录授权分级判定，只有确实被撤销才提示重选，暂时读不到时保留记录。

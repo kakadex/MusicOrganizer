@@ -47,6 +47,9 @@ class _MoShellState extends State<MoShell> {
     try {
       await Repo.instance.init();
       await Repo.instance.restoreRoot();
+      // 目录一恢复就把上次的曲库缓存灌进来：界面立刻有列表可看，
+      // 后台再增量扫一遍补差，不用每次启动都干等一轮全量扫描。
+      await Repo.instance.restoreLibraryCache();
     } catch (e) {
       _bootError = '$e';
     }
