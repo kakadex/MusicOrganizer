@@ -50,12 +50,27 @@ android {
 
     buildTypes {
         release {
-            // 有正式 keystore 就用它（本地与 CI 签名一致，升级才能覆盖安装）；
-            // 否则退回 debug 签名，仅用于本地调试构建。
+            // 有正式 keystore 就用它（本地与 CI 签名一致，升级才能覆盖安装）。
+            //
+            // 缺 keystore 时**直接构建失败**，不再静默回退 debug 签名：签名一换，
+            // 装到已装正式版的设备上会让系统清掉所有 SAF 目录授权，表现为
+            // 「升级一次就丢一次曲库目录」，比构建失败难查得多。
             signingConfig = if (keystorePropertiesFile.exists()) {
                 signingConfigs.getByName("release")
-            } else {
+            } else if (project.hasProperty("allowDebugSign")) {
+                // 显式开的后门：本地临时调试用。产出的包签名与正式版不同，
+                // 覆盖安装会丢失已授权的曲库目录。
+                logger.warn(
+                    "SIGNATURE: 正在用 debug 签名打 release 包 —— 与正式版签名不一致，"
+                        + "覆盖安装会丢失已授权的曲库目录"
+                )
                 signingConfigs.getByName("debug")
+            } else {
+                throw GradleException(
+                    "缺少 android/key.properties：release 包必须使用正式签名。"
+                        + "签名不一致会让已装正式版的设备丢失曲库目录授权。"
+                        + "确实只是本地调试，请加 -PallowDebugSign=true"
+                )
             }
         }
     }

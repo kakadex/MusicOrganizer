@@ -46,7 +46,9 @@ abstract final class LibraryCache {
       final Set<String> seen = <String>{};
       for (final Object? item in value) {
         final VFile? f = _decodeFile(item);
-        if (f == null) return;
+        // 坏条目只跳过它自己：缓存是拿来加速的，坏一条就整组丢掉，
+        // 等于让用户白等一次全量扫描
+        if (f == null) continue;
         if (seen.add(f.docId)) list.add(f);
       }
       if (list.isNotEmpty) out[key] = list;

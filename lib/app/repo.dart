@@ -380,9 +380,26 @@ class Repo extends ChangeNotifier {
     }
   }
 
+  /// 缓存写入串行化：并发保存会踩同一个文件，后来的等前一次写完再补一次。
+  bool _savingCache = false;
+  bool _cacheDirty = false;
+
   /// 把当前曲库写进缓存（临时产物 → 自检 → 覆盖）。
+  ///
+  /// 会被并发调用（扫描结束一次 + 读标签途中分批多次），所以串行化 + 唯一临时名，
+  /// 否则写出来的缓存会缺条目。
   Future<void> saveLibraryCache() async {
     if (roots.isEmpty) return;
+    if (_savingCache) {
+      // 已经有一轮在写：标记「写完了再补一次」，并且**等到它真的落盘**——
+      // 调用方 await 这个方法时期望缓存已经是最新的
+      _cacheDirty = true;
+      while (_savingCache || _cacheDirty) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      return;
+    }
+    _savingCache = true;
     try {
       final Map<String, List<VFile>> byRoot = <String, List<VFile>>{};
       for (final VFile f in files) {
@@ -397,11 +414,21 @@ class Repo extends ChangeNotifier {
         return;
       }
       final File target = await _libraryCacheFile();
-      final File tmp = File('${target.path}.tmp');
+      // 临时名必须唯一：扫描结束的保存与读标签途中的分批保存会同时发起，
+      // 共用同一个 .tmp 会互相截断，写出的缓存文件条目数会莫名其妙地少。
+      final File tmp = File(
+          '${target.path}.${DateTime.now().microsecondsSinceEpoch}.tmp');
       await tmp.writeAsString(text);
       await tmp.rename(target.path);
     } catch (_) {
       // 缓存写不进去不影响主流程
+    } finally {
+      _savingCache = false;
+    }
+    // 保存期间又有人要存：立刻补一次，别把最后一次改动丢了
+    if (_cacheDirty) {
+      _cacheDirty = false;
+      await saveLibraryCache();
     }
   }
 

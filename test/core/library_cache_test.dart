@@ -94,15 +94,19 @@ void main() {
       }),
       isEmpty,
     );
-    // 单条坏数据：整组丢弃，不掺半份缓存进去
+    // 单条坏数据：只跳过它自己，好的条目照旧保留
     expect(
       LibraryCache.decode(<String, Object?>{
         'v': 1,
         'roots': <String, Object?>{
-          'root': <Object?>[<String, Object?>{'n': '缺 docId'}],
+          'root': <Object?>[
+            <String, Object?>{'d': 'a', 'n': 'a.mp3', 's': 1, 't': 2},
+            <String, Object?>{'n': '缺 docId'},
+            <String, Object?>{'d': 'b', 'n': 'b.mp3', 's': 1, 't': 2},
+          ],
         },
-      }),
-      isEmpty,
+      })['root']!.map((VFile f) => f.docId).toList(),
+      <String>['a', 'b'],
     );
   });
 
