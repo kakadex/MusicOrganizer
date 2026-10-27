@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import '../core/model/vfile.dart';
@@ -19,6 +20,31 @@ class CoverCache {
   final Set<String> _miss = <String>{};
   final Set<String> _loading = <String>{};
 
+  /// 同时在读的封面数上限：一次滚动会瞬间冒出一屏新行，全放过去会把
+  /// 平台通道和主 isolate 挤满，表现就是「快速下滑一顿一顿」。
+  static const int maxConcurrent = 4;
+  int _inFlight = 0;
+  final List<Completer<void>> _waiters = <Completer<void>>[];
+
+  Future<void> _acquire() async {
+    if (_inFlight < maxConcurrent) {
+      _inFlight++;
+      return;
+    }
+    final Completer<void> c = Completer<void>();
+    _waiters.add(c);
+    await c.future;
+  }
+
+  void _release() {
+    if (_waiters.isNotEmpty) {
+      // 名额直接转交给排队者，_inFlight 不变
+      _waiters.removeAt(0).complete();
+      return;
+    }
+    _inFlight--;
+  }
+
   static String keyOf(VFile f) => '${f.docId}|${f.size}|${f.lastModified}';
 
   /// 已缓存的字节（没有返回 null，不代表「一定没有封面」）。
@@ -35,6 +61,7 @@ class CoverCache {
     if (_miss.contains(key)) return null;
     if (_loading.contains(key)) return null;
     _loading.add(key);
+    await _acquire();
     try {
       final store = Repo.instance.store;
       if (store == null) return null;
@@ -58,6 +85,7 @@ class CoverCache {
       return null;
     } finally {
       _loading.remove(key);
+      _release();
     }
   }
 

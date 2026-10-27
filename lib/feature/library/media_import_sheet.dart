@@ -48,17 +48,50 @@ Future<void> runMediaImport(BuildContext context) async {
   }
   if (!context.mounted) return;
   Navigator.of(context).pop();
-  if (tracks.isEmpty) {
-    moSnack(context, '系统媒体库里没找到可导入的音频');
+  // 已在曲库目录里的（系统媒体库会把它们也扫进来）和已经导入过的都不再列，
+  // 否则用户会以为「系统媒体库＝我授权过的那个文件夹」，点一下又复制一份。
+  final Set<String> known = <String>{
+    for (final f in repo.files) '${f.name}|${f.size}',
+  };
+  final List<String> rootIds = <String>[
+    for (final t in repo.roots) t.rootDocId,
+  ];
+  int skippedInLibrary = 0;
+  int skippedKnown = 0;
+  final List<MediaTrack> importable = <MediaTrack>[];
+  for (final MediaTrack t in tracks) {
+    if (rootIds.any(t.insideRoot)) {
+      skippedInLibrary++;
+      continue;
+    }
+    if (known.contains('${t.name}|${t.size}')) {
+      skippedKnown++;
+      continue;
+    }
+    importable.add(t);
+  }
+  if (importable.isEmpty) {
+    moSnack(
+        context,
+        '没有可导入的音频'
+        '${skippedInLibrary > 0 ? '（$skippedInLibrary 首已在曲库目录里）' : ''}'
+        '${skippedKnown > 0 ? '（$skippedKnown 首已经导入过）' : ''}');
     return;
   }
+  tracks = importable;
+  final String skipNote = <String>[
+    if (skippedInLibrary > 0) '$skippedInLibrary 首已在曲库目录里',
+    if (skippedKnown > 0) '$skippedKnown 首已导入过',
+  ].join('，');
   await showMoSheet<void>(
     context,
     title: '系统媒体库（${tracks.length} 首）',
     children: <Widget>[
-      const Padding(
-        padding: EdgeInsets.fromLTRB(MoKit.pagePad, 0, MoKit.pagePad, 4),
-        child: Text('勾选后复制进曲库的「导入/」目录；原文件不动。',
+      Padding(
+        padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 0, MoKit.pagePad, 4),
+        child: Text(
+            '勾选后复制进曲库的「导入/」目录；原文件不动。'
+            '${skipNote.isEmpty ? '' : '已略过：$skipNote。'}',
             style: TextStyle(fontSize: MoKit.fsCaption)),
       ),
       _PickList(tracks: tracks),

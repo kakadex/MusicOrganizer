@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -213,7 +214,15 @@ class Repo extends ChangeNotifier {
     final FileStore? st = store;
     if (st == null) return false;
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final List<String> order = _savedOrder(prefs);
+    List<String> order = _savedOrder(prefs);
+    List<TreeRef> mirror = <TreeRef>[];
+    if (order.isEmpty) {
+      // prefs 没了（被杀在写一半 / 被清数据）：用镜像里的顺序兜底
+      mirror = await _readRootsMirror();
+      order = <String>[for (final TreeRef t in mirror) t.rootDocId];
+    } else {
+      mirror = await _readRootsMirror();
+    }
 
     if (isDesktop) {
       // 桌面没有「授权」概念：登记过的目录还在就直接用（不存在的顺手忘掉）。
@@ -224,6 +233,11 @@ class Repo extends ChangeNotifier {
       final List<String> kept = <String>[];
       for (final String path in order) {
         if (Directory(path).existsSync()) kept.add(path);
+      }
+      if (kept.isEmpty) {
+        for (final TreeRef t in mirror) {
+          if (Directory(t.rootDocId).existsSync()) kept.add(t.rootDocId);
+        }
       }
       final String? legacy = prefs.getString('root_doc_id');
       if (kept.isEmpty && legacy != null && Directory(legacy).existsSync()) {
@@ -237,6 +251,7 @@ class Repo extends ChangeNotifier {
       }
       setRoots(kept.map((String p) => TreeRef(treeUri: 'file://$p', rootDocId: p)).toList());
       rootLost = false;
+      unawaited(_writeRootsMirror());
       return true;
     }
 
@@ -267,6 +282,8 @@ class Repo extends ChangeNotifier {
     }
     setRoots(ordered);
     rootLost = false;
+    // 顺手把镜像补齐：下次 prefs 出问题还能靠它恢复
+    unawaited(_writeRootsMirror());
     return true;
   }
 
@@ -321,9 +338,65 @@ class Repo extends ChangeNotifier {
     await _persistRoots();
   }
 
+  /// 曲库目录的镜像文件（prefs 之外多存一份，防「刚好在写 prefs 时被杀」）。
+  Future<File> _rootsMirror() async {
+    final Directory dir = await _dataDir();
+    return File('${dir.path}${Platform.pathSeparator}roots.json');
+  }
+
+  /// 读镜像（没有 / 坏了返回空）。
+  Future<List<TreeRef>> _readRootsMirror() async {
+    try {
+      final File f = await _rootsMirror();
+      if (!f.existsSync()) return <TreeRef>[];
+      final Object? raw = jsonDecode(await f.readAsString());
+      if (raw is! Map) return <TreeRef>[];
+      final Object? list = raw['roots'];
+      if (list is! List) return <TreeRef>[];
+      return <TreeRef>[
+        for (final Object? item in list)
+          if (item is Map)
+            TreeRef(
+              treeUri: '${item['treeUri'] ?? ''}',
+              rootDocId: '${item['rootDocId'] ?? ''}',
+            ),
+      ].where((TreeRef t) => t.rootDocId.isNotEmpty).toList();
+    } catch (_) {
+      return <TreeRef>[];
+    }
+  }
+
+  /// 只写镜像文件（原子替换）；失败不影响主流程。
+  Future<void> _writeRootsMirror() async {
+    try {
+      final File f = await _rootsMirror();
+      final File tmp = File('${f.path}.tmp');
+      await tmp.writeAsString(
+        jsonEncode(<String, Object?>{
+          'roots': <Map<String, String>>[
+            for (final TreeRef t in roots)
+              <String, String>{'treeUri': t.treeUri, 'rootDocId': t.rootDocId},
+          ],
+        }),
+        flush: true,
+      );
+      await tmp.rename(f.path);
+    } catch (_) {
+      // 镜像写不进去不影响主流程
+    }
+  }
+
   Future<void> _persistRoots() async {
+    // 镜像先写，再写 prefs：两边都成功才算稳
+    await _writeRootsMirror();
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     if (roots.isEmpty) {
+      try {
+        final File f = await _rootsMirror();
+        if (f.existsSync()) await f.delete();
+      } catch (_) {
+        // 删不掉不影响
+      }
       await prefs.remove('roots_order');
       await prefs.remove('root_tree_uri');
       await prefs.remove('root_doc_id');

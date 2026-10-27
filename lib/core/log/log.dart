@@ -114,6 +114,21 @@ abstract final class Log {
     }
   }
 
+  /// 导出用的全文（已脱敏）；安卓上交给系统「保存到…」用。
+  static Future<String> exportText({int maxBytes = 512 * 1024}) async {
+    await init();
+    final File? f = _file;
+    if (f == null) return '';
+    try {
+      final String raw = await f.readAsString();
+      final String cut =
+          raw.length > maxBytes ? raw.substring(raw.length - maxBytes) : raw;
+      return sanitize(cut);
+    } catch (_) {
+      return '';
+    }
+  }
+
   /// 清空日志。
   static Future<void> clear() async {
     await init();

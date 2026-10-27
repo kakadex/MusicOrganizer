@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -18,6 +19,7 @@ import '../../core/net/proxy_settings.dart';
 import '../../core/source/endpoints.dart';
 import '../../core/settings/settings_backup.dart';
 import '../../core/version.dart';
+import '../../platform/host_channel.dart';
 import '../health/health_page.dart';
 import 'data_source_page.dart';
 import 'folder_page.dart';
@@ -623,10 +625,56 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _exportLog() async {
+    // 安卓的应用私有目录用户看不到，导出必须走系统的「保存到…」，
+    // 桌面则直接把路径摊开并允许复制（提示条会一闪而过，长路径根本看不清）。
+    final String text = await Log.exportText();
+    if (!mounted) return;
+    if (text.isEmpty) {
+      moSnack(context, '日志还是空的，先复现一次问题再导出');
+      return;
+    }
+    final String stamp = DateTime.now()
+        .toIso8601String()
+        .replaceAll(':', '-')
+        .split('.')
+        .first;
+    final String name = 'musicorganizer-log-$stamp.txt';
+    if (!Repo.isDesktop) {
+      final bool ok = await exportTextToUser(name: name, text: text);
+      if (!mounted) return;
+      moSnack(context, ok ? '日志已保存到你选的位置' : '已取消保存');
+      return;
+    }
     final String? path = await Log.export();
     if (!mounted) return;
-    moSnack(context,
-        path == null ? '导出失败' : (Repo.isDesktop ? '已导出到 $path' : '已导出到应用私有目录（见文件名）'));
+    if (path == null) {
+      moSnack(context, '导出失败');
+      return;
+    }
+    await showMoSheet<void>(
+      context,
+      title: '日志已导出',
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 0, MoKit.pagePad, 8),
+          child: SelectableText(path,
+              style: TextStyle(fontSize: MoKit.fsBody, color: MoKit.text(context))),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 0, MoKit.pagePad, 12),
+          child: Row(
+            children: <Widget>[
+              Expanded(
+                child: MoButton('复制路径', primary: false, onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: path));
+                  if (mounted) moSnack(context, '路径已复制');
+                }),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 
   Future<void> _clearLog() async {

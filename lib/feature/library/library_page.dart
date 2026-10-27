@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 import '../../app/app_focus.dart';
@@ -56,8 +57,16 @@ class _LibraryPageState extends State<LibraryPage> {
   bool _desc = false;
   bool _selectMode = false;
 
+  /// 排序按钮的位置（排序菜单贴在它下方展开）。
+  final GlobalKey _sortKey = GlobalKey();
+
   /// 长按后是否处于「拖动连选」状态。
   bool _dragSelecting = false;
+
+  /// 列表是否正在滚动：滚动中不读封面，停下再补。
+  /// 快速下滑时每帧都会新建一屏新行，若同时去 SAF 读封面，主 isolate
+  /// 会被 I/O 回调和图片解码挤满，表现就是一顿一顿；向上回看命中缓存所以不卡。
+  bool _scrolling = false;
 
   /// 每行一个 key，拖选时用来判断手指落在哪一行。
   final Map<String, GlobalKey> _rowKeys = <String, GlobalKey>{};
@@ -458,7 +467,7 @@ class _LibraryPageState extends State<LibraryPage> {
               ? '${_shown.length} 首${_status.isEmpty ? '' : ' · $_status'}'
               : '还没有选择曲库目录',
           actions: <Widget>[
-            _icon(Icons.sort, '排序', _showSort),
+            _icon(Icons.sort, '排序', _showSort, key: _sortKey),
             _icon(Icons.refresh, '重新扫描', _busy ? null : _scan),
           ],
         ),
@@ -470,8 +479,9 @@ class _LibraryPageState extends State<LibraryPage> {
     );
   }
 
-  Widget _icon(IconData icon, String tip, VoidCallback? onTap) {
+  Widget _icon(IconData icon, String tip, VoidCallback? onTap, {Key? key}) {
     return IconButton(
+      key: key,
       tooltip: tip,
       onPressed: onTap,
       icon: Icon(icon, size: 20, color: onTap == null ? MoKit.faint(context) : MoKit.text(context)),
@@ -574,18 +584,32 @@ class _LibraryPageState extends State<LibraryPage> {
     }
     return RefreshIndicator(
       onRefresh: _scan,
-      child: Listener(
-        // 长按进入多选后，手指继续滑动即可连续勾选（Listener 不参与手势竞争，
-        // 所以不会影响正常滚动）。
-        onPointerMove: _onDragSelectMove,
-        onPointerUp: (_) => _dragSelecting = false,
-        onPointerCancel: (_) => _dragSelecting = false,
-        child: ListView.builder(
-          padding: const EdgeInsets.only(bottom: 12),
-          // 快速滑动优化：离屏行不再保活，避免一次性为大量行保留状态、触发过多封面 I/O。
-          addAutomaticKeepAlives: false,
-          itemCount: _shown.length,
-          itemBuilder: (BuildContext c, int i) => _row(_shown[i]),
+      child: NotificationListener<ScrollNotification>(
+        onNotification: (ScrollNotification n) {
+          if (n is ScrollStartNotification) {
+            _scrolling = true;
+          } else if (n is ScrollEndNotification) {
+            _scrolling = false;
+            // 停下来后重建一次，让可见行补读封面
+            if (mounted) setState(() {});
+          }
+          return false;
+        },
+        child: Listener(
+          // 长按进入多选后，手指继续滑动即可连续勾选（Listener 不参与手势竞争，
+          // 所以不会影响正常滚动）。
+          onPointerMove: _onDragSelectMove,
+          onPointerUp: (_) => _dragSelecting = false,
+          onPointerCancel: (_) => _dragSelecting = false,
+          child: ListView.builder(
+            padding: const EdgeInsets.only(bottom: 12),
+            // 快速滑动优化：离屏行不再保活，避免一次性为大量行保留状态、触发过多封面 I/O。
+            addAutomaticKeepAlives: false,
+            // 下滑时少建几屏预备行，白耗封面 I/O
+            scrollCacheExtent: const ScrollCacheExtent.pixels(240),
+            itemCount: _shown.length,
+            itemBuilder: (BuildContext c, int i) => _row(_shown[i]),
+          ),
         ),
       ),
     );
@@ -599,6 +623,7 @@ class _LibraryPageState extends State<LibraryPage> {
       terms: _terms,
       selected: selected,
       selectMode: _selectMode,
+      paused: _scrolling,
       onTap: () {
         if (_selectMode) {
           _toggleSelect(e);
@@ -773,34 +798,73 @@ class _LibraryPageState extends State<LibraryPage> {
     );
   }
 
-  void _showSort() {
-    showMoSheet<void>(
-      context,
-      title: '排序',
-      children: <Widget>[
+  /// 排序菜单：贴在右上角按钮下方展开，宽高都不超过屏幕一半。
+  ///
+  /// 原来是一个从底部升起的整屏面板——改个排序要占满整屏，视线还得上下跑。
+  Future<void> _showSort() async {
+    final RenderBox? box =
+        _sortKey.currentContext?.findRenderObject() as RenderBox?;
+    final Size screen = MediaQuery.of(context).size;
+    final Offset origin = box == null
+        ? Offset(screen.width - 56, 70)
+        : box.localToGlobal(Offset.zero);
+    final RelativeRect position = RelativeRect.fromLTRB(
+      origin.dx - 8,
+      origin.dy + (box?.size.height ?? 40),
+      8,
+      0,
+    );
+    final int? picked = await showMenu<int>(
+      context: context,
+      position: position,
+      color: MoKit.card(context),
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(MoKit.radiusRow)),
+      constraints: BoxConstraints(
+        // 宽高都不超过屏幕一半：菜单只放七行，不需要整屏
+        minWidth: 150,
+        maxWidth: screen.width * 0.5,
+        maxHeight: screen.height * 0.5,
+      ),
+      items: <PopupMenuEntry<int>>[
         for (int i = 0; i < _sorts.length; i++)
-          MoTile(
-            title: _sorts[i],
-            trailing: _sort == i
-                ? Icon(Icons.check, size: 18, color: MoKit.primary(context))
-                : null,
-            onTap: () {
-              Navigator.of(context).pop();
-              setState(() {
-                if (_sort == i) {
-                  _desc = !_desc;
-                } else {
-                  _sort = i;
-                  _desc = false;
-                }
-              });
-              Repo.instance.setSetting('sort_key', _sort);
-              Repo.instance.setSetting('sort_desc', _desc);
-              _applyFilter();
-            },
+          PopupMenuItem<int>(
+            value: i,
+            height: 40,
+            child: Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    _sorts[i],
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: MoKit.fsBody,
+                        color: _sort == i
+                            ? MoKit.primary(context)
+                            : MoKit.text(context)),
+                  ),
+                ),
+                if (_sort == i)
+                  Icon(_desc ? Icons.arrow_downward : Icons.arrow_upward,
+                      size: 14, color: MoKit.primary(context)),
+              ],
+            ),
           ),
       ],
     );
+    if (picked == null || !mounted) return;
+    setState(() {
+      if (_sort == picked) {
+        _desc = !_desc;
+      } else {
+        _sort = picked;
+        _desc = false;
+      }
+    });
+    Repo.instance.setSetting('sort_key', _sort);
+    Repo.instance.setSetting('sort_desc', _desc);
+    _applyFilter();
   }
 
   void _showDetail(Entry e) {
@@ -876,6 +940,7 @@ class _CoverRow extends StatefulWidget {
     required this.selectMode,
     required this.onTap,
     required this.onLongPress,
+    this.paused = false,
   });
 
   final Entry entry;
@@ -885,6 +950,8 @@ class _CoverRow extends StatefulWidget {
   final bool selectMode;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
+  /// 列表正在滚动：先不读封面，等停下再补。
+  final bool paused;
 
   @override
   State<_CoverRow> createState() => _CoverRowState();
@@ -899,9 +966,17 @@ class _CoverRowState extends State<_CoverRow> {
     _load();
   }
 
+  @override
+  void didUpdateWidget(covariant _CoverRow old) {
+    super.didUpdateWidget(old);
+    // 停止滚动后由页面重建，这里把还没封面、之前被暂停的行补上
+    if (old.paused && !widget.paused && _cover == null) _load();
+  }
+
   Future<void> _load() async {
     final file = widget.entry.file;
     if (file == null) return;
+    if (widget.paused) return;
     final Uint8List? hit = CoverCache.instance.peek(file);
     if (hit != null) {
       setState(() => _cover = hit);

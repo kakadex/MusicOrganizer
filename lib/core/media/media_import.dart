@@ -25,6 +25,7 @@ class MediaTrack {
     required this.durationMs,
     required this.size,
     required this.mime,
+    this.relativePath = '',
   });
 
   final int id;
@@ -36,6 +37,9 @@ class MediaTrack {
   final int durationMs;
   final int size;
   final String mime;
+
+  /// 系统相对路径（如 `Music/周杰伦/`）；用来判断是否已在曲库目录里。
+  final String relativePath;
 
   /// 列表里显示的一行。
   String display() {
@@ -55,7 +59,18 @@ class MediaTrack {
         durationMs: (m['durationMs'] as int?) ?? 0,
         size: (m['size'] as int?) ?? 0,
         mime: (m['mime'] as String?) ?? '',
+        relativePath: (m['relativePath'] as String?) ?? '',
       );
+
+  /// 是否落在某个曲库目录内（`rootDocId` 形如 `primary:Music`）。
+  bool insideRoot(String rootDocId) {
+    final String path = relativePath;
+    if (path.isEmpty) return false;
+    final int colon = rootDocId.indexOf(':');
+    final String rel = colon >= 0 ? rootDocId.substring(colon + 1) : rootDocId;
+    final String dir = rel.endsWith('/') ? rel : '$rel/';
+    return path == rel || path.startsWith(dir);
+  }
 }
 
 /// 媒体库导入。

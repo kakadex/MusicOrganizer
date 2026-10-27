@@ -313,6 +313,7 @@ class SafPlugin(private val resolver: ContentResolver) {
             MediaStore.Audio.Media.DURATION,
             MediaStore.Audio.Media.SIZE,
             MediaStore.Audio.Media.MIME_TYPE,
+            MediaStore.Audio.Media.RELATIVE_PATH,
         )
         val out = mutableListOf<Map<String, Any?>>()
         resolver.query(
@@ -327,6 +328,7 @@ class SafPlugin(private val resolver: ContentResolver) {
             val colDur = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
             val colSize = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)
             val colMime = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.MIME_TYPE)
+            val colPath = cursor.getColumnIndex(MediaStore.Audio.Media.RELATIVE_PATH)
             while (cursor.moveToNext()) {
                 val dur = cursor.getLong(colDur)
                 if (dur < minDurationMs) continue
@@ -347,6 +349,9 @@ class SafPlugin(private val resolver: ContentResolver) {
                         "durationMs" to dur,
                         "size" to cursor.getLong(colSize),
                         "mime" to (cursor.getString(colMime) ?: ""),
+                        // 相册/音乐目录相对路径（如 Music/周杰伦/），用来判断「是不是已在曲库里」
+                        "relativePath" to
+                            if (colPath >= 0) (cursor.getString(colPath) ?: "") else "",
                     )
                 )
             }

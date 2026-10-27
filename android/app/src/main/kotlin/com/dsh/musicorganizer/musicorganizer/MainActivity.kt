@@ -28,13 +28,25 @@ class MainActivity : FlutterActivity() {
         host.setMethodCallHandler { call, result ->
             when (call.method) {
                 "updateTask" -> {
-                    val intent = Intent(this, TaskForegroundService::class.java).apply {
-                        putExtra(TaskForegroundService.EXTRA_TITLE, call.argument<String>("title") ?: "正在处理")
-                        putExtra(TaskForegroundService.EXTRA_TEXT, call.argument<String>("text") ?: "")
-                        putExtra(TaskForegroundService.EXTRA_DONE, call.argument<Int>("done") ?: 0)
-                        putExtra(TaskForegroundService.EXTRA_TOTAL, call.argument<Int>("total") ?: 0)
+                    val title = call.argument<String>("title") ?: "正在处理"
+                    val text = call.argument<String>("text") ?: ""
+                    val done = call.argument<Int>("done") ?: 0
+                    val total = call.argument<Int>("total") ?: 0
+                    // 服务已经在跑：只刷通知，绝不再 startForegroundService。
+                    // 重复启动会让系统要求「5 秒内必须 startForeground」，超时直接杀进程
+                    // （实测连点「清理标签文本」就踩到 ForegroundServiceDidNotStartInTime）。
+                    val live = TaskForegroundService.instance
+                    if (TaskForegroundService.running && live != null) {
+                        runCatching { live.update(title, text, done, total) }
+                    } else {
+                        val intent = Intent(this, TaskForegroundService::class.java).apply {
+                            putExtra(TaskForegroundService.EXTRA_TITLE, title)
+                            putExtra(TaskForegroundService.EXTRA_TEXT, text)
+                            putExtra(TaskForegroundService.EXTRA_DONE, done)
+                            putExtra(TaskForegroundService.EXTRA_TOTAL, total)
+                        }
+                        runCatching { startForegroundServiceCompat(intent) }
                     }
-                    runCatching { startForegroundServiceCompat(intent) }
                     result.success(null)
                 }
                 "stopTask" -> {
@@ -44,6 +56,22 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 "takeInitialIntent" -> result.success(initialFileUri)
+                "exportText" -> {
+                    // 让用户自己挑保存位置（下载 / 文档 / 网盘），返回 true=已保存
+                    pendingExportText = call.argument<String>("text") ?: ""
+                    pendingExportResult = result
+                    val name = call.argument<String>("name") ?: "musicorganizer-log.txt"
+                    val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TITLE, name)
+                    }
+                    runCatching { startActivityForResult(intent, REQUEST_CODE_EXPORT_TEXT) }
+                        .onFailure {
+                            pendingExportResult = null
+                            result.success(false)
+                        }
+                }
                 "uriInfo" -> safCall(result) {
                     safPlugin.uriInfo(call.argument<String>("uri") ?: "")
                 }
@@ -170,6 +198,8 @@ class MainActivity : FlutterActivity() {
      * 应用已经在前台时走 [onNewIntent]，同样转发过去。
      */
     private var initialFileUri: String? = null
+    private var pendingExportText: String? = null
+    private var pendingExportResult: MethodChannel.Result? = null
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
@@ -207,6 +237,25 @@ class MainActivity : FlutterActivity() {
     @Suppress("DEPRECATION")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQUEST_CODE_EXPORT_TEXT) {
+            val res = pendingExportResult
+            pendingExportResult = null
+            val text = pendingExportText ?: ""
+            pendingExportText = null
+            val uri: Uri? = if (resultCode == Activity.RESULT_OK) data?.data else null
+            if (uri == null) {
+                res?.success(false)
+                return
+            }
+            val ok = runCatching {
+                contentResolver.openOutputStream(uri)?.use { out ->
+                    out.write(text.toByteArray(Charsets.UTF_8))
+                    out.flush()
+                } != null
+            }.getOrDefault(false)
+            res?.success(ok)
+            return
+        }
         if (requestCode != REQUEST_CODE_OPEN_TREE) return
         val result = pendingPickResult
         pendingPickResult = null
@@ -273,6 +322,7 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         private const val REQUEST_CODE_OPEN_TREE = 4401
+        private const val REQUEST_CODE_EXPORT_TEXT = 4402
         private const val REQUEST_CODE_AUDIO_PERMISSION = 4402
     }
 }

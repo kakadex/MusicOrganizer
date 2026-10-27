@@ -29,6 +29,10 @@ abstract final class TaskService {
     };
   }
 
+  /// 上次推送时间与文案：进度回调是「每首一次」，全推过去会刷爆通道。
+  static int _lastMs = 0;
+  static String _lastKey = '';
+
   /// 更新通知（没起服务时顺手起一个）。
   static Future<void> update(
     String title,
@@ -37,6 +41,16 @@ abstract final class TaskService {
     String message,
   ) async {
     if (kIsWeb) return;
+    // 同一条进度 300ms 内只推一次；换了标题（新任务）立刻推。
+    final String key = '$title|$done|$total';
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    if (key == _lastKey) return;
+    if (now - _lastMs < 300 && _lastKey.isNotEmpty &&
+        _lastKey.split('|').first == title) {
+      return;
+    }
+    _lastKey = key;
+    _lastMs = now;
     try {
       await _ch.invokeMethod<void>('updateTask', <String, Object?>{
         'title': title,

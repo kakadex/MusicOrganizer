@@ -230,6 +230,11 @@ class _OrganizePageState extends State<OrganizePage> {
   }
 
   Future<void> _organize() async {
+    if (_busy) return;
+    if (TaskCenter.isBusy()) {
+      moSnack(context, '已有任务在跑，先等它结束');
+      return;
+    }
     final String rootId = _repo.root?.rootDocId ?? '';
     if (rootId.isEmpty) {
       moSnack(context, '先选一个曲库目录');
@@ -304,6 +309,11 @@ class _OrganizePageState extends State<OrganizePage> {
   }
 
   Future<void> _dedupe(List<VFile> files) async {
+    if (_busy) return;
+    if (TaskCenter.isBusy()) {
+      moSnack(context, '已有任务在跑，先等它结束');
+      return;
+    }
     final FileStore? store = _repo.store;
     // 第一遍：只比文件名（不读标签，秒出）。把「同名但文件名没写艺人」的候选挑出来，
     // 读它们内嵌标签里的艺人，用来区分翻唱 / 重名 —— 与 Java 版一致，避免把不同歌手的
@@ -566,6 +576,11 @@ class _OrganizePageState extends State<OrganizePage> {
 
   /// 扁平化：子目录里的音频 → 当前曲库目录这一层。
   Future<void> _flatten() async {
+    if (_busy) return;
+    if (TaskCenter.isBusy()) {
+      moSnack(context, '已有任务在跑，先等它结束');
+      return;
+    }
     final FileStore? st = _repo.store;
     if (st == null || _repo.roots.isEmpty) return;
     final List<FlattenPlan> plans = <FlattenPlan>[];
@@ -658,6 +673,11 @@ class _OrganizePageState extends State<OrganizePage> {
   }
 
   Future<void> _junk() async {
+    if (_busy) return;
+    if (TaskCenter.isBusy()) {
+      moSnack(context, '已有任务在跑，先等它结束');
+      return;
+    }
     final List<VFile> junk = _junkFiles;
     if (junk.isEmpty) return;
     // 统一预览：列出每个文件与判定原因，用户可取消勾选不想删的
@@ -706,9 +726,19 @@ class _OrganizePageState extends State<OrganizePage> {
   /// 用户确认后才写盘（写盘走事务）。这是本项目的硬约束——
   /// 任何写入 / 改动都必须先预览再写，清理标签也不例外。
   Future<void> _tidy(List<VFile> files) async {
+    if (_busy) return;
+    if (TaskCenter.isBusy()) {
+      moSnack(context, '已有任务在跑，先等它结束');
+      return;
+    }
     setState(() => _busy = true);
     final RunningTask? task = TaskCenter.start('清理标签文本');
-    final TaskControl? control = task?.control;
+    if (task == null) {
+      if (mounted) setState(() => _busy = false);
+      moSnack(context, '已有任务在跑，先等它结束');
+      return;
+    }
+    final TaskControl control = task.control;
     final TagTransaction? tx = _repo.tx;
     if (tx == null) {
       TaskCenter.finish();
@@ -720,9 +750,9 @@ class _OrganizePageState extends State<OrganizePage> {
     final List<_TidyItem> items = <_TidyItem>[];
     int i = 0;
     for (final VFile f in files) {
-      if (control?.isCancelled() ?? false) break;
+      if (control.isCancelled()) break;
       i++;
-      control?.report(i, files.length, f.name);
+      control.report(i, files.length, f.name);
       final Tags tags = await Scanner.readTags(_repo.store!, f);
       final Map<String, String> plan = TagFix.plan(tags, ops);
       if (plan.isEmpty) continue;

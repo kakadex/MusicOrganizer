@@ -20,6 +20,22 @@ class TaskForegroundService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+    }
+
+    /// 只更新通知内容：服务已经在跑时走这里，不要再 startForegroundService。
+    fun update(title: String, text: String, done: Int, total: Int) {
+        val n = buildNotification(title, text, done, total)
+        manager().notify(NOTIFICATION_ID, n)
+        // 已经在前台时再调一次也无副作用，顺手保证系统那边的「5 秒内进前台」要求
+        runCatching { startForegroundCompat(n) }
+    }
+
+    private fun manager(): NotificationManager =
+        getSystemService(NotificationManager::class.java)
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> stopSelf()
@@ -28,7 +44,10 @@ class TaskForegroundService : Service() {
                 val text = intent?.getStringExtra(EXTRA_TEXT) ?: ""
                 val done = intent?.getIntExtra(EXTRA_DONE, 0) ?: 0
                 val total = intent?.getIntExtra(EXTRA_TOTAL, 0) ?: 0
-                startForegroundCompat(buildNotification(title, text, done, total))
+                // 每次 startForegroundService 都必须在 5 秒内 startForeground，
+                // 否则系统直接杀进程（ForegroundServiceDidNotStartInTimeException）。
+                runCatching { startForegroundCompat(buildNotification(title, text, done, total)) }
+                running = true
             }
         }
         return START_NOT_STICKY
@@ -83,10 +102,21 @@ class TaskForegroundService : Service() {
         @Suppress("DEPRECATION")
         if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE)
         else stopForeground(true)
+        running = false
+        instance = null
         super.onDestroy()
     }
 
     companion object {
+        /// 服务是否已经在跑（决定「更新」是走通知还是再起一次服务）。
+        @Volatile
+        var running = false
+            private set
+
+        @Volatile
+        var instance: TaskForegroundService? = null
+            private set
+
         const val CHANNEL_ID = "mo_task"
         const val NOTIFICATION_ID = 7701
         const val ACTION_STOP = "com.dsh.musicorganizer.action.STOP_TASK"
