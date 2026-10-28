@@ -24,11 +24,14 @@ import 'lrc_sidecar.dart';
 
 /// 批次备份：批内每首歌「写之前那份」的落点。
 class _Backup {
-  _Backup(this.file, this.backup, this.lrcBefore, this.lrcTouched, this.entryId,
-      this.op);
+  _Backup(this.file, this.backup, this.size, this.lrcBefore, this.lrcTouched,
+      this.entryId, this.op);
 
   final VFile file;
   final File backup;
+
+  /// 这份备份占了多少字节（配额算账用；摘掉时要原数减回去）。
+  final int size;
 
   /// 写之前的同名 `.lrc` 内容（没碰过歌词时为 null）。
   final Uint8List? lrcBefore;
@@ -57,6 +60,13 @@ class _Batch {
       return false;
     }
     return true;
+  }
+
+  /// 摘掉一份备份时把字节数还回去——否则配额会被「已经不存在的备份」占着，
+  /// 后面的歌明明还有空间却被告知「到上限」、悄悄不再留备份。
+  void release(int size) {
+    bytes -= size;
+    if (bytes < 0) bytes = 0;
   }
 
   /// 收尾备份。[deleteAll] 为 true（commit 用）删掉所有备份；
@@ -283,7 +293,7 @@ class TagTransaction {
       if (b != null && b.id == batchId) {
         final int size = await backup.length();
         if (b.canHold(size)) {
-          batchItem = _Backup(f, backup, lrcBefore, touchLrc, '', op);
+          batchItem = _Backup(f, backup, size, lrcBefore, touchLrc, '', op);
           b.items.add(batchItem);
           b.bytes += size;
         }
@@ -385,9 +395,9 @@ class TagTransaction {
         }
       }
       // 异常路径下这份备份不再参与整批回滚（要么已还原、要么保留作现场），
-      // 别把它留在批里当「可回滚」的证据
+      // 别把它留在批里当「可回滚」的证据；字节数同步还回去。
       if (batchItem != null) {
-        _batch?.items.remove(batchItem);
+        _voidBatchBackup(batchItem);
         batchItem = null;
       }
       // 没动过原文件才是真的「未修改」；动过但还原失败，必须如实说可能坏了，
@@ -417,10 +427,19 @@ class TagTransaction {
   }
 
   /// 把一项备份从批里摘掉（这一首没真正写成，不该被整批回滚碰）。
+  ///
+  /// 摘掉时**必须把字节数还回去**：配额算的是「当前还留着的备份总量」，
+  /// 不是「曾经留过多少」。
   void _voidBatchBackup(_Backup? item) {
     if (item == null) return;
-    _batch?.items.remove(item);
+    final _Batch? b = _batch;
+    if (b == null) return;
+    b.items.remove(item);
+    b.release(item.size);
   }
+
+  /// 当前批已占用的备份字节数（测试与诊断用）。
+  int batchBytes(String id) => _batch?.id == id ? _batch!.bytes : 0;
 
   /// 撤销最近一次标签写入。
   Future<bool> revertLast() async {

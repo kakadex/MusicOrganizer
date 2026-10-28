@@ -426,6 +426,50 @@ void main() {
     await clean.delete(recursive: true);
   });
 
+  test('摘掉备份要把配额还回去（否则后面的歌白丢备份）', () async {
+    const int mb = 1024 * 1024;
+    final _CorruptingStore st = _CorruptingStore();
+    st.addRoot(dir.path);
+    final Directory clean = Directory.systemTemp.createTempSync('mo_quota_');
+    final TagTransaction t =
+        TagTransaction(store: st, journal: journal, tempDir: clean);
+    const String batch = 'QUOTA';
+    // 配额 4MB，每首 1MB
+    t.beginBatch(batch, maxBytes: 4 * mb);
+
+    Future<VFile> big(String name) async {
+      final File f = File('${dir.path}/$name')
+        ..writeAsBytesSync(Uint8List(mb));
+      return (await st.stat(f.path))!;
+    }
+
+    // 3 首成功 → 占 3MB
+    for (int i = 0; i < 3; i++) {
+      expect(await t.apply(await big('q$i.mp3'), <String, String>{'title': 't$i'},
+              batchId: batch),
+          '');
+    }
+    final int before = t.batchBytes(batch);
+    expect(before, greaterThan(3 * mb - 1024));
+
+    // 第 4 首：写坏 → 回读校验失败 → 备份被摘掉，配额应该退回来
+    st.corruptNextWrite = true;
+    expect(
+        await t.apply(await big('q3.mp3'), <String, String>{'title': 't3'},
+            batchId: batch),
+        isNotEmpty);
+    expect(t.batchBytes(batch), before, reason: '摘掉备份要把字节减回去');
+
+    // 还能再放一首（没被「空间到上限」挡住）
+    expect(
+        await t.apply(await big('q4.mp3'), <String, String>{'title': 't4'},
+            batchId: batch),
+        '');
+    expect(t.batchTruncated(batch), isFalse, reason: '配额没被已删的备份占着');
+
+    await clean.delete(recursive: true);
+  });
+
   test('journal 2000 条回绕', () async {
     final Journal j = Journal(File('${dir.path}/j3.jsonl'));
     for (int i = 0; i < 2005; i++) {
