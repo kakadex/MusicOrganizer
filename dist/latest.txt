@@ -1,11 +1,11 @@
-version=0.2.34
-tag=v0.2.34
+version=0.2.35
+tag=v0.2.35
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.34/MusicOrganizer-0.2.34-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.35/MusicOrganizer-0.2.35-android-arm64-v8a.apk
 size=19805965
-sha256=87553602ce114444c5094607bd9f081a9d801c3ec324f64eb4b657269e14bc8b
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.34/MusicOrganizer-0.2.34-windows-x64.zip
-zip_size=12563959
-zip_sha256=d6ac943043d659e9f5b3fab8f5bbed83b8d15ac3f70eeaf676c10ad00c55a4a7
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.34
-summary=修复安卓 7.0/7.1 上长任务进度通知不显示的问题。
+sha256=ba09be5965da5f4b71d9f8ee2c486f9503def57a5f7e2054826ec1924f65260e
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.35/MusicOrganizer-0.2.35-windows-x64.zip
+zip_size=12573257
+zip_sha256=3077d55e4f8ae44d5ebd3037b8a3ed08c28b68b14ace9e5c2ddf1fb5da2a89f9
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.35
+summary=第二批审查 7 条修复：写入失败与还原如实告知、歌词续跑真续上、更新包校验更严。
