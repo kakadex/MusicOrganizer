@@ -477,6 +477,10 @@ class _EditorPageState extends State<EditorPage> {
     }
     Repo.instance.invalidate(widget.file);
     CoverCache.instance.clear();
+    // 补读一次：invalidate 把内存缓存清了，不重读就回列表，这一行会只剩
+    // 文件名（标题 / 歌手 / 封面全空），得手动下拉一次才恢复。
+    await Repo.instance.loadMeta(only: <VFile>[widget.file]);
+    if (!mounted) return;
     final int n = updates.length + (coverArg == null ? 0 : 1);
     moSnack(context, '已保存 $n 处改动');
     Navigator.of(context).pop(true);

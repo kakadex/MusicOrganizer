@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../../app/app_focus.dart';
 import '../../app/cover_cache.dart';
 import '../../app/repo.dart';
+import '../../app/repo_changes.dart';
 import '../../app/ui_kit.dart';
 import '../../core/match/match_queue.dart';
 import '../../core/match/tag_plan.dart';
@@ -78,17 +79,32 @@ class _LibraryPageState extends State<LibraryPage> {
   /// 当前检索词（命中高亮用）。
   List<String> _terms = <String>[];
 
+  /// 曲库 / 标签两域的变化源（`loadMeta` 读回新标签后要靠它重建列表）。
+  late final Listenable _repoChanges;
+
   @override
   void initState() {
     super.initState();
     _filter = Repo.instance.settings.get<int>('filter', fallback: 0) ?? 0;
     _sort = Repo.instance.settings.get<int>('sort_key', fallback: 0) ?? 0;
     _desc = Repo.instance.settings.get<bool>('sort_desc', fallback: false) ?? false;
+    // 曲目增删 / 标签读回后要重建列表：`loadMeta` 只是把新值写进 Entry 和
+    // VFile，页面不重建就还是旧标题——删完标签得手动下拉一次才更新，就是这个。
+    _repoChanges = Repo.instance.changes
+        .of(<RepoDomain>[RepoDomain.library, RepoDomain.meta]);
+    _repoChanges.addListener(_onRepoChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _autoScan());
+  }
+
+  /// 曲库 / 标签数据变化：重新过滤一遍（`_applyFilter` 内部 setState）。
+  void _onRepoChanged() {
+    if (!mounted) return;
+    _applyFilter();
   }
 
   @override
   void dispose() {
+    _repoChanges.removeListener(_onRepoChanged);
     _search.dispose();
     super.dispose();
   }

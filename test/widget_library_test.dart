@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart' hide Tags;
 import 'package:musicorganizer/app/repo.dart';
+import 'package:musicorganizer/app/repo_changes.dart';
 import 'package:musicorganizer/app/theme/mo_theme.dart';
 import 'package:musicorganizer/app/theme/palette.dart';
 import 'package:musicorganizer/app/ui_kit.dart';
@@ -70,6 +71,26 @@ void main() {
     expect(find.text('另一首'), findsOneWidget);
     // 没读过标签时标题退化为文件名（去扩展名）
     expect(find.text('c'), findsOneWidget);
+  });
+
+  testWidgets('标签读回后列表自动更新，不用手动刷新', (WidgetTester tester) async {
+    final Repo repo = Repo.instance;
+    repo.resetForTest();
+    seed(repo);
+    await pumpPage(tester);
+    expect(find.text('示例歌名'), findsOneWidget);
+
+    // 模拟「清空标签 → loadMeta 补读」的结果：VFile 与索引都换成空标签，
+    // 再像 Repo.loadMeta 那样发一次 library 通知。
+    // 页面不订阅这个通知的话，这里仍会显示旧标题，得手动下拉才更新。
+    final VFile a = repo.files.firstWhere((VFile f) => f.docId == 'r/a.mp3');
+    a.cacheMeta(Tags(), cover: false);
+    repo.index.find(a.docId)?.applyTags(Tags(), false);
+    repo.changes.emit(RepoDomain.library);
+    await tester.pump();
+
+    expect(find.text('示例歌名'), findsNothing, reason: '清空后不该还挂着旧标题');
+    expect(find.text('a'), findsOneWidget, reason: '没有标签时应退化成文件名');
   });
 
   testWidgets('筛选「无标签」只剩缺项的那首', (WidgetTester tester) async {
