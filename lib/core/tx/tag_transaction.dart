@@ -152,7 +152,14 @@ class TagTransaction {
         await store.writeFromLocal(item.file, item.backup);
         item.file.clearMeta();
         if (item.lrcTouched) {
-          await LrcSidecar.restore(store, item.file, item.lrcBefore);
+          final String lrcErr =
+              await LrcSidecar.restore(store, item.file, item.lrcBefore);
+          if (lrcErr.isNotEmpty) {
+            // 音频退回去了、.lrc 没退回去：这一首只能算失败，备份留着重试
+            Log.warn('整批回滚：.lrc 还原失败（${item.file.name}）：$lrcErr');
+            failed++;
+            continue;
+          }
         }
         await onRefresh?.call(item.file);
         // 撤销日志里也要留痕：否则这条 applied 记录还挂着「可撤销」，
@@ -309,9 +316,20 @@ class TagTransaction {
       if (touchLrc) {
         final String lrcErr = await LrcSidecar.restore(store, f, lrcAfter);
         if (lrcErr.isNotEmpty) {
+          // 音频退回写之前的字节
           await store.writeFromLocal(f, backup);
           f.clearMeta();
-          await LrcSidecar.restore(store, f, lrcBefore);
+          // .lrc 也要退回；这一步失败时不能再说「已还原」，备份得留着
+          final String backErr = await LrcSidecar.restore(store, f, lrcBefore);
+          if (backErr.isNotEmpty) {
+            keepBackup = true;
+            _voidBatchBackup(batchItem);
+            batchItem = null;
+            Log.warn('写歌词失败且还原 .lrc 也失败：${f.name}，'
+                '写入：$lrcErr；还原：$backErr');
+            return '歌词文件处理失败，还原 .lrc 也失败（备份已保留）：'
+                '$lrcErr / $backErr';
+          }
           _voidBatchBackup(batchItem);
           batchItem = null;
           return '歌词文件处理失败，已还原原文件：$lrcErr';

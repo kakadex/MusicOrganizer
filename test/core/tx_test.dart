@@ -41,6 +41,29 @@ class _ThrowingStore extends DesktopFileStore {
   }
 }
 
+/// 只让 `.lrc` 写盘失败：用来测「歌词文件还原失败不能被吞掉」。
+class _LrcFailStore extends DesktopFileStore {
+  bool failLrc = false;
+
+  static bool _isLrc(String name) => name.toLowerCase().endsWith('.lrc');
+
+  @override
+  Future<void> writeFromLocal(VFile f, File src) async {
+    if (failLrc && _isLrc(f.name)) {
+      throw const FileSystemException('磁盘已满（.lrc）');
+    }
+    await super.writeFromLocal(f, src);
+  }
+
+  @override
+  Future<VFile> createFile(VFile parent, String name, String mime) async {
+    if (failLrc && _isLrc(name)) {
+      throw const FileSystemException('磁盘已满（.lrc）');
+    }
+    return super.createFile(parent, name, mime);
+  }
+}
+
 /// 连续 N 次写盘都抛异常：用来模拟「写入失败、连还原也失败」。
 class _FailingStore extends DesktopFileStore {
   int failWrites = 0;
@@ -323,6 +346,83 @@ void main() {
     expect(backups, isNotEmpty, reason: '还原失败时备份必须保留');
     expect(err, contains(backups.first.path));
 
+    await clean.delete(recursive: true);
+  });
+
+  test('写 .lrc 失败且还原 .lrc 也失败：不谎报已还原、备份保留', () async {
+    final File f = mp3('lrc-double.mp3');
+    final _LrcFailStore st = _LrcFailStore();
+    st.addRoot(dir.path);
+    final Directory clean = await Directory.systemTemp.createTemp('mo_clean_');
+    final TagTransaction t =
+        TagTransaction(store: st, journal: journal, tempDir: clean);
+    final VFile v = VFile(
+      docId: f.path,
+      parentId: dir.path,
+      name: 'lrc-double.mp3',
+    );
+
+    // 先正常写一笔（带 .lrc），让「写之前」有歌词文件可还原
+    expect(
+        await t.apply(v, <String, String>{'title': '原标题'},
+            lrcText: '[00:01.00]旧词'),
+        '');
+
+    // 之后所有 .lrc 写盘都失败：写新词失败、还原旧词也失败
+    st.failLrc = true;
+    final String err = await t.apply(v, <String, String>{'title': '新标题'},
+        lrcText: '[00:02.00]新词');
+
+    expect(err, contains('还原'));
+    expect(err, isNot(contains('已还原原文件')));
+    // 备份必须保留
+    final List<String> leftover = clean
+        .listSync()
+        .whereType<File>()
+        .map((File e) => e.path.split(RegExp(r'[/\\]')).last)
+        .where((String n) => n.startsWith('mo_tx_'))
+        .toList();
+    expect(leftover, isNotEmpty, reason: '.lrc 还原失败时备份不能删');
+    await clean.delete(recursive: true);
+  });
+
+  test('整批回滚里 .lrc 还原失败要计入失败、备份保留', () async {
+    final File f = mp3('lrc-rollback.mp3');
+    final _LrcFailStore st = _LrcFailStore();
+    st.addRoot(dir.path);
+    final Directory clean = await Directory.systemTemp.createTemp('mo_clean_');
+    final TagTransaction t =
+        TagTransaction(store: st, journal: journal, tempDir: clean);
+    final VFile v = VFile(
+      docId: f.path,
+      parentId: dir.path,
+      name: 'lrc-rollback.mp3',
+    );
+
+    // 先放一个旧 .lrc：回滚时要「写回旧词」，才测得到写失败（否则只是删文件）
+    File('${dir.path}/lrc-rollback.lrc')
+        .writeAsStringSync('[00:01.00]旧词', flush: true);
+
+    const String batch = 'BATCH-LRC';
+    t.beginBatch(batch);
+    expect(
+        await t.apply(v, <String, String>{'title': '新标题'},
+            batchId: batch, lrcText: '[00:02.00]新词'),
+        '');
+
+    // 回滚时 .lrc 写不回去
+    st.failLrc = true;
+    final (int ok, int bad) = await t.rollbackBatch(batch);
+    expect(ok, 0, reason: '.lrc 没退回去不能算退回成功');
+    expect(bad, 1);
+
+    final List<String> leftover = clean
+        .listSync()
+        .whereType<File>()
+        .map((File e) => e.path.split(RegExp(r'[/\\]')).last)
+        .where((String n) => n.startsWith('mo_tx_'))
+        .toList();
+    expect(leftover, isNotEmpty, reason: '失败那首的备份要留着重试');
     await clean.delete(recursive: true);
   });
 
