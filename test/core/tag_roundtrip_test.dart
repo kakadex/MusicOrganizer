@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart' hide Tags;
@@ -148,5 +149,33 @@ void main() {
     expect(Flac.read(flac).get('title'), 'F歌名');
     flac = Flac.rewrite(flac, <String, String>{}, cover: Uint8List(0));
     expect(Flac.hasPicture(flac), isFalse);
+  });
+
+  test('FLAC 改注释替换旧 COMMENT、清空能清掉', () {
+    // 造一个「已有 COMMENT 键」的 FLAC（外部工具常写 COMMENT 而不是 DESCRIPTION）
+    final BytesBuilder body = BytesBuilder();
+    final Uint8List vendor = ascii('test-vendor');
+    body.add(le32(vendor.length));
+    body.add(vendor);
+    final Uint8List entry = Uint8List.fromList(utf8.encode('COMMENT=旧注释'));
+    body.add(le32(1));
+    body.add(le32(entry.length));
+    body.add(entry);
+    final Uint8List vc = body.toBytes();
+    final BytesBuilder out = BytesBuilder();
+    out.add(ascii('fLaC'));
+    out.addByte(0x84); // type 4（VORBIS_COMMENT）+ 末位块
+    out.add(<int>[(vc.length >> 16) & 0xFF, (vc.length >> 8) & 0xFF, vc.length & 0xFF]);
+    out.add(vc);
+    out.add(Uint8List.fromList(List<int>.filled(256, 0x11)));
+    Uint8List flac = out.toBytes();
+
+    expect(Flac.read(flac).get('comment'), '旧注释');
+    // 改注释：旧的 COMMENT 要被替换，不能残留成两套字段
+    flac = Flac.rewrite(flac, <String, String>{'comment': '新注释'});
+    expect(Flac.read(flac).get('comment'), '新注释');
+    // 清空注释：读回必须为空
+    flac = Flac.rewrite(flac, <String, String>{'comment': ''});
+    expect(Flac.read(flac).get('comment'), '');
   });
 }

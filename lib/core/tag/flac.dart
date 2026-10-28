@@ -39,6 +39,10 @@ abstract final class Flac {
     'LYRICS', 'UNSYNCEDLYRICS', 'LYRIC', 'UNSYNCED LYRICS', 'UNSYNCED_LYRICS',
   };
 
+  /// comment 在读端同时认 DESCRIPTION / COMMENT，写端替换时两个都要认：
+  /// 只替换 DESCRIPTION 会让外部工具写的 COMMENT 残留成两套注释，清空时也清不掉。
+  static const Set<String> _commentKeys = <String>{'DESCRIPTION', 'COMMENT'};
+
   static const Map<String, String> writeKeys = <String, String>{
     'title': 'TITLE',
     'artist': 'ARTIST',
@@ -172,6 +176,12 @@ abstract final class Flac {
               // 老字段可能叫 LYRIC / UNSYNCED LYRICS / UNSYNCED_LYRICS，
               // 都要被新的 LYRICS 替换掉，否则文件里越堆越多
               if (_lyricKeys.contains(key)) {
+                replaced = true;
+                break;
+              }
+            } else if (e.key == 'comment') {
+              // DESCRIPTION 与 COMMENT 都是「注释」，都要被替换，别留两套
+              if (_commentKeys.contains(key)) {
                 replaced = true;
                 break;
               }
