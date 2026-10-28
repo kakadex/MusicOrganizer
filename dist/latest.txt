@@ -1,11 +1,11 @@
-version=0.2.30
-tag=v0.2.30
+version=0.2.31
+tag=v0.2.31
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.30/MusicOrganizer-0.2.30-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.31/MusicOrganizer-0.2.31-android-arm64-v8a.apk
 size=19805965
-sha256=e5d9c402539747c138912f0ba11c56df7b7281185151b6489403741ee0063539
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.30/MusicOrganizer-0.2.30-windows-x64.zip
-zip_size=12564843
-zip_sha256=509634f73f073abc2199ca9a61b1ffea7e1d4aeaf1435b051fc9d3cd9b3f9343
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.30
-summary=修复 FLAC 改注释残留两套字段、清空清不掉的问题。
+sha256=4386f179ef1df08ad47b0bf7574ebafc0bae629fa04714cf4912066023898e99
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.31/MusicOrganizer-0.2.31-windows-x64.zip
+zip_size=12563907
+zip_sha256=17ffe75d839f1e15a7562aaf7ccf091bbfca3eccc5d88e87dc3d88f35dde1b7c
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.31
+summary=修复整批回滚时恢复失败的备份被一起删掉的问题。
