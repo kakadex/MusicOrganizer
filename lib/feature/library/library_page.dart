@@ -31,6 +31,7 @@ import '../common/write_confirm_sheet.dart';
 import '../organize/rename_flow.dart';
 import '../lyrics_batch/lyrics_tool_sheet.dart';
 import '../tag_batch/batch_edit.dart';
+import '../tag_batch/clear_all_tags.dart';
 import 'preview_sheet.dart';
 
 /// 曲库页：搜索 + 筛选 + 排序 + 多选 + 批量匹配。
@@ -134,8 +135,10 @@ class _LibraryPageState extends State<LibraryPage> {
       _status = '';
     });
     _applyFilter();
-    // 后台补扫只在真的有增删改动时才出声，否则每次启动都弹一条很吵
-    if (silent && out.merge.fresh == 0 && out.merge.removed == 0) return;
+    // 手动下拉刷新不弹提示框：列表就在眼前，扫完自己会变；
+    // 后台补扫只在真的有增删改动时才出声一句（否则每次启动都弹很吵）。
+    if (!silent) return;
+    if (out.merge.fresh == 0 && out.merge.removed == 0) return;
     moSnack(context, out.summary());
   }
 
@@ -489,7 +492,8 @@ class _LibraryPageState extends State<LibraryPage> {
               : '还没有选择曲库目录',
           actions: <Widget>[
             _icon(Icons.sort, '排序', _showSort, key: _sortKey),
-            _icon(Icons.refresh, '重新扫描', _busy ? null : _scan),
+            // 重新扫描只保留下拉刷新：右上角再放一个按钮是重复的，
+            // 两者做的事完全一样。
           ],
         ),
         if (repo.hasRoot) _searchBar(),
@@ -615,7 +619,7 @@ class _LibraryPageState extends State<LibraryPage> {
         text: _busy ? '正在扫描…' : (failed ? _status : '这个筛选下没有曲目'),
         hint: _busy
             ? null
-            : (failed ? '目录授权可能已失效，重新选一次目录即可' : '换个筛选条件，或点右上角重新扫描'),
+            : (failed ? '目录授权可能已失效，重新选一次目录即可' : '换个筛选条件，或下拉重新扫描'),
         action: failed
             ? MoButton('重新选择目录', icon: Icons.folder_open, onPressed: _pickRoot)
             : null,
@@ -802,6 +806,16 @@ class _LibraryPageState extends State<LibraryPage> {
           onTap: () {
             Navigator.of(context).pop();
             runBatchEdit(context, files);
+          },
+        ),
+        MoTile(
+          title: '删除全部标签和歌词',
+          subtitle: '清空选中文件的标签与歌词（含同名 .lrc），先预览再删',
+          icon: Icons.layers_clear_outlined,
+          danger: true,
+          onTap: () {
+            Navigator.of(context).pop();
+            runClearAllTags(context, files);
           },
         ),
         MoTile(

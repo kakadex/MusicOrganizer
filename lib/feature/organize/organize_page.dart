@@ -242,7 +242,7 @@ class _OrganizePageState extends State<OrganizePage> {
       _busy = false;
       _status = out.ok ? '' : out.error;
     });
-    moSnack(context, out.summary());
+    // 扫完不再弹提示框：结果就在曲库列表里，不必再弹一条详细信息
   }
 
   /// 当前目录规则；没设过或存的模板不合法时回到默认的「歌手 / 专辑」。

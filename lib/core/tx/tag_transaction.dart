@@ -52,13 +52,15 @@ class TagTransaction {
   ///
   /// [lrcText] 不为 null 时，同名的 `.lrc` 也纳入本次事务：音频写成功但 `.lrc`
   /// 写失败会把音频回滚并从备份还原 `.lrc`；撤销时两者一起回退。
+  /// [removeLrc] 为 true 时，删除同名的 `.lrc`（同样纳入本事务与撤销）。
   Future<String> apply(VFile f, Map<String, String> updates,
       {Uint8List? cover,
       bool record = true,
       String batchId = '',
-      String? lrcText}) {
+      String? lrcText,
+      bool removeLrc = false}) {
     return _serialized(
-        () => _apply(f, updates, cover, record, batchId, lrcText));
+        () => _apply(f, updates, cover, record, batchId, lrcText, removeLrc));
   }
 
   /// 与 `Tags.put` 一致的归一化：去首尾空白，year 只留前 4 位。
@@ -69,7 +71,7 @@ class TagTransaction {
   }
 
   Future<String> _apply(VFile f, Map<String, String> updates, Uint8List? cover,
-      bool record, String batchId, String? lrcText) async {
+      bool record, String batchId, String? lrcText, bool removeLrc) async {
     final String ext = TagIO.extOf(f.name);
     if (!TagIO.canWrite(ext)) return '该格式不支持写标签：$ext';
     if (updates.isEmpty && cover == null) return '无变更，跳过写入';
@@ -82,11 +84,12 @@ class TagTransaction {
 
     final Tags before = await _readTags(f, ext);
     // .lrc 的旧内容要在**动盘之前**读出来：写失败时得靠它还原。
+    final bool touchLrc = lrcText != null || removeLrc;
     final Uint8List? lrcBefore =
-        lrcText == null ? null : await LrcSidecar.readBytes(store, f);
-    final Uint8List? lrcAfter = lrcText == null
+        !touchLrc ? null : await LrcSidecar.readBytes(store, f);
+    final Uint8List? lrcAfter = removeLrc
         ? null
-        : Uint8List.fromList(utf8.encode(lrcText));
+        : (lrcText == null ? null : Uint8List.fromList(utf8.encode(lrcText)));
 
     File? tmp;
     File? backup;
@@ -136,13 +139,14 @@ class TagTransaction {
 
       // 6.5 同名 .lrc：与音频同一个事务窗口。写失败就把音频也退回去，
       //     否则会留下「内嵌歌词是新的、.lrc 还是旧的」这种半成品。
-      if (lrcText != null && lrcAfter != null) {
-        final String lrcErr = await LrcSidecar.writeBytes(store, f, lrcAfter);
+      //     restore(bytes!=null)=写入，restore(null)=删除（同进同退）。
+      if (touchLrc) {
+        final String lrcErr = await LrcSidecar.restore(store, f, lrcAfter);
         if (lrcErr.isNotEmpty) {
           await store.writeFromLocal(f, backup);
           f.clearMeta();
           await LrcSidecar.restore(store, f, lrcBefore);
-          return '歌词文件写入失败，已还原原文件：$lrcErr';
+          return '歌词文件处理失败，已还原原文件：$lrcErr';
         }
       }
 
@@ -161,7 +165,7 @@ class TagTransaction {
           entry.before[k] = before.get(k);
           entry.after[k] = after.get(k);
         }
-        if (lrcText != null) {
+        if (touchLrc) {
           // 空串 = 当时没有这个文件；b64: 前缀 = 原始字节，撤销时按字节还原
           entry.before[LrcSidecar.journalKey] = LrcSidecar.encode(lrcBefore);
           entry.after[LrcSidecar.journalKey] = LrcSidecar.encode(lrcAfter);

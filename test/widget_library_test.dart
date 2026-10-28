@@ -223,7 +223,7 @@ void main() {
     expect(bold, isNotEmpty);
   });
 
-  testWidgets('多选菜单里有批量改标签 / 改名 / 歌词工具 / 删除',
+  testWidgets('多选菜单里有批量改标签 / 改名 / 歌词工具 / 删除全部标签 / 删除',
       (WidgetTester tester) async {
     final Repo repo = Repo.instance;
     repo.resetForTest();
@@ -239,6 +239,10 @@ void main() {
     expect(find.text('批量改标签'), findsOneWidget);
     expect(find.text('按标签改名'), findsOneWidget);
     expect(find.text('歌词工具'), findsOneWidget);
+    expect(find.text('删除全部标签和歌词'), findsOneWidget);
+    // 「删除选中的文件」在面板折叠区外，滚一下再断言
+    await tester.scrollUntilVisible(find.text('删除选中的文件'), 120,
+        scrollable: find.byType(Scrollable).last);
     expect(find.text('删除选中的文件'), findsOneWidget);
   });
 }

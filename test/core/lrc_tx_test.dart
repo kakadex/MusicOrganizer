@@ -106,4 +106,42 @@ void main() {
     expect(await tx.apply(v, <String, String>{'title': '标题'}), '');
     expect(lrc.readAsStringSync(), '保持原样');
   });
+
+  test('removeLrc 删除同名 .lrc，撤销时一起还原', () async {
+    final File f = mp3('e.mp3');
+    final VFile v = await stat(f);
+    // 先造出标签 + 内嵌歌词 + .lrc
+    expect(
+        await tx.apply(
+            v, <String, String>{'title': '标题', 'lyrics': '歌词'},
+            lrcText: '歌词'),
+        '');
+    final File lrc = File('${dir.path}/e.lrc');
+    expect(lrc.existsSync(), isTrue);
+
+    // 清空全部标签与歌词（含 .lrc）
+    const String batch = 'clearall';
+    final String err = await tx.apply(
+        v,
+        <String, String>{
+          for (final String k in Tags.keys) k: '',
+          Tags.lyrics: '',
+        },
+        batchId: batch,
+        removeLrc: true);
+    expect(err, '');
+    expect(lrc.existsSync(), isFalse);
+    final Tags cleared = TagIO.readLocal(f.readAsBytesSync(), '.mp3');
+    expect(cleared.get('title'), '');
+    expect(cleared.get(Tags.lyrics), '');
+
+    // 撤销：标签、内嵌歌词、.lrc 一起还原
+    final List<int> r = await tx.revertBatch(batch);
+    expect(r[0], 1);
+    expect(lrc.existsSync(), isTrue);
+    expect(lrc.readAsStringSync(), '歌词');
+    final Tags back = TagIO.readLocal(f.readAsBytesSync(), '.mp3');
+    expect(back.get('title'), '标题');
+    expect(back.get(Tags.lyrics), '歌词');
+  });
 }

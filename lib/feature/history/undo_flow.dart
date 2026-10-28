@@ -14,6 +14,7 @@ import '../../core/model/tags.dart';
 import '../../core/model/vfile.dart';
 import '../../core/scan/scanner.dart';
 import '../../core/tx/journal.dart';
+import '../../core/tx/lrc_sidecar.dart';
 import '../common/write_confirm_sheet.dart';
 import '../../core/tx/write_preview.dart';
 
@@ -46,6 +47,16 @@ Future<int?> undoBatchWithPreview(
       final String now = (e.after[k] ?? '').trim();
       final String back = (e.before[k] ?? '').trim();
       if (now == back) continue;
+      if (k == LrcSidecar.journalKey) {
+        // .lrc 的原始字节是 b64，直接展示没意义，改用人话
+        lines.add(WriteLine(
+          label: '歌词文件',
+          oldText: now.isEmpty ? '（无）' : '（有）',
+          newText: back.isEmpty ? '（无）' : '（有）',
+          key: k,
+        ));
+        continue;
+      }
       lines.add(WriteLine(
         label: TagFill.label(k),
         oldText: now,
@@ -104,21 +115,37 @@ Future<int?> undoBatchWithPreview(
         }
       }
       final Map<String, String> updates = <String, String>{};
+      String? lrcBeforeEnc;
+      String? lrcAfterEnc;
       for (final String k in <String>{...entry.before.keys, ...entry.after.keys}) {
+        if (k == LrcSidecar.journalKey) {
+          lrcBeforeEnc = entry.before[k] ?? '';
+          lrcAfterEnc = entry.after[k] ?? '';
+          continue;
+        }
         final String back = (entry.before[k] ?? '').trim();
         if (now.get(k).trim() != back) updates[k] = back;
       }
-      if (updates.isEmpty) {
+      final bool lrcChanged =
+          lrcBeforeEnc != null && lrcBeforeEnc != lrcAfterEnc;
+      if (updates.isEmpty && !lrcChanged) {
         // 已经是写入前的值（用户手动改回去了），不用再动文件
         ok++;
         return true;
       }
-      try {
-        final String err = await tx.apply(f, updates, record: false);
-        if (err.isNotEmpty) return false;
-      } catch (_) {
-        // SAF 通道断 / 文件被删等异常：当成这一首撤销失败，别让整批崩掉
-        return false;
+      if (updates.isNotEmpty) {
+        try {
+          final String err = await tx.apply(f, updates, record: false);
+          if (err.isNotEmpty) return false;
+        } catch (_) {
+          // SAF 通道断 / 文件被删等异常：当成这一首撤销失败，别让整批崩掉
+          return false;
+        }
+      }
+      if (lrcChanged && st != null) {
+        final old = LrcSidecar.decode(lrcBeforeEnc);
+        final String lrcErr = await LrcSidecar.restore(st, f, old);
+        if (lrcErr.isNotEmpty) return false;
       }
       ok++;
       repo.invalidate(f);
