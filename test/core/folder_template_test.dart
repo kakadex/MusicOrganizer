@@ -11,12 +11,16 @@ Tags tags({String artist = '', String album = '', String year = ''}) {
 }
 
 void main() {
-  test('默认模板 = 歌手 / 专辑', () {
-    expect(FolderTemplate.builtin.first.pattern, '{artist}/{album}');
+  test('默认模板 = 歌手', () {
+    expect(FolderTemplate.builtin.first.pattern, '{artist}');
     expect(
-      FolderTemplate.builtin.first
-          .apply(tags(artist: '周杰伦', album: '叶惠美')),
-      '周杰伦/叶惠美',
+      FolderTemplate.builtin.first.apply(tags(artist: '周杰伦', album: '叶惠美')),
+      '周杰伦',
+    );
+    // 只保留两套：歌手 / 歌手+专辑；「年代/歌手」「专辑/歌手」已下线
+    expect(
+      FolderTemplate.builtin.map((FolderTemplate t) => t.pattern).toList(),
+      <String>['{artist}', '{artist}/{album}'],
     );
   });
 

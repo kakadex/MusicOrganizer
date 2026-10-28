@@ -38,9 +38,18 @@ class OrganizePage extends StatefulWidget {
   State<OrganizePage> createState() => _OrganizePageState();
 }
 
+/// 整理页正在跑的任务类型。
+///
+/// 只用一个 bool 的话，「扫描统计」转圈时「自动整理」按钮也会跟着转，
+/// 看起来就像是自动整理被触发了。分开之后每个按钮只转自己的圈。
+enum _BusyOn { none, scan, organize, other }
+
 class _OrganizePageState extends State<OrganizePage> {
-  bool _busy = false;
+  _BusyOn _busyOn = _BusyOn.none;
   String _status = '';
+
+  /// 有任务在跑：防重入、置灰按钮。
+  bool get _busy => _busyOn != _BusyOn.none;
 
   /// 垃圾文件候选：走全量遍历（含非音频），不是曲库列表里挑。
   List<VFile> _junkFiles = <VFile>[];
@@ -127,9 +136,16 @@ class _OrganizePageState extends State<OrganizePage> {
       children: <Widget>[
         Row(
           children: <Widget>[
-            Expanded(child: MoButton('扫描统计', primary: false, onPressed: _busy ? null : _rescan)),
+            Expanded(
+                child: MoButton('扫描统计',
+                    primary: false,
+                    busy: _busyOn == _BusyOn.scan,
+                    onPressed: _busy ? null : _rescan)),
             const SizedBox(width: 8),
-            Expanded(child: MoButton('自动整理', busy: _busy, onPressed: _busy ? null : _organize)),
+            Expanded(
+                child: MoButton('自动整理',
+                    busy: _busyOn == _BusyOn.organize,
+                    onPressed: _busy ? null : _organize)),
           ],
         ),
         const SizedBox(height: 8),
@@ -231,7 +247,7 @@ class _OrganizePageState extends State<OrganizePage> {
 
   Future<void> _rescan() async {
     setState(() {
-      _busy = true;
+      _busyOn = _BusyOn.scan;
       _status = '正在扫描…';
     });
     final ScanOutcome out = await _repo.rescan();
@@ -239,16 +255,22 @@ class _OrganizePageState extends State<OrganizePage> {
     if (out.ok) await _repo.loadMeta();
     if (!mounted) return;
     setState(() {
-      _busy = false;
+      _busyOn = _BusyOn.none;
       _status = out.ok ? '' : out.error;
     });
     // 扫完不再弹提示框：结果就在曲库列表里，不必再弹一条详细信息
   }
 
-  /// 当前目录规则；没设过或存的模板不合法时回到默认的「歌手 / 专辑」。
+  /// 当前目录规则；没设过、或存的不是内置模板时，回到默认的「歌手」。
+  ///
+  /// 旧版本存过已下线的模板（「年代 / 歌手」「专辑 / 歌手」）时按默认处理：
+  /// 否则界面会把这串占位符原样当名字显示，选项列表里也找不到它。
   String get _template {
     final String? saved = _repo.settings.get<String>('organize_template');
-    if (saved == null || FolderTemplate.validate(saved) != null) {
+    if (saved == null) return FolderTemplate.builtin.first.pattern;
+    final bool known =
+        FolderTemplate.builtin.any((FolderTemplate t) => t.pattern == saved);
+    if (!known || FolderTemplate.validate(saved) != null) {
       return FolderTemplate.builtin.first.pattern;
     }
     return saved;
@@ -347,7 +369,7 @@ class _OrganizePageState extends State<OrganizePage> {
     final List<MovePlan> doList =
         plans.where((MovePlan p) => keep.contains(p.file.docId)).toList();
 
-    setState(() => _busy = true);
+    setState(() => _busyOn = _BusyOn.organize);
     final RunningTask? task = TaskCenter.start('自动整理');
     final TaskControl? control = task?.control;
     try {
@@ -355,7 +377,7 @@ class _OrganizePageState extends State<OrganizePage> {
           onProgress: (int done, int total) => control?.report(done, total, '移动中'),
           cancel: control);
       if (!mounted) return;
-      setState(() => _busy = false);
+      setState(() => _busyOn = _BusyOn.none);
       if (r.ok > 0) await _repo.rescan();
       if (!mounted) return;
       moSnack(context, r.summary());
@@ -405,10 +427,10 @@ class _OrganizePageState extends State<OrganizePage> {
     // 第二遍：拿不准的组去比对内容（大小 + 首尾各 64KB）。文件名只给线索，内容才给结论：
     // 内容对不上的说明只是名字像（不同版本 / 翻唱），不是重复。
     if (groups.isNotEmpty && store != null) {
-      setState(() => _busy = true);
+      setState(() => _busyOn = _BusyOn.other);
       await Duplicates.verifyContent(groups, (VFile f) => ContentReader.sample(store, f));
       if (!mounted) return;
-      setState(() => _busy = false);
+      setState(() => _busyOn = _BusyOn.none);
     }
     if (groups.isEmpty) {
       moSnack(context, '没有发现相似文件名');
@@ -953,10 +975,10 @@ class _OrganizePageState extends State<OrganizePage> {
       moSnack(context, '已有任务在跑，先等它结束');
       return;
     }
-    setState(() => _busy = true);
+    setState(() => _busyOn = _BusyOn.other);
     final RunningTask? task = TaskCenter.start('清理标签文本');
     if (task == null) {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _busyOn = _BusyOn.none);
       moSnack(context, '已有任务在跑，先等它结束');
       return;
     }
@@ -964,7 +986,7 @@ class _OrganizePageState extends State<OrganizePage> {
     final TagTransaction? tx = _repo.tx;
     if (tx == null) {
       TaskCenter.finish();
-      setState(() => _busy = false);
+      setState(() => _busyOn = _BusyOn.none);
       return;
     }
     const int ops = TagFix.trim | TagFix.spaces | TagFix.width | TagFix.padTrack;
@@ -989,7 +1011,7 @@ class _OrganizePageState extends State<OrganizePage> {
       TaskCenter.finish();
     }
     if (!mounted) return;
-    setState(() => _busy = false);
+    setState(() => _busyOn = _BusyOn.none);
     if (items.isEmpty) {
       moSnack(context, '没有需要清理的标签');
       return;
@@ -1028,7 +1050,7 @@ class _OrganizePageState extends State<OrganizePage> {
     if (picked == null || picked.isEmpty || !mounted) return;
 
     // 第二遍：确认后才写盘。
-    setState(() => _busy = true);
+    setState(() => _busyOn = _BusyOn.other);
     final RunningTask? wTask = TaskCenter.start('写入清理');
     final TaskControl? wControl = wTask?.control;
     final String batchId = 'tidy-${DateTime.now().millisecondsSinceEpoch}';
@@ -1057,7 +1079,7 @@ class _OrganizePageState extends State<OrganizePage> {
       TaskCenter.finish();
     }
     if (!mounted) return;
-    setState(() => _busy = false);
+    setState(() => _busyOn = _BusyOn.none);
     moSnack(context, '改动 $changed 首，失败 $failed 首',
         actionLabel: changed == 0 ? null : '撤销',
         onAction: () async {

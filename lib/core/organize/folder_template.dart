@@ -19,12 +19,13 @@ class FolderTemplate {
   /// 单段目录名长度上限（与 Organizer 保持一致）。
   static const int maxSegment = 60;
 
-  /// 内置模板。第一套是默认规则，与旧版「按歌手 / 专辑归位」等价。
+  /// 内置模板。**第一套是默认规则**（按歌手归位）。
+  ///
+  /// 只保留这两套：层级越少越好找，多一套「按年代」「按专辑打头」的规则
+  /// 只会让人多犹豫一次，实际用起来和这两套没有本质区别。
   static const List<FolderTemplate> builtin = <FolderTemplate>[
-    FolderTemplate(name: '歌手 / 专辑', pattern: '{artist}/{album}'),
     FolderTemplate(name: '歌手', pattern: '{artist}'),
-    FolderTemplate(name: '年代 / 歌手', pattern: '{year}/{artist}'),
-    FolderTemplate(name: '专辑 / 歌手', pattern: '{album}/{artist}'),
+    FolderTemplate(name: '歌手 / 专辑', pattern: '{artist}/{album}'),
   ];
 
   /// 可用占位符。
