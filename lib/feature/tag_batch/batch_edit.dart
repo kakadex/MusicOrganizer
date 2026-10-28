@@ -194,6 +194,7 @@ Future<void> runBatchEdit(BuildContext context, List<VFile> files) async {
   tx.beginBatch(batchId);
   int done = 0;
   int failed = 0;
+  final List<VFile> touched = <VFile>[];
   for (final WriteTarget t in picked) {
     final VFile? f = t.file as VFile?;
     if (f == null) continue;
@@ -204,6 +205,7 @@ Future<void> runBatchEdit(BuildContext context, List<VFile> files) async {
     if (err.isEmpty) {
       done++;
       repo.invalidate(f);
+      touched.add(f);
     } else {
       failed++;
     }
@@ -241,6 +243,11 @@ Future<void> runBatchEdit(BuildContext context, List<VFile> files) async {
     }
   }
   await tx.commitBatch(batchId);
+  // 改标签没动封面，但 invalidate 会把封面标记一起清掉；补读一次恢复封面，
+  // 否则用户改个标题，列表里的封面就整片没了。
+  if (touched.isNotEmpty) {
+    await repo.loadMeta(only: touched);
+  }
   if (!context.mounted) return;
   moSnack(context, '已写入 $done 首${failed > 0 ? '，失败 $failed 首' : ''}');
 }

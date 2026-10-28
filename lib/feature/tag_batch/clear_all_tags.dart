@@ -115,6 +115,7 @@ Future<void> runClearAllTags(BuildContext context, List<VFile> files) async {
   final String batchId = 'clearall-${DateTime.now().millisecondsSinceEpoch}';
   int done = 0;
   int failed = 0;
+  final List<VFile> touched = <VFile>[];
   for (final WriteTarget t in picked) {
     final VFile? f = t.file as VFile?;
     if (f == null) continue;
@@ -137,9 +138,15 @@ Future<void> runClearAllTags(BuildContext context, List<VFile> files) async {
     if (err.isEmpty) {
       done++;
       repo.invalidate(f);
+      touched.add(f);
     } else {
       failed++;
     }
+  }
+  // 清标签只清了字段，没动封面；但 invalidate 会把封面标记一起清掉，列表里
+  // 这些歌会连封面一起变空白。补读一次恢复封面的真实状态（标签读回空、封面还在）。
+  if (touched.isNotEmpty) {
+    await repo.loadMeta(only: touched);
   }
   if (!context.mounted) return;
   moSnack(context, '已清除 $done 首${failed > 0 ? '，失败 $failed 首' : ''}',
