@@ -226,6 +226,12 @@ class TagTransaction {
     File? backup;
     _Backup? batchItem; // 非空 = 备份要留到批结束（整批回滚用），不能随手删
     String entryId = '';
+    // 原文件有没有「已经开始被写」：真正写原文件那一步之前置上。
+    // 只有它没置上，才允许对外说「原文件未修改」；置上了，异常时就必须
+    // 先拿备份还原，再把「已用备份恢复」如实报出去。
+    bool wroteOriginal = false;
+    // 还原也失败时（比如盘真的满了）置上：备份不能删，留着现场。
+    bool keepBackup = false;
     try {
       // 1. 副本
       tmp = await _tempFile(ext);
@@ -268,6 +274,10 @@ class TagTransaction {
       }
 
       // 5. 写回
+      //    从这一刻起原文件「已经开始被写」：writeFromLocal 可能写一半就抛
+      //    （硬盘满 / U 盘拔了 / 文件被占），所以标记要放在调用**之前**置上，
+      //    不能等它成功返回才置——那样写一半抛异常时又会谎报「没动过」。
+      wroteOriginal = true;
       await store.writeFromLocal(f, tmp);
 
       // 6. 回读校验，失败则恢复备份
@@ -335,20 +345,34 @@ class TagTransaction {
       batchItem?.entryId = entryId;
       return '';
     } catch (e) {
-      // 异常路径下这份备份没用（要么没写成功、要么已经就地恢复过），
-      // 交给批回收即可，别把它留在批里当「可回滚」的证据
+      // 原文件可能已经被写坏：先拿备份还原，别谎报「没动过」。
+      if (wroteOriginal && backup != null) {
+        try {
+          await store.writeFromLocal(f, backup);
+          f.clearMeta();
+        } catch (_) {
+          // 还原也失败（比如盘真的满了）：备份不能删，留现场给用户自己救。
+          keepBackup = true;
+        }
+      }
+      // 异常路径下这份备份不再参与整批回滚（要么已还原、要么保留作现场），
+      // 别把它留在批里当「可回滚」的证据
       if (batchItem != null) {
         _batch?.items.remove(batchItem);
         batchItem = null;
       }
-      return '写入失败（原文件未修改）：$e';
+      return wroteOriginal
+          ? '写入失败，已用备份恢复：$e'
+          : '写入失败（原文件未修改）：$e';
     } finally {
       if (tmp != null) {
         try {
           await tmp.delete();
         } catch (_) {}
       }
-      if (backup != null && batchItem == null) {
+      // 备份只有在「确实没动过原文件」或「已经从备份恢复成功」之后才能删；
+      // 恢复失败（keepBackup）或还在批里（batchItem）都留着。
+      if (backup != null && batchItem == null && !keepBackup) {
         try {
           await backup.delete();
         } catch (_) {}

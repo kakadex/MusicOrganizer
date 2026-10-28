@@ -27,6 +27,20 @@ class _CorruptingStore extends DesktopFileStore {
   }
 }
 
+/// 「写原文件这一步抛异常」注入（硬盘满 / U 盘被拔 / 文件被占用）。
+class _ThrowingStore extends DesktopFileStore {
+  bool throwOnNextWrite = false;
+
+  @override
+  Future<void> writeFromLocal(VFile f, File src) async {
+    if (throwOnNextWrite) {
+      throwOnNextWrite = false;
+      throw const FileSystemException('磁盘已满');
+    }
+    await super.writeFromLocal(f, src);
+  }
+}
+
 /// 最小 M4A（moov 在尾），供 track 非法值的副本校验失败测试。
 Uint8List _synthMp4() {
   final Uint8List ftyp =
@@ -191,6 +205,45 @@ void main() {
     expect(ok, 0);
     expect(bad, 0);
     expect(TagIO.readLocal(await f.readAsBytes(), '.mp3').get('title'), '写入值');
+  });
+
+  test('写原文件抛异常：先恢复备份，报错不再说「原文件未修改」', () async {
+    final File f = mp3('throw.mp3');
+    final VFile v = (await store.stat(f.path))!;
+    final _ThrowingStore throwing = _ThrowingStore();
+    throwing.addRoot(dir.path);
+    final Directory clean = await Directory.systemTemp.createTemp('mo_clean_');
+    final TagTransaction t =
+        TagTransaction(store: throwing, journal: journal, tempDir: clean);
+
+    // 先写一笔正常内容，把「写之前」的字节定下来
+    expect(await t.apply(v, <String, String>{'title': '原标题'}), '');
+    final Uint8List beforeBytes = await f.readAsBytes();
+
+    // 这次「写原文件」这一步会抛异常
+    throwing.throwOnNextWrite = true;
+    final String err = await t.apply(v, <String, String>{'title': '新标题'});
+
+    expect(err, contains('已用备份恢复'), reason: '要如实说「已恢复」，不能说没动过');
+    expect(err, isNot(contains('原文件未修改')));
+    final Uint8List afterBytes = await f.readAsBytes();
+    expect(afterBytes.length, beforeBytes.length);
+    bool same = true;
+    for (int i = 0; i < beforeBytes.length; i++) {
+      if (beforeBytes[i] != afterBytes[i]) {
+        same = false;
+        break;
+      }
+    }
+    expect(same, isTrue, reason: '原文件必须逐字节还原');
+    final List<String> leftover = clean
+        .listSync()
+        .whereType<File>()
+        .map((File e) => e.path.split(RegExp(r'[/\\]')).last)
+        .where((String n) => n.startsWith('mo_tx_'))
+        .toList();
+    expect(leftover, isEmpty, reason: '备份临时文件必须被清理');
+    await clean.delete(recursive: true);
   });
 
   test('journal 2000 条回绕', () async {
