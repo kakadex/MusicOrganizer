@@ -42,6 +42,32 @@ abstract final class DesktopUpdater {
   static bool hasVerification(int size, String sha256) =>
       size > 0 || sha256.trim().isNotEmpty;
 
+  /// 校验信息有多完整：0 = 都没有，1 = 只有一样，2 = 大小与哈希都有。
+  static int verificationLevel(int size, String sha256) {
+    final bool hasSize = size > 0;
+    final bool hasSha = sha256.trim().isNotEmpty;
+    if (hasSize && hasSha) return 2;
+    if (hasSize || hasSha) return 1;
+    return 0;
+  }
+
+  /// 这份清单需要用户先确认的提示文案；完整校验（不用问）时返回 null。
+  ///
+  /// 只给一项时仍要校验能给的那项，但**不能默默放行**：得告诉用户「内容没验过」，
+  /// 让他自己决定装不装。两样都没有时更要说清楚「完全没校验」。
+  static String? confirmTextFor(int size, String sha256) {
+    switch (verificationLevel(size, sha256)) {
+      case 2:
+        return null;
+      case 1:
+        return size > 0
+            ? '本次只校验了大小，未校验内容，是否继续安装？'
+            : '本次只校验了内容指纹（SHA-256），未校验大小，是否继续安装？';
+      default:
+        return '本次未校验安装包（清单没提供大小与 SHA-256），是否继续安装？';
+    }
+  }
+
   /// 当前平台能不能自动更新（只有 Windows / Linux / macOS 桌面端可以）。
   static bool get supported =>
       Platform.isWindows || Platform.isLinux || Platform.isMacOS;

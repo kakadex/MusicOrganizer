@@ -39,6 +39,26 @@ void main() {
     expect(DesktopUpdater.hasVerification(pkg.length, goodSha), isTrue);
   });
 
+  test('校验提示按清单完整度分三种（都要先问用户）', () {
+    // 大小 + 哈希都有：完整校验，不用问
+    expect(DesktopUpdater.confirmTextFor(100, 'abc'), isNull);
+    // 只有大小
+    final String? onlySize = DesktopUpdater.confirmTextFor(100, '');
+    // 只有哈希
+    final String? onlySha = DesktopUpdater.confirmTextFor(0, 'abc');
+    // 都没有
+    final String? none = DesktopUpdater.confirmTextFor(0, '');
+
+    expect(onlySize, isNotNull);
+    expect(onlySize, contains('只校验了大小'));
+    expect(onlySha, isNotNull);
+    expect(onlySha, contains('SHA-256'));
+    expect(none, isNotNull);
+    expect(none, contains('未校验安装包'));
+    // 三种提示各不相同
+    expect(<String?>{onlySize, onlySha, none}.length, 3);
+  });
+
   test('更新脚本复制失败时不重启不删自己（J）', () {
     final String bat = DesktopUpdater.windowsApplyScript('/from', '/to');
     expect(bat, contains('xcopy'));

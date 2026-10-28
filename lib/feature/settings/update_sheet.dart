@@ -294,9 +294,12 @@ class _UpdateSheetState extends State<UpdateSheet> {
       final String sep = Platform.pathSeparator;
       final File zip = File('$tmp${sep}mo-update-${r.version}.zip');
       await zip.writeAsBytes(bytes, flush: true);
-      // 解压之前先校验安装包：大小 + SHA256 都要跟清单对上，防中途被换包 /
-      // 下载不完整。清单没给这两个值（老版本）时放行，但记一笔「未校验」。
-      if (DesktopUpdater.hasVerification(r.zipSize, r.zipSha256)) {
+      // 解压之前先校验安装包：清单给了哪项就校验哪项，不符直接拒绝。
+      // 只有「大小 + SHA-256 都有」才算完整校验；只给一项或都没给时，
+      // 要把「哪项没验」说清楚，让用户自己决定装不装。
+      final int level =
+          DesktopUpdater.verificationLevel(r.zipSize, r.zipSha256);
+      if (level > 0) {
         final String vErr = DesktopUpdater.verifyZip(bytes,
             expectedSize: r.zipSize, expectedSha256: r.zipSha256);
         if (vErr.isNotEmpty) {
@@ -310,8 +313,42 @@ class _UpdateSheetState extends State<UpdateSheet> {
           });
           return;
         }
+      }
+      final String? ask =
+          DesktopUpdater.confirmTextFor(r.zipSize, r.zipSha256);
+      if (ask != null) {
+        if (!mounted) return;
+        final bool? go = await showDialog<bool>(
+          context: context,
+          builder: (BuildContext ctx) => AlertDialog(
+            title: const Text('安装包校验不完整'),
+            content: Text(ask),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('先不装'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: const Text('继续安装'),
+              ),
+            ],
+          ),
+        );
+        if (go != true) {
+          try {
+            await zip.delete();
+          } catch (_) {}
+          if (!mounted) return;
+          setState(() {
+            _busy = false;
+            _error = '已取消安装（安装包校验不完整）';
+          });
+          return;
+        }
+        Log.warn('桌面更新：$ask（用户选择继续）');
       } else {
-        Log.warn('桌面更新：清单里没有 zipSize / zipSha256，本次未校验安装包');
+        Log.info('桌面更新：安装包已完整校验（大小 + SHA-256）');
       }
       stage = DesktopUpdater.stagingDir(r.version);
       final String err = await DesktopUpdater.extract(zip.path, stage);
