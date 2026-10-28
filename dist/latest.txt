@@ -1,11 +1,11 @@
-version=0.2.36
-tag=v0.2.36
+version=0.2.37
+tag=v0.2.37
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.36/MusicOrganizer-0.2.36-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.37/MusicOrganizer-0.2.37-android-arm64-v8a.apk
 size=19805965
-sha256=d72c5a27367848a2664667d512b3a79baf3a4bcd0a0d893e7c256cbe0a024ebd
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.36/MusicOrganizer-0.2.36-windows-x64.zip
-zip_size=12573628
-zip_sha256=807ea40a565612e1c5e7586488f3b1e67501b51181e5a7763d9a4363c1bcc6c9
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.36
-summary=修复部分 MP3 无法删除标签的问题。
+sha256=3893863180ff106c1dceb1bdc78780aa59711f21727f4d40f27160bdf95c8b28
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.37/MusicOrganizer-0.2.37-windows-x64.zip
+zip_size=12572375
+zip_sha256=4490914aec94d36e3e4ba47e34cecf0bdee96eeccfebb46941c9db25a0b949f1
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.37
+summary=删完标签列表自动刷新；扫描与整理不再互串状态；目录规则精简为两套。
