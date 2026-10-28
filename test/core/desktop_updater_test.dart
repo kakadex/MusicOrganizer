@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -57,6 +58,43 @@ void main() {
     expect(none, contains('未校验安装包'));
     // 三种提示各不相同
     expect(<String?>{onlySize, onlySha, none}.length, 3);
+  });
+
+  test('解压：命令不存在时说清「既没有 unzip 也没有 bsdtar」', () async {
+    int unzipCalls = 0;
+    int bsdtarCalls = 0;
+    DesktopUpdater.debugRun = (String exe, List<String> args) async {
+      if (exe == 'unzip') {
+        unzipCalls++;
+        throw ProcessException('unzip', args, 'No such file', 2);
+      }
+      bsdtarCalls++;
+      throw ProcessException('bsdtar', args, 'No such file', 2);
+    };
+    final Directory dir = Directory.systemTemp.createTempSync('mo_unzip_');
+    final String err = await DesktopUpdater.extractWithTools('x.zip', dir.path);
+    expect(unzipCalls, 1, reason: '先试 unzip');
+    expect(bsdtarCalls, 1, reason: 'unzip 不存在要继续试 bsdtar');
+    expect(err, contains('既没有 unzip 也没有 bsdtar'));
+    expect(err, contains('安装'));
+    DesktopUpdater.debugRun = null;
+    dir.deleteSync(recursive: true);
+  });
+
+  test('解压：工具在但解压失败时带工具错误原文，不说「找不到工具」', () async {
+    DesktopUpdater.debugRun = (String exe, List<String> args) async {
+      if (exe == 'unzip') {
+        throw ProcessException('unzip', args, 'No such file', 2);
+      }
+      // bsdtar 在，但包是坏的
+      return ProcessResult(1, 1, '', 'bsdtar: Unrecognized archive format');
+    };
+    final Directory dir = Directory.systemTemp.createTempSync('mo_unzip2_');
+    final String err = await DesktopUpdater.extractWithTools('bad.zip', dir.path);
+    expect(err, contains('Unrecognized archive format'));
+    expect(err, isNot(contains('既没有')));
+    DesktopUpdater.debugRun = null;
+    dir.deleteSync(recursive: true);
   });
 
   test('更新脚本复制失败时不重启不删自己（J）', () {

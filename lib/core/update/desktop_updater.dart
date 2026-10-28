@@ -91,10 +91,17 @@ abstract final class DesktopUpdater {
       '${Directory.systemTemp.path}${Platform.pathSeparator}'
       'mo-update-${version.replaceAll(RegExp(r'[^0-9A-Za-z.-]'), '_')}';
 
+  /// 测试用：替换真实的进程调用，好在单测里模拟「工具不存在 / 工具报错」。
+  static Future<ProcessResult> Function(String exe, List<String> args)?
+      debugRun;
+
+  static Future<ProcessResult> _run(String exe, List<String> args) =>
+      (debugRun ?? Process.run)(exe, args);
+
   /// 解压：优先用系统自带的解压能力，都没有就返回失败（交给调用方提示手动解压）。
   ///
   /// Windows 用 PowerShell 的 Expand-Archive（系统自带、不用装东西）；
-  /// 类 Unix 依次试 unzip 与 tar（macOS 有 tar 不一定有 unzip）。
+  /// 类 Unix 依次试 unzip 与 bsdtar（tar 解不了 zip，兜底靠 bsdtar）。
   static Future<String> extract(String zipPath, String dest) async {
     final Directory dir = Directory(dest);
     try {
@@ -103,34 +110,54 @@ abstract final class DesktopUpdater {
       return '建不了解压目录：$e';
     }
     try {
-      final ProcessResult r;
       if (Platform.isWindows) {
-        r = await Process.run('powershell', <String>[
+        final ProcessResult r = await _run('powershell', <String>[
           '-NoProfile',
           '-Command',
           'Expand-Archive -Force -LiteralPath "$zipPath" -DestinationPath "$dest"',
         ]);
-      } else {
-        ProcessResult first = await Process.run('unzip', <String>['-oq', zipPath, '-d', dest]);
-        if (first.exitCode != 0) {
-          // tar 解不了 zip，兜底要先试 bsdtar（它既能解 tar 也能解 zip）
-          final ProcessResult bsdtar =
-              await Process.run('bsdtar', <String>['-xf', zipPath, '-C', dest]);
-          if (bsdtar.exitCode != 0) {
-            return '解压失败：找不到 unzip / bsdtar，请先安装 unzip 再更新';
-          }
-          first = bsdtar;
+        if (r.exitCode != 0) {
+          final String why = '${r.stderr}'.trim();
+          return '解压失败${why.isEmpty ? '' : '：$why'}';
         }
-        r = first;
-      }
-      if (r.exitCode != 0) {
-        final String why = '${r.stderr}'.trim();
-        return '解压失败${why.isEmpty ? '' : '：$why'}';
+      } else {
+        final String err = await extractWithTools(zipPath, dest);
+        if (err.isNotEmpty) return err;
       }
     } catch (e) {
       return '解压失败：$e';
     }
     return '';
+  }
+
+  /// 类 Unix 的解压（unzip → bsdtar）。抽出来是为了能在任意平台上单测。
+  ///
+  /// 关键区分：**命令不存在**（ProcessException）与**工具在但解压失败**
+  /// （退出码非 0）是两回事——前者继续试下一个工具，后者要把工具自己的
+  /// 错误原文带出去，否则用户会被误导去装一个已经装好的工具。
+  static Future<String> extractWithTools(String zipPath, String dest) async {
+    final List<String> missing = <String>[];
+    final List<String> failed = <String>[];
+    for (final List<String> cmd in <List<String>>[
+      <String>['unzip', '-oq', zipPath, '-d', dest],
+      <String>['bsdtar', '-xf', zipPath, '-C', dest],
+    ]) {
+      try {
+        final ProcessResult one = await _run(cmd.first, cmd.sublist(1));
+        if (one.exitCode == 0) return '';
+        final String why = '${one.stderr}'.trim();
+        failed.add(
+            '${cmd.first}：${why.isEmpty ? '退出码 ${one.exitCode}' : why}');
+      } on ProcessException {
+        missing.add(cmd.first);
+      }
+    }
+    if (missing.length >= 2) {
+      return '解压失败：系统里既没有 unzip 也没有 bsdtar，'
+          '请先安装 unzip 后重试（Debian/Ubuntu：sudo apt install unzip；'
+          'Fedora：sudo dnf install unzip）';
+    }
+    return '解压失败：${failed.isEmpty ? '没有可用的解压工具' : failed.join('；')}';
   }
 
   /// 生成更新脚本：等本程序退出 → 把新版本拷进安装目录 → 重启 → 自删。
