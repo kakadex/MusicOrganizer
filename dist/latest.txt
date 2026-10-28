@@ -1,11 +1,11 @@
-version=0.2.29
-tag=v0.2.29
+version=0.2.30
+tag=v0.2.30
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.29/MusicOrganizer-0.2.29-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.30/MusicOrganizer-0.2.30-android-arm64-v8a.apk
 size=19805965
-sha256=a9276f1540cfc7e490f4cc57d34cb68b328d518372710cd06ca2a7a526c9c038
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.29/MusicOrganizer-0.2.29-windows-x64.zip
-zip_size=12564848
-zip_sha256=327ed9448245c7beb048f8c93b7c603f7d83cb5b2d46fd95fe07e2b631747451
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.29
-summary=修复批量写标签后列表封面误消失的问题。
+sha256=e5d9c402539747c138912f0ba11c56df7b7281185151b6489403741ee0063539
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.30/MusicOrganizer-0.2.30-windows-x64.zip
+zip_size=12564843
+zip_sha256=509634f73f073abc2199ca9a61b1ffea7e1d4aeaf1435b051fc9d3cd9b3f9343
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.30
+summary=修复 FLAC 改注释残留两套字段、清空清不掉的问题。
