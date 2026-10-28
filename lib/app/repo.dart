@@ -836,11 +836,13 @@ class Repo extends ChangeNotifier {
   }) async {
     final FileStore? st = store;
     if (st == null) return;
-    // 正在加载时**等待**而不是直接返回：否则并发刷新会以为加载完了，
-    // 列表里只剩文件名、元数据一直不出现
+    // 正在加载时**等它跑完再重扫一遍 todo**，而不是直接返回：这一轮加载期间
+    // 可能有文件被写盘 invalidate（元数据清了但没进这一轮的 todo），直接返回
+    // 会让它们永远不被补读，列表里只剩文件名。
     if (_metaLoading) {
       _metaWaiters.add(Completer<void>());
       await _metaWaiters.last.future;
+      await loadMeta(only: only, cancel: cancel, onProgress: onProgress);
       return;
     }
     final List<VFile> todo = (only ?? files)
