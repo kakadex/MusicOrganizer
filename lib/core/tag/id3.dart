@@ -248,11 +248,12 @@ abstract final class Id3 {
     if (id == 'COMM' || id == 'USLT') {
       tags.put(field, _decodeComm(data));
     } else if (id == 'TPE2') {
+      // TPE2 是「专辑艺术家」，只填 albumArtist，**不再兜底填 artist**：
+      // 否则用户清空歌手（写空 TPE1）后，读回来又被 TPE2 顶上，永远清不掉。
+      // 只有 TPE2、没有 TPE1 的老文件，歌手会显示为空，但这是规范正确的
+      // 结果（合辑里 TPE1 才是每首歌的歌手）。
       final String v = _decodeText(data);
       if (tags.get('albumArtist').isEmpty) tags.put('albumArtist', v);
-      // 兼容：不少文件只写了 TPE2、TPE1 空着。artist 空时用 TPE2 兜底，
-      // 免得改了映射之后这批文件突然「没有歌手」
-      if (tags.get('artist').isEmpty) tags.put('artist', v);
     } else {
       final String v = _decodeText(data);
       if (v.isNotEmpty) tags.put(field, v);

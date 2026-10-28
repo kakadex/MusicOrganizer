@@ -28,6 +28,21 @@ void main() {
     expect(Id3.read(mp3).get('artist'), '周杰伦');
   });
 
+  test('清空歌手后读回仍为空（专辑艺术家不该顶上）', () {
+    Uint8List mp3 = mkMp3();
+    mp3 = Id3.rewrite(mp3, <String, String>{
+      'artist': '周杰伦',
+      'albumArtist': '群星',
+    });
+    expect(Id3.read(mp3).get('artist'), '周杰伦');
+    expect(Id3.read(mp3).get('albumArtist'), '群星');
+
+    // 清空歌手（写空 TPE1）：读回来 artist 必须还是空，不能被 TPE2 填回
+    mp3 = Id3.rewrite(mp3, <String, String>{'artist': ''});
+    expect(Id3.read(mp3).get('artist'), '');
+    expect(Id3.read(mp3).get('albumArtist'), '群星');
+  });
+
   test('ID3v2.3 首次写入全字段', () {
     Uint8List mp3 = mkMp3();
     mp3 = Id3.rewrite(mp3, <String, String>{
