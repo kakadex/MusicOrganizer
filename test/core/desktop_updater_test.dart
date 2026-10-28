@@ -38,4 +38,17 @@ void main() {
     expect(DesktopUpdater.hasVerification(0, ''), isFalse);
     expect(DesktopUpdater.hasVerification(pkg.length, goodSha), isTrue);
   });
+
+  test('更新脚本复制失败时不重启不删自己（J）', () {
+    final String bat = DesktopUpdater.windowsApplyScript('/from', '/to');
+    expect(bat, contains('xcopy'));
+    expect(bat, contains('errorlevel'));
+    expect(bat, contains('exit /b 1'));
+    expect(bat, contains('mo-update-failed'));
+
+    final String sh = DesktopUpdater.posixApplyScript('/from', '/to');
+    expect(sh, contains('if ! cp'));
+    expect(sh, contains('exit 1'));
+    expect(sh, contains('mo-update-failed'));
+  });
 }

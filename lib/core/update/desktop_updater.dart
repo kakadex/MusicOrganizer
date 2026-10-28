@@ -87,7 +87,13 @@ abstract final class DesktopUpdater {
       } else {
         ProcessResult first = await Process.run('unzip', <String>['-oq', zipPath, '-d', dest]);
         if (first.exitCode != 0) {
-          first = await Process.run('tar', <String>['-xf', zipPath, '-C', dest]);
+          // tar 解不了 zip，兜底要先试 bsdtar（它既能解 tar 也能解 zip）
+          final ProcessResult bsdtar =
+              await Process.run('bsdtar', <String>['-xf', zipPath, '-C', dest]);
+          if (bsdtar.exitCode != 0) {
+            return '解压失败：找不到 unzip / bsdtar，请先安装 unzip 再更新';
+          }
+          first = bsdtar;
         }
         r = first;
       }
@@ -110,25 +116,11 @@ abstract final class DesktopUpdater {
     try {
       if (Platform.isWindows) {
         final File bat = File('$dir${sep}mo-apply-update.bat');
-        // 先等 2 秒：父进程退出、文件锁释放要一点时间，抢着拷会半途失败
-        await bat.writeAsString(
-            '@echo off\r\n'
-            'timeout /t 2 /nobreak >nul\r\n'
-            'xcopy /Y /E /I "$from\\*" "$to\\" >nul\r\n'
-            'start "" "$to\\$exeName"\r\n'
-            'del "%~f0"\r\n',
-            flush: true);
+        await bat.writeAsString(windowsApplyScript(from, to), flush: true);
         return bat.path;
       }
       final File sh = File('$dir${sep}mo-apply-update.sh');
-      await sh.writeAsString(
-          '#!/bin/sh\n'
-          'sleep 2\n'
-          'cp -Rf "$from/." "$to/"\n'
-          'chmod +x "$to/$exeName" 2>/dev/null\n'
-          'nohup "$to/$exeName" >/dev/null 2>&1 &\n'
-          'rm -f "\$0"\n',
-          flush: true);
+      await sh.writeAsString(posixApplyScript(from, to), flush: true);
       await Process.run('chmod', <String>['+x', sh.path]);
       return sh.path;
     } catch (e) {
@@ -136,6 +128,35 @@ abstract final class DesktopUpdater {
       return '';
     }
   }
+
+  /// Windows 更新脚本内容（纯函数，可单测）。
+  ///
+  /// 复制失败（[errorlevel] 非 0）就**不重启、不删自己**，把失败写到日志文件，
+  /// 否则用户只会看到「版本没变」却不知道是复制这一步挂了。
+  static String windowsApplyScript(String from, String to) =>
+      '@echo off\r\n'
+      'timeout /t 2 /nobreak >nul\r\n'
+      'xcopy /Y /E /I "$from\\*" "$to\\" >nul\r\n'
+      'if errorlevel 1 (\r\n'
+      '  echo 更新失败：复制文件出错 > "%TEMP%\\mo-update-failed.txt"\r\n'
+      '  exit /b 1\r\n'
+      ')\r\n'
+      'start "" "$to\\$exeName"\r\n'
+      'del "%~f0"\r\n';
+
+  /// 类 Unix 更新脚本内容（纯函数，可单测）。
+  ///
+  /// 复制失败就停在原地：不重启、不删自己，日志写到临时目录。
+  static String posixApplyScript(String from, String to) =>
+      '#!/bin/sh\n'
+      'sleep 2\n'
+      'if ! cp -Rf "$from/." "$to/"; then\n'
+      '  echo "update failed" > /tmp/mo-update-failed.txt\n'
+      '  exit 1\n'
+      'fi\n'
+      'chmod +x "$to/$exeName" 2>/dev/null\n'
+      'nohup "$to/$exeName" >/dev/null 2>&1 &\n'
+      'rm -f "\$0"\n';
 
   static String get exeName => appFileName;
 
