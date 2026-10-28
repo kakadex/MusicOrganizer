@@ -24,7 +24,44 @@ abstract final class NameTemplate {
   /// 占位符说明（界面里直接显示）。
   static String help() =>
       '可用占位符：{artist} 艺人、{title} 标题、{album} 专辑、{year} 年份、'
-      '{track} 音轨、{genre} 流派、{ext} 原扩展名。未知占位符按空处理。';
+      '{track} 音轨、{genre} 流派、{ext} 原扩展名。'
+      '音轨可指定位数，如 {track:3} → 007。未知占位符按空处理。';
+
+  /// 允许的占位符名（含 `{track:N}` 的位数写法）。
+  static const Set<String> tokens = <String>{
+    'artist', 'title', 'album', 'year', 'date', 'genre', 'track', 'ext',
+  };
+
+  /// 校验模板；合法返回 null，否则返回给人看的原因。
+  ///
+  /// 为什么必须在改名前校验：`{atrist}` 这种拼错会让渲染结果变成空串，
+  /// 用户看到的是「按模板拼不出名字」，根本猜不到是自己拼错了。
+  static String? validate(String? pattern) {
+    final String p = (pattern ?? '').trim();
+    if (p.isEmpty) return '模板不能为空';
+    if (!p.contains('{')) return '至少要有一个占位符，例如 {artist}';
+    final RegExp re = RegExp(r'\{([^{}]*)\}');
+    for (final RegExpMatch m in re.allMatches(p)) {
+      final String token = (m.group(1) ?? '').trim();
+      final List<String> parts = token.split(':');
+      final String name = parts.first.trim().toLowerCase();
+      if (name.isEmpty) return '占位符不能为空';
+      if (!tokens.contains(name)) return '不认识的占位符 {$name}';
+      if (parts.length > 2) return '{$token} 写法不对，只支持 {track:3} 这种';
+      if (parts.length == 2) {
+        final int? width = int.tryParse(parts[1].trim());
+        if (name != 'track') return '只有 {track} 可以指定位数';
+        if (width == null || width < 1 || width > 4) {
+          return '{track:$parts[1]} 的位数只能是 1~4';
+        }
+      }
+    }
+    // 去掉合法占位符后还剩花括号 → 括号没配对
+    if (p.replaceAll(re, '').contains('{') || p.replaceAll(re, '').contains('}')) {
+      return '占位符括号不配对';
+    }
+    return null;
+  }
 
   /// 由一条标签记录构造字段表。
   static Map<String, String> fields(Tags? tags) {
@@ -106,7 +143,15 @@ abstract final class NameTemplate {
   }
 
   static String _valueOf(String token, Map<String, String> f, String ext) {
-    switch (token) {
+    // 支持 {track:3}：位数只对音轨有意义（专辑号之类的字段还没纳入模型）
+    final List<String> parts = token.split(':');
+    final String name = parts.first.trim().toLowerCase();
+    if (name == 'track') {
+      final int width =
+          parts.length == 2 ? (int.tryParse(parts[1].trim()) ?? 2) : 2;
+      return padTrack(f['track'] ?? '', width.clamp(1, 4));
+    }
+    switch (name) {
       case 'artist':
         return f['artist'] ?? '';
       case 'title':
@@ -118,8 +163,6 @@ abstract final class NameTemplate {
         return f['year'] ?? '';
       case 'genre':
         return f['genre'] ?? '';
-      case 'track':
-        return padTrack(f['track'] ?? '');
       case 'ext':
         return ext;
       default:

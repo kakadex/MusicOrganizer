@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/repo.dart';
+import '../../app/repo_changes.dart';
 import '../../app/theme/palette.dart';
 import '../../app/ui_kit.dart';
 import '../../core/log/log.dart';
@@ -75,8 +76,10 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    // 只订阅「设置 + 目录」：曲库扫描进度不再带着设置页一起重建。
     return ListenableBuilder(
-      listenable: _repo,
+      listenable: _repo.changes
+          .of(<RepoDomain>[RepoDomain.settings, RepoDomain.root]),
       builder: (BuildContext context, Widget? _) => _body(context),
     );
   }

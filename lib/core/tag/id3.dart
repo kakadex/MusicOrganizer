@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import '../model/tags.dart';
+import 'ape.dart';
 import 'cover_art.dart';
 import 'tag_text.dart';
 
@@ -41,7 +42,107 @@ abstract final class Id3 {
   // 读取
   // ------------------------------------------------------------------
 
-  static Tags read(Uint8List data) => readAt(data, 0);
+  static Tags read(Uint8List data) {
+    final Tags tags = readAt(data, 0);
+    // MP3 常见「ID3v2 在头 + APEv2 在尾 + ID3v1 结尾」三套并存。readAt 只认 v2，
+    // v2 里没有的字段要依次回落到 APE、v1 —— 否则同一首歌在不同播放器里
+    // 显示成两个样子（读 v2 的显示新值，读 APE/v1 的显示旧值）。
+    _fillFromTail(tags, data);
+    return tags;
+  }
+
+  /// 用文件尾的 APEv2 / ID3v1 补空字段（只补空，不覆盖 v2 的值）。
+  static void _fillFromTail(Tags tags, Uint8List data) {
+    List<String> missing() => <String>[
+          for (final String k in <String>[...Tags.keys, Tags.lyrics])
+            if (tags.get(k).isEmpty) k,
+        ];
+    if (missing().isEmpty) return;
+    try {
+      final Tags ape = Ape.readTail(data);
+      for (final String k in missing()) {
+        final String v = ape.get(k);
+        if (v.isNotEmpty) tags.put(k, v);
+      }
+    } catch (_) {}
+    final Tags v1 = _readV1(data);
+    for (final String k in missing()) {
+      final String v = v1.get(k);
+      if (v.isNotEmpty) tags.put(k, v);
+    }
+  }
+
+  /// 读文件末尾 128 字节的 ID3v1（没有就返回空标签）。
+  static Tags _readV1(Uint8List data) {
+    final Tags tags = Tags();
+    final int base = data.length - 128;
+    if (base < 0) return tags;
+    if (data[base] != 0x54 || data[base + 1] != 0x41 || data[base + 2] != 0x47) {
+      return tags;
+    }
+    String field(int start, int length) {
+      final int end = start + length;
+      int last = start;
+      while (last < end && data[last] != 0) {
+        last++;
+      }
+      return String.fromCharCodes(data, start, last).trim();
+    }
+
+    tags.put('title', field(base + 3, 30));
+    tags.put('artist', field(base + 33, 30));
+    tags.put('album', field(base + 63, 30));
+    tags.put('year', field(base + 93, 4));
+    tags.put('comment', field(base + 97, 28));
+    return tags;
+  }
+
+  /// ID3v1 只有 Latin-1：写入值不是纯 ASCII 时宁可不碰它（写进去就是乱码）。
+  static bool _asciiOnly(String s) {
+    for (int i = 0; i < s.length; i++) {
+      if (s.codeUnitAt(i) > 0x7F) return false;
+    }
+    return true;
+  }
+
+  /// 同步文件尾的 ID3v1（只写 title / artist / album / year）。
+  ///
+  /// 为什么只写这四个：v1 的 comment 后 28 字节常被「音轨号」占用，
+  /// 覆盖会把音轨信息抹掉；其余字段本就已经过时，不值得为它冒风险。
+  static Uint8List _syncV1(Uint8List data, Map<String, String> merged) {
+    final int base = data.length - 128;
+    if (base < 0) return data;
+    if (data[base] != 0x54 || data[base + 1] != 0x41 || data[base + 2] != 0x47) {
+      return data;
+    }
+    final Uint8List out = Uint8List.fromList(data);
+    void put(int start, int length, String value) {
+      final String v = _asciiOnly(value) ? value : '';
+      if (!_asciiOnly(value) && value.isNotEmpty) return; // 非 ASCII：保留原值
+      final int end = start + length;
+      for (int i = start; i < end; i++) {
+        out[i] = 0;
+      }
+      final int n = v.length > length ? length : v.length;
+      for (int i = 0; i < n; i++) {
+        out[start + i] = v.codeUnitAt(i);
+      }
+    }
+
+    for (final MapEntry<String, String> e in merged.entries) {
+      switch (e.key) {
+        case 'title':
+          put(base + 3, 30, e.value);
+        case 'artist':
+          put(base + 33, 30, e.value);
+        case 'album':
+          put(base + 63, 30, e.value);
+        case 'year':
+          put(base + 93, 4, e.value);
+      }
+    }
+    return out;
+  }
 
   /// 从 [offset] 处开始解析 ID3v2（DSF 的 metadata 块在文件中部/尾部）。
   static Tags readAt(Uint8List data, int offset) {
@@ -360,7 +461,34 @@ abstract final class Id3 {
     out.add(Uint8List(pad));
     final int start = audioStart < data.length ? audioStart : data.length;
     out.add(Uint8List.sublistView(data, start));
-    return out.toBytes();
+    return _syncSiblings(out.toBytes(), data, values, cover);
+  }
+
+  /// 把写入结果里**同时存在的** APEv2 / ID3v1 一起更新。
+  ///
+  /// 规则（写进代码也写进注释，避免以后又改回去）：
+  /// - 文件尾有 APEv2：同字段一并写入（MP3tag、foobar 这类工具创建的 MP3
+  ///   常常两套并存，只改 ID3 会让别的播放器一直显示旧值）；
+  /// - 有 ID3v1 且新值是纯 ASCII：同步 title / artist / album / year；
+  ///   非 ASCII 不动它（v1 只有 Latin-1，写中文必乱码）；
+  /// - 两套都没有：什么也不做，不凭空给用户加标签。
+  static Uint8List _syncSiblings(Uint8List bytes, Uint8List original,
+      Map<String, String> values, Uint8List? cover) {
+    Uint8List out = bytes;
+    try {
+      if (Ape.hasTailTag(out)) {
+        out = Ape.rewriteTail(out, values, cover: cover);
+      }
+    } catch (_) {}
+    try {
+      final Tags current = read(original);
+      final Map<String, String> merged = <String, String>{
+        for (final String k in <String>[...Tags.keys, Tags.lyrics])
+          k: values.containsKey(k) ? values[k]!.trim() : current.get(k),
+      };
+      out = _syncV1(out, merged);
+    } catch (_) {}
+    return out;
   }
 
   static Uint8List _buildFrames(int version, Map<String, String> values,

@@ -57,6 +57,9 @@ class Tags {
   /// 拷贝成独立 Map。
   Map<String, String> toMap() => Map<String, String>.of(_values);
 
+  /// 只读视图（缓存估算内存占用时用，避免每次 toMap 复制一份）。
+  Map<String, String> get values => _values;
+
   /// 深拷贝（多个 VFile 间不共享同一个可变对象）。
   Tags copy() {
     final Tags t = Tags();

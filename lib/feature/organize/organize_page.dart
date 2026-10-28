@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/repo.dart';
+import '../../app/repo_changes.dart';
 import '../../app/ui_kit.dart';
 import '../../core/cleanup/cleaner.dart';
 import '../../core/cleanup/junk.dart';
@@ -50,9 +51,10 @@ class _OrganizePageState extends State<OrganizePage> {
   @override
   Widget build(BuildContext context) {
     _scheduleJunkScan();
-    // 曲库页授权 / 扫描完成后要立刻反映到这里，所以页面自己监听 Repo。
+    // 只订阅「曲目 + 目录」两域：设置项变化不该让整理页整页重建。
     return ListenableBuilder(
-      listenable: _repo,
+      listenable: _repo.changes.of(
+          <RepoDomain>[RepoDomain.library, RepoDomain.root]),
       builder: (BuildContext context, Widget? _) => _body(context),
     );
   }

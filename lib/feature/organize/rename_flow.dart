@@ -14,6 +14,33 @@ import '../../core/model/vfile.dart';
 import '../../core/tx/write_preview.dart';
 import '../common/write_confirm_sheet.dart';
 
+/// 自定义模板输入框下方的实时提示：合法就显示「样例 → 新名」，不合法就说清原因。
+Widget _templateHint(BuildContext context, String raw, VFile sample) {
+  final String text = raw.trim();
+  if (text.isEmpty) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 0, MoKit.pagePad, 4),
+      child: Text('在下面输入模板后这里会显示改名效果',
+          style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.faint(context))),
+    );
+  }
+  final String? err = NameTemplate.validate(text);
+  final String line = err ??
+      NameTemplate.render(text, NameTemplate.fields(sample.cachedTags), sample.ext());
+  final bool bad = err != null;
+  return Padding(
+    padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 0, MoKit.pagePad, 6),
+    child: Text(
+      bad ? err : '样例：${sample.name} → ${line.isEmpty ? '（拼不出名字，检查字段是否为空）' : line}',
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+          fontSize: MoKit.fsCaption,
+          color: bad ? MoKit.err(context) : MoKit.sub(context)),
+    ),
+  );
+}
+
 /// 打开改名流程。[files] 是要改名的文件。
 Future<void> runRenameFlow(BuildContext context, List<VFile> files) async {
   if (files.isEmpty) return;
@@ -24,7 +51,14 @@ Future<void> runRenameFlow(BuildContext context, List<VFile> files) async {
     return;
   }
   final TextEditingController custom = TextEditingController();
+  // 输入框内容单独做成可监听值：底栏按钮要跟着「模板是否合法」实时变灰
+  final ValueNotifier<String> typed = ValueNotifier<String>('');
+  custom.addListener(() => typed.value = custom.text);
   String? pattern; // null = 用清理规则
+  // 预览拿第一个有标签的文件算，最贴近用户看到的第一个结果
+  final VFile sample = files.firstWhere(
+      (VFile f) => f.cachedTags?.anyValue() ?? false,
+      orElse: () => files.first);
   final bool? picked = await showMoSheet<bool>(
     context,
     title: '文件名清理（${files.length} 个文件）',
@@ -46,6 +80,8 @@ Future<void> runRenameFlow(BuildContext context, List<VFile> files) async {
       for (final String p in NameTemplate.presets)
         MoTile(
           title: p,
+          subtitle: NameTemplate.render(
+              p, NameTemplate.fields(sample.cachedTags), sample.ext()),
           onTap: () {
             pattern = p;
             Navigator.of(context).pop(true);
@@ -62,6 +98,11 @@ Future<void> runRenameFlow(BuildContext context, List<VFile> files) async {
           ),
         ),
       ),
+      // 边输边看：拼错了当场提示，不用等出计划才发现「拼不出名字」
+      ValueListenableBuilder<String>(
+        valueListenable: typed,
+        builder: (BuildContext c, String v, Widget? _) => _templateHint(c, v, sample),
+      ),
       Padding(
         padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 0, MoKit.pagePad, 4),
         child: Text(NameTemplate.help(),
@@ -69,16 +110,24 @@ Future<void> runRenameFlow(BuildContext context, List<VFile> files) async {
       ),
     ],
     // 固定底栏：模板选项再多也不会把确认按钮顶出屏幕
-    footer: Builder(
-      builder: (BuildContext fctx) => SizedBox(
-        width: double.infinity,
-        child: MoButton('用这个模板', primary: false, onPressed: () {
-          pattern = custom.text.trim();
-          Navigator.of(fctx).pop(true);
-        }),
-      ),
+    footer: ValueListenableBuilder<String>(
+      valueListenable: typed,
+      builder: (BuildContext fctx, String v, Widget? _) {
+        final String text = v.trim();
+        final bool ok = text.isNotEmpty && NameTemplate.validate(text) == null;
+        return SizedBox(
+          width: double.infinity,
+          child: MoButton('用这个模板', primary: false, onPressed: ok
+              ? () {
+                  pattern = text;
+                  Navigator.of(fctx).pop(true);
+                }
+              : null),
+        );
+      },
     ),
   );
+  typed.dispose();
   custom.dispose();
   if (picked != true) return;
   if (!context.mounted) return;

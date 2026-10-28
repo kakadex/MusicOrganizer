@@ -104,6 +104,20 @@ abstract final class LyricPick {
 
   /// 同名歌词文件名（与音频同目录、同主名）。
   static String lrcName(VFile f) => '${f.stem()}.lrc';
+
+  /// 预览用的短摘要：前 [maxLines] 行 + 总行数。
+  ///
+  /// 确认面板与候选列表都只给「够判断是不是这首歌」的信息，不铺整篇歌词。
+  static String brief(String text, {int maxLines = 2}) {
+    final String t = text.trim();
+    if (t.isEmpty) return '';
+    final List<String> lines =
+        t.split('\n').map((String s) => s.trim()).where((String s) => s.isNotEmpty).toList();
+    if (lines.isEmpty) return '';
+    final List<String> head = lines.take(maxLines).toList();
+    final String joined = head.join(' / ');
+    return lines.length <= maxLines ? joined : '$joined …（共 ${lines.length} 行）';
+  }
 }
 
 /// 一首歌 + 选中的歌词（确认面板与写盘队列共用）。

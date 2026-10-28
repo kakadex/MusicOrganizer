@@ -11,6 +11,7 @@ library;
 
 import 'dart:typed_data';
 
+import '../concurrency.dart';
 import '../fs/file_store.dart';
 import '../model/cancel_token.dart';
 import '../model/progress.dart';
@@ -59,12 +60,30 @@ abstract final class Scanner {
   /// 目录深度上限，防御符号链接环之类的异常深树。
   static const int maxDepth = 64;
 
-  /// 缓存键里最多留多少个条目，超了整体清空（避免长期运行无限增长）。
+  /// 缓存键里最多留多少个条目（与字节上限共同生效，取先到者）。
   static const int maxCacheEntries = 2048;
 
-  static final Map<String, Tags> _tagCache = <String, Tags>{};
+  /// 标签缓存的内存天花板：歌词 / 注释这类长文本很容易把缓存撑到几十 MB。
+  static const int maxCacheBytes = 8 * 1024 * 1024;
+
+  /// 同一时刻最多几个文件在读标签。
+  ///
+  /// 批量任务、封面预览、编辑器可能同时在读，各入口各按自己的并发跑，叠加
+  /// 起来就是几十个文件一起读 —— 闸门放在这里，任何调用方都压不到内存。
+  static const int maxConcurrentReads = 4;
+
+  static final ConcurrencyGate _readGate = ConcurrencyGate(maxConcurrentReads);
+
+  static final BoundedMap<String, Tags> _tagCache = BoundedMap<String, Tags>(
+    maxEntries: maxCacheEntries,
+    maxBytes: maxCacheBytes,
+    sizeOf: (Tags t) => estimateTagsBytes(t.values),
+  );
   static final Map<String, bool> _coverCache = <String, bool>{};
   static final Set<String> _lyricsProbed = <String>{};
+
+  /// 探针集合也有天花板：长期运行不能无限增长。
+  static const int maxLyricsProbed = 4096;
 
   /// 遍历音乐文件（音频 + 歌词）；递归进非隐藏子目录。
   static Future<WalkResult> walkMusic(
@@ -231,14 +250,16 @@ abstract final class Scanner {
     Tags tags = Tags();
     try {
       final String ext = TagIO.extOf(f.name);
-      final Uint8List data = await loadForTags(st, f, ext);
+      // 闸门只包真正的读盘：命中缓存 / 索引缓存时不占名额，不会拖慢列表。
+      final Uint8List data =
+          await _readGate.run(() => loadForTags(st, f, ext));
       tags = TagIO.readLocal(data, ext);
     } catch (_) {
       tags = Tags();
     }
+    if (_lyricsProbed.length >= maxLyricsProbed) _lyricsProbed.clear();
     _lyricsProbed.add(key);
-    if (_tagCache.length > maxCacheEntries) _tagCache.clear();
-    _tagCache[key] = tags;
+    _tagCache.put(key, tags);
     return tags.copy();
   }
 

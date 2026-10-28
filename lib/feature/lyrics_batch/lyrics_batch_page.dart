@@ -1,7 +1,7 @@
 /// 批量歌词：多源聚合 → `offerScore` 排序取最优 → 确认后写内嵌歌词 / 同名 .lrc。
 ///
 /// 低置信（< 0.5）默认不勾选，避免把「同名不同版本」的歌词写进去；
-/// 写盘走 `TagTransaction`（lyrics 字段），.lrc 作为附带文件单独写。
+/// 写盘走 `TagTransaction`（lyrics 字段 + 同名 .lrc 一起进同一个事务）。
 library;
 
 import 'package:flutter/material.dart';
@@ -21,7 +21,7 @@ import '../../core/tag/tag_io.dart';
 import '../../core/task/task_center.dart';
 import '../../core/tx/write_preview.dart';
 import '../common/write_confirm_sheet.dart';
-import 'lyrics_lrc_writer.dart';
+import 'lyrics_candidate_sheet.dart';
 import 'lyrics_logic.dart';
 import 'lyrics_row_tile.dart';
 
@@ -134,7 +134,22 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
       onTap: row.choice == null
           ? null
           : () => setState(() => row.selected = !row.selected),
+      onSwitch: row.canSwitch ? () => _switchCandidate(row) : null,
     );
+  }
+
+  /// 换一条候选：选完保留「转简体 / 双语」开关，并自动勾选。
+  Future<void> _switchCandidate(LyricRow row) async {
+    final LyricChoice? picked =
+        await LyricCandidateSheet.show(context, row.candidates);
+    if (!mounted || picked == null) return;
+    setState(() {
+      picked.simplify = _simplify;
+      picked.bilingual = _bilingual;
+      row.choice = picked;
+      row.selected = true;
+      row.status = picked.low ? '低置信（手动选的）' : '已选中';
+    });
   }
 
   Widget _bottomBar() {
@@ -237,11 +252,15 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
           final LyricAggregateResult agg = await Aggregator.lyricCandidates(
               LocalQuery.lyric(q, album: tags.get('album')));
           netErrors.addAll(agg.errors);
-          final LyricChoice? best = LyricPick.best(q, agg.hits);
-          if (best != null) {
-            best.simplify = _simplify;
-            best.bilingual = _bilingual;
+          // 保留全部候选：机器只按「像不像同一首歌」打分，同名不同版本
+          // （现场版 / remix / 翻唱）经常挨在一起，让用户自己挑更靠谱。
+          final List<LyricChoice> ranked = LyricPick.rank(q, agg.hits);
+          for (final LyricChoice c in ranked) {
+            c.simplify = _simplify;
+            c.bilingual = _bilingual;
           }
+          final LyricChoice? best = ranked.isEmpty ? null : ranked.first;
+          row.candidates = ranked;
           row.choice = best;
           row.selected = best != null && !best.low;
           row.status = best == null
@@ -278,14 +297,7 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
   }
 
   /// 歌词预览只显示头一行 + 行数，避免把整篇歌词铺进确认面板。
-  static String _brief(String text) {
-    final String t = text.trim();
-    if (t.isEmpty) return '';
-    final List<String> lines =
-        t.split('\n').where((String s) => s.trim().isNotEmpty).toList();
-    final String head = lines.isEmpty ? '' : lines.first.trim();
-    return lines.length <= 1 ? head : '$head …（共 ${lines.length} 行）';
-  }
+  static String _brief(String text) => LyricPick.brief(text, maxLines: 1);
 
   Future<void> _confirmWrite() async {
     final List<LyricPlan> plans = <LyricPlan>[
@@ -375,24 +387,15 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
           plan.file,
           <String, String>{'lyrics': text},
           batchId: batchId,
+          // .lrc 一起进事务：写失败会连音频一起还原，撤销也一起退
+          lrcText: wantLrc ? text : null,
         );
         if (err.isEmpty) {
           inlineOk++;
           repo.invalidate(plan.file);
-          String lrcErr = '';
-          if (wantLrc) {
-            lrcErr = await LyricLrcWriter.write(store, plan.file, text);
-            if (lrcErr.isEmpty) {
-              lrcOk++;
-            } else {
-              failed++;
-            }
-          }
+          if (wantLrc) lrcOk++;
           _setStatus(
-              plan.file,
-              lrcErr.isNotEmpty
-                  ? '歌词已写入，.lrc 失败：$lrcErr'
-                  : (wantLrc ? '已写入内嵌歌词与 .lrc' : '已写入内嵌歌词'));
+              plan.file, wantLrc ? '已写入内嵌歌词与 .lrc' : '已写入内嵌歌词');
         } else {
           failed++;
           _setStatus(plan.file, '写入失败：$err');

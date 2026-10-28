@@ -216,6 +216,56 @@ void main() {
     expect(r.summary(), '成功 1 个 · 跳过 0 个 · 失败 0 个');
   });
 
+  test('执行：预览后文件被删掉 → 跳过并说明，不建目录', () async {
+    final VFile f = store.addFile('root/in', '示例歌名.mp3',
+        tags: tagsOf(artist: '示例歌手', album: '示例专辑'));
+    final List<MovePlan> plans =
+        Organizer.plan(<VFile>[f], rootDocId: 'root');
+    // 模拟「预览之后用户把文件删了 / 改名了」
+    store.docs.remove(f.docId);
+
+    final OrganizeResult r = await Organizer.execute(store, plans);
+    expect(r.ok, 0);
+    expect(r.skipped, 1);
+    expect(r.failed, 0);
+    expect(r.notes.single, contains('已不在原处'));
+    expect(store.createdDirs, 0, reason: '文件都没了就不该建目标目录');
+  });
+
+  test('执行：预览后文件大小 / 修改时间变了 → 跳过而不按旧计划搬', () async {
+    final VFile f = store.addFile('root/in', '示例歌名.mp3', size: 2048,
+        tags: tagsOf(artist: '示例歌手'));
+    final List<MovePlan> plans =
+        Organizer.plan(<VFile>[f], rootDocId: 'root');
+    // 同一 docId，但内容已经被别的程序改过（标签编辑器 / 转码工具）
+    store.docs[f.docId] = f.copyWith(size: 4096);
+    expect((await Organizer.execute(store, plans)).skipped, 1);
+
+    // 大小没变、只有修改时间变（原地重写标签）
+    final VFile g = store.addFile('root/in', '另一首.mp3', size: 2048,
+        tags: tagsOf(artist: '示例歌手'));
+    // 先给一个真实的修改时间，否则「计划里是 0」按规则不参与比较
+    store.docs[g.docId] = g.copyWith(lastModified: 1000);
+    final VFile snap = store.docs[g.docId]!;
+    final List<MovePlan> plans2 =
+        Organizer.plan(<VFile>[snap], rootDocId: 'root');
+    store.docs[g.docId] = snap.copyWith(lastModified: 1700000000);
+    final OrganizeResult r2 = await Organizer.execute(store, plans2);
+    expect(r2.skipped, 1);
+    expect(r2.notes.single, contains('预览之后文件有变化'));
+  });
+
+  test('执行：provider 拿不到大小 / 时间（都是 0）时不误判', () async {
+    final VFile f = store.addFile('root/in', '无元数据.mp3', size: 0,
+        tags: tagsOf(artist: '示例歌手'));
+    final List<MovePlan> plans =
+        Organizer.plan(<VFile>[f], rootDocId: 'root');
+    // stat 回来的仍是 0：不能因为「0 != 0」以外的原因把文件全跳过
+    final OrganizeResult r = await Organizer.execute(store, plans);
+    expect(r.ok, 1);
+    expect(r.skipped, 0);
+  });
+
   test('执行：目标已有同名文件则跳过且不覆盖', () async {
     store.addDir('root', '示例歌手');
     store.addDir('root/示例歌手', '示例专辑');

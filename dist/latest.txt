@@ -1,8 +1,8 @@
-version=0.2.17
-tag=v0.2.17
+version=0.2.18
+tag=v0.2.18
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.17/musicorganizer-arm64-v8a.apk
-size=19609141
-sha256=66cda84122ed92718673842ca50fcbe7dfb751335407bf0c15390baa1187d7d0
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.17
-summary=Windows 文件操作限定在曲库目录内并拒绝路径越界；启动失败不再白屏；M4A/FLAC 兼容与 SAF 错误区分；新增安全与隐私说明。
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.18/musicorganizer-arm64-v8a.apk
+size=19609181
+sha256=8d6c2380b42a5d3f768566916355a0f8594a8b9d85e264ff830c197a802243f4
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.18
+summary=歌词可换选候选；.lrc 与内嵌歌词同属一次写入；整理执行前核对文件；读标签限并发与内存；MP3 三套标签统一读写；改名模板可指定位数并实时预览。

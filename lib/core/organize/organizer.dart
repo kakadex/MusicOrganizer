@@ -19,7 +19,9 @@ import '../model/vfile.dart';
 /// 一次移动的计划条目。
 class MovePlan {
   MovePlan({required this.file, required this.rootDocId, required this.fromDir,
-      required this.targetPath, required this.reason, this.conflict = false});
+      required this.targetPath, required this.reason, this.conflict = false})
+      : size = file.size,
+        lastModified = file.lastModified;
 
   final VFile file;
   /// 授权根目录 docId：所有目标目录都从它往下逐段创建。
@@ -32,6 +34,13 @@ class MovePlan {
   final String reason;
   /// 批内已有同名文件要落到同一个目标目录 —— 冲突，默认不执行。
   final bool conflict;
+
+  /// 出计划时的文件大小与修改时间。
+  ///
+  /// 预览到执行之间用户可能切出去改了标签、或者播放器正在写文件：
+  /// 执行前拿这两个值与实际文件比对，不一致就跳过，别按旧计划动盘。
+  final int size;
+  final int lastModified;
 
   /// 目标文件名（整理不改名，沿用原名）。
   String get targetName => file.name;
@@ -154,6 +163,27 @@ abstract final class Organizer {
         continue;
       }
       try {
+        // 预览与执行之间文件可能已经不在了 / 被改过（用户切出去编辑了标签、
+        // 播放器正在写盘、别的程序重命名）。按快照核对一遍再动盘，
+        // 不一致就跳过并记账 —— 宁可少搬一个，也不按过期计划乱搬。
+        final VFile? now = await store.stat(p.file.docId);
+        if (now == null) {
+          result.skipped++;
+          result.notes.add('${p.file.name}：文件已不在原处，已跳过');
+          continue;
+        }
+        // 只比双方都拿得到的值：部分 provider 的 stat 会给 0（拿不到大小 / 时间），
+        // 拿 0 跟计划里的真实值比会把整批误判成「已变化」。
+        final bool sizeChanged =
+            p.size > 0 && now.size > 0 && now.size != p.size;
+        final bool timeChanged = p.lastModified > 0 &&
+            now.lastModified > 0 &&
+            now.lastModified != p.lastModified;
+        if (sizeChanged || timeChanged) {
+          result.skipped++;
+          result.notes.add('${p.file.name}：预览之后文件有变化，已跳过（可重新预览）');
+          continue;
+        }
         final VFile dir = await _ensureDir(store, p, index, names);
         if ((p.file.parentId ?? '') == dir.docId) {
           result.skipped++;

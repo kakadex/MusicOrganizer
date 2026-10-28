@@ -15,6 +15,7 @@ import 'dart:typed_data';
 
 import '../model/vfile.dart';
 import 'file_store.dart';
+import 'temp_name.dart';
 import 'tree_ref.dart';
 import 'tree_lookup.dart';
 
@@ -233,8 +234,7 @@ class DesktopFileStore implements FileStore {
       // 跨卷 rename 失败：先复制到目标同目录的临时文件，校验大小后原子改名，
       // 最后才删源。任一步失败都保留源文件并清掉临时文件，绝不“复制一半”。
       final File src = File(f.docId);
-      final File tmp = File(
-          '$target.mo_tmp_${DateTime.now().microsecondsSinceEpoch}');
+      final File tmp = File(uniqueTempName('$target.mo_tmp_'));
       try {
         await src.copy(tmp.path);
         if (await src.length() != await tmp.length()) {

@@ -51,8 +51,16 @@ abstract final class Ape {
   }
 
   static Tags read(Uint8List data) {
+    if (!isApe(data)) return Tags();
+    return readTail(data);
+  }
+
+  /// 只读文件尾部的 APEv2 标签，不要求文件本身是 APE 家族。
+  ///
+  /// MP3 常见组合：ID3v2 在头、APEv2 在尾（MP3tag / foobar 默认就写这套）。
+  /// 这种文件的 APE 块与 ID3 块是**两套独立数据**，谁都不会自动同步。
+  static Tags readTail(Uint8List data) {
     final Tags tags = Tags();
-    if (!isApe(data)) return tags;
     final Map<String, _Item>? root = _readItems(data);
     if (root == null) return tags;
     for (final MapEntry<String, _Item> e in root.entries) {
@@ -63,6 +71,9 @@ abstract final class Ape {
     }
     return tags;
   }
+
+  /// 文件尾是否有 APEv2 标签（不要求是 APE 家族文件）。
+  static bool hasTailTag(Uint8List data) => _find(data).tagStart >= 0;
 
   /// 读任意键（大小写不敏感，含自定义键）。
   static String readRaw(Uint8List data, String key) {
@@ -93,7 +104,21 @@ abstract final class Ape {
     if (!isApe(data)) {
       throw const FormatException('不是有效的 APE / WavPack / Musepack 文件');
     }
+    return _rebuild(data, values, cover, _find(data));
+  }
+
+  /// 只同步文件尾的 APEv2 标签（MP3 这类「ID3 在头、APE 在尾」的文件用）。
+  ///
+  /// 文件尾没有 APE 标签时原样返回 —— 不凭空给用户加一套标签。
+  static Uint8List rewriteTail(Uint8List data, Map<String, String> values,
+      {Uint8List? cover}) {
     final _Loc loc = _find(data);
+    if (loc.tagStart < 0) return data;
+    return _rebuild(data, values, cover, loc);
+  }
+
+  static Uint8List _rebuild(Uint8List data, Map<String, String> values,
+      Uint8List? cover, _Loc loc) {
     final int id3v1Start = loc.id3v1Start;
     final int audioEnd = loc.tagStart >= 0 ? loc.tagStart : id3v1Start;
 

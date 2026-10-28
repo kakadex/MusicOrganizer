@@ -18,6 +18,7 @@ import '../core/match/match_queue.dart';
 import '../core/model/cancel_token.dart';
 import '../core/model/tags.dart';
 import '../core/model/vfile.dart';
+import 'repo_changes.dart';
 import '../core/net/http_client.dart';
 import '../core/net/net.dart';
 import '../core/net/proxy_settings.dart';
@@ -63,6 +64,15 @@ class ScanOutcome {
 /// 单例，进程内共享（Dart 单线程，不需要额外加锁）。
 class Repo extends ChangeNotifier {
   Repo._();
+
+  /// 按域拆分的变更源：页面订阅自己关心的域，避免无关变更整页重建。
+  final RepoChanges changes = RepoChanges();
+
+  /// 发一次域通知，同时保留整体通知（旧监听方不会因此「不动」）。
+  void _emit(RepoDomain domain) {
+    changes.emit(domain);
+    notifyListeners();
+  }
 
   /// 进程内全局单例。
   static final Repo instance = Repo._();
@@ -185,7 +195,7 @@ class Repo extends ChangeNotifier {
   /// 把设置写回持久化（界面改了之后调用）。
   Future<void> setSetting(String key, Object? value) async {
     settings.set(key, value);
-    notifyListeners();
+    _emit(RepoDomain.settings);
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     if (value == null) {
       await prefs.remove(key);
@@ -390,7 +400,7 @@ class Repo extends ChangeNotifier {
       if (restored.isEmpty) return 0;
       files = restored;
       _rebuildIndex();
-      notifyListeners();
+      _emit(RepoDomain.library);
       return restored.length;
     } catch (_) {
       // 缓存坏了就当没有：最坏是这次多扫一遍，绝不能让启动卡在这里
@@ -462,7 +472,7 @@ class Repo extends ChangeNotifier {
     roots
       ..clear()
       ..addAll(list);
-    notifyListeners();
+    _emit(RepoDomain.root);
   }
 
   /// 追加一个曲库目录；已存在则返回 false。
@@ -504,7 +514,8 @@ class Repo extends ChangeNotifier {
     files = <VFile>[];
     index.clear();
     await _persistRoots();
-    notifyListeners();
+    _emit(RepoDomain.root);
+    _emit(RepoDomain.library);
   }
 
   /// 把某个已登记目录设为当前（排到最前）。
@@ -599,7 +610,8 @@ class Repo extends ChangeNotifier {
     files = <VFile>[];
     index.clear();
     await _persistRoots();
-    notifyListeners();
+    _emit(RepoDomain.root);
+    _emit(RepoDomain.library);
   }
 
   /// 让用户选目录；成功后登记为当前目录并返回 true。
@@ -626,7 +638,7 @@ class Repo extends ChangeNotifier {
       await switchRoot(t);
     }
     await _persistRoots();
-    notifyListeners();
+    _emit(RepoDomain.root);
     return true;
   }
 
@@ -644,7 +656,8 @@ class Repo extends ChangeNotifier {
     files = <VFile>[];
     index.clear();
     await _persistRoots();
-    notifyListeners();
+    _emit(RepoDomain.root);
+    _emit(RepoDomain.library);
     return true;
   }
 
@@ -697,7 +710,8 @@ class Repo extends ChangeNotifier {
       SidecarCover.invalidate();
       files = merge.files;
       _rebuildIndex();
-      notifyListeners();
+      _emit(RepoDomain.root);
+      _emit(RepoDomain.library);
       // 扫完就落盘：下次启动直接拿它撑起列表，不必再等这一轮
       unawaited(saveLibraryCache());
       final ScanStats stats = Scanner.statsOf(files);
@@ -830,7 +844,8 @@ class Repo extends ChangeNotifier {
         if (!c.isCompleted) c.complete();
       }
       _metaWaiters.clear();
-      notifyListeners();
+      _emit(RepoDomain.meta);
+      _emit(RepoDomain.library);
     }
   }
 

@@ -9,6 +9,7 @@ import 'dart:typed_data';
 
 import '../model/vfile.dart';
 import 'file_store.dart';
+import 'temp_name.dart';
 
 /// 原始字节写入工具。
 abstract final class RawWrite {
@@ -24,9 +25,8 @@ abstract final class RawWrite {
   /// 用 [bytes] 覆盖 [target]；失败抛 [FileStoreException]。
   static Future<void> bytes(
       FileStore store, VFile target, Uint8List bytes) async {
-    final File tmp = File(
-        '${Directory.systemTemp.path}${Platform.pathSeparator}'
-        'mo_raw_${DateTime.now().microsecondsSinceEpoch}');
+    final File tmp = File('${Directory.systemTemp.path}'
+        '${Platform.pathSeparator}${uniqueTempName('mo_raw_')}');
     try {
       await tmp.writeAsBytes(bytes, flush: true);
       await store.writeFromLocal(target, tmp);

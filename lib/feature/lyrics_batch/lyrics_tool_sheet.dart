@@ -19,7 +19,6 @@ import '../../core/model/vfile.dart';
 import '../../core/scan/scanner.dart';
 import '../../core/tx/write_preview.dart';
 import '../common/write_confirm_sheet.dart';
-import 'lyrics_lrc_writer.dart';
 
 /// 打开歌词工具。[files] 是选中的曲目（取第一首）。
 Future<void> runLyricsTool(BuildContext context, List<VFile> files) async {
@@ -277,20 +276,17 @@ class _ToolSheetState extends State<_ToolSheet> {
           widget.file,
           <String, String>{Tags.lyrics: out},
           batchId: 'lyrictool-${DateTime.now().millisecondsSinceEpoch}',
+          // .lrc 与内嵌歌词同属一次写入：失败会一起还原，撤销也一起退
+          lrcText: wantLrc ? out : null,
         ) ??
         '还没有准备好写盘通道';
     if (err.isNotEmpty) {
       if (mounted) moSnack(context, '写入失败：$err');
       return;
     }
-    String lrcErr = '';
-    if (wantLrc) {
-      lrcErr = await LyricLrcWriter.write(widget.store, widget.file, out);
-    }
     if (!mounted) return;
     Repo.instance.invalidate(widget.file);
-    moSnack(context,
-        lrcErr.isEmpty ? '已写回内嵌歌词与 .lrc' : '内嵌歌词已写入，.lrc 失败：$lrcErr');
+    moSnack(context, wantLrc ? '已写回内嵌歌词与 .lrc' : '已写回内嵌歌词');
   }
 
   void _showViewer(BuildContext context, String text) {
