@@ -197,6 +197,7 @@ class _CoversPageState extends State<CoversPage> {
       _resumed = 0;
       _done = false;
       for (final CoverJob job in _jobs) {
+        job.forgetResume();
         job.reset();
       }
     });
@@ -215,6 +216,9 @@ class _CoversPageState extends State<CoversPage> {
       moSnack(context, '已有任务在跑，先等它结束');
       return;
     }
+    // 「再跑一次」（_done 已为 true）要清掉续跑地址重新联网；
+    // 首次「开始补封面」要保留续跑地址，接着上次跳过已查到的。
+    final bool rerun = _done;
     setState(() {
       _busy = true;
       _done = false;
@@ -225,6 +229,7 @@ class _CoversPageState extends State<CoversPage> {
       _undo.clear();
       for (final CoverJob job in _jobs) {
         job.reset();
+        if (rerun) job.forgetResume();
       }
     });
 

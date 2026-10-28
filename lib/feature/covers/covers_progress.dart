@@ -39,6 +39,12 @@ class CoverJob {
     note = '等待';
     pendingBytes = null;
     previousBytes = null;
+    // 续跑地址**保留**：reset 是「开始补封面」用的，要接着用它跳过联网。
+    // 真正想重新联网查，调用方先 forgetResume() 再 reset()。
+  }
+
+  /// 清掉续跑地址（「重新开始」/「再跑一次」用）。
+  void forgetResume() {
     resumeUrl = '';
     resumed = false;
   }
