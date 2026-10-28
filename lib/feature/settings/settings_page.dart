@@ -29,7 +29,7 @@ import '../history/history_page.dart';
 import 'update_sheet.dart';
 import '../../platform/windows_file_assoc.dart';
 
-/// 设置页：偏好 / 主题 / 维护 / 备份 / 关于。
+/// 设置页：偏好 / 主题 / 维护 / 备份 / 关于（更新检查与更新渠道都收在「关于」里）。
 ///
 /// 与「整理」明确分工：这里只放**偏好与维护**，功能类动作不在这（把工具卡塞进设置里，
 /// 结果主功能要点三次才能到）。
@@ -554,24 +554,6 @@ class _SettingsPageState extends State<SettingsPage> {
       title: '维护',
       children: <Widget>[
         MoTile(
-          title: '检查更新',
-          subtitle: 'Gitee 优先，GitHub 兜底',
-          icon: Icons.system_update_alt,
-          onTap: () => UpdateSheet.show(context),
-        ),
-        MoTile(
-          title: '启动时静默检查更新',
-          subtitle: '每天最多一次，查到新版在底栏提示一句',
-          icon: Icons.notifications_none,
-          trailing: Switch(
-            value: _repo.settings.get<bool>('update_silent', fallback: true) ?? true,
-            onChanged: (bool v) {
-              _repo.setSetting('update_silent', v);
-              setState(() {});
-            },
-          ),
-        ),
-        MoTile(
           title: '撤销历史',
           subtitle: '按批次回退已写入的标签',
           icon: Icons.history,
@@ -873,6 +855,24 @@ class _SettingsPageState extends State<SettingsPage> {
       title: '关于',
       children: <Widget>[
         MoTile(title: '版本', subtitle: kAppVersionFull, icon: Icons.info_outline),
+        MoTile(
+          title: '检查更新',
+          subtitle: 'Gitee 优先，GitHub 兜底',
+          icon: Icons.system_update_alt,
+          onTap: () => UpdateSheet.show(context),
+        ),
+        MoTile(
+          title: '启动时静默检查更新',
+          subtitle: '每天最多一次，查到新版在底栏提示一句',
+          icon: Icons.notifications_none,
+          trailing: Switch(
+            value: _repo.settings.get<bool>('update_silent', fallback: true) ?? true,
+            onChanged: (bool v) {
+              _repo.setSetting('update_silent', v);
+              setState(() {});
+            },
+          ),
+        ),
         const SizedBox(height: 6),
         Text('下载（国内用户优先访问 Gitee，速度更快）',
             style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context))),

@@ -13,6 +13,7 @@ import '../fs/file_store.dart';
 import '../match/text_util.dart';
 import '../model/tags.dart';
 import '../model/vfile.dart';
+import 'empty_dirs.dart';
 import 'name_template.dart';
 
 /// 一条改名计划。
@@ -226,10 +227,17 @@ class FlattenPlan {
 class FlattenResult {
   int moved = 0;
   int failed = 0;
+
+  /// 确认删掉的空目录数（删完复查过）。
   int removedDirs = 0;
+
+  /// 想删但没删掉的空目录数（里面还有封面 / 歌词等文件，或系统拒绝）。
+  int failedDirs = 0;
+
   final List<String> errors = <String>[];
 
   String summary() => '移动 $moved 个 · 删空目录 $removedDirs 个'
+      '${failedDirs > 0 ? '（$failedDirs 个里还有文件，未删）' : ''}'
       '${failed > 0 ? ' · 失败 $failed 个' : ''}';
 }
 
@@ -325,26 +333,16 @@ abstract final class Flattener {
         r.errors.add('${p.source.name}：$e');
       }
     }
-    // 清掉搬空的目录：从直接父目录沿父链一路向上，直到根目录或遇到非空目录。
-    // 之前只删直接父目录，中间层（B 搬空后剩下的 A）会一直留在盘上。
-    final String rootPrefix =
-        root.docId.endsWith('/') ? root.docId : '${root.docId}/';
-    for (final String startId in touchedDirs) {
-      String cur = startId;
-      while (cur.isNotEmpty && cur.startsWith(rootPrefix)) {
-        try {
-          final VFile dir = VFile(docId: cur, name: _base(cur), dir: true);
-          final List<VFile> kids = await st.children(dir);
-          if (kids.isNotEmpty) break;
-          if (!await st.delete(dir)) break;
-          r.removedDirs++;
-          cur = _dirOf(cur);
-        } catch (_) {
-          // 删不掉不影响结果
-          break;
-        }
-      }
-    }
+    // 清空目录：整棵树扫一遍，而不是只看「刚搬过文件的那几个父目录」。
+    //
+    // 老做法有两个洞：
+    // 1. 只登记了搬过文件的直接父目录 —— 本来就空着的目录永远不会被访问；
+    // 2. 只要父目录里还剩子目录（哪怕子目录也空）就 break，整条链留了下来。
+    // 现在统一按「子树里一个文件都没有」判定，并且删完逐个复查（见 EmptyDirs）。
+    final EmptyDirPlan plan = await EmptyDirs.plan(st, root);
+    final EmptyDeleteResult del = await EmptyDirs.delete(st, plan.empty);
+    r.removedDirs = del.removed;
+    r.failedDirs = del.failed + del.skipped;
     return r;
   }
 
@@ -352,11 +350,5 @@ abstract final class Flattener {
   static String _dirOf(String docId) {
     final int slash = docId.lastIndexOf('/');
     return slash <= 0 ? docId : docId.substring(0, slash);
-  }
-
-  /// docId 的最后一段（目录名 / 文件名）。
-  static String _base(String path) {
-    final int slash = path.lastIndexOf('/');
-    return slash < 0 ? path : path.substring(slash + 1);
   }
 }

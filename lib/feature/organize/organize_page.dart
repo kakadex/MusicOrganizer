@@ -4,6 +4,7 @@ import '../../app/repo.dart';
 import '../../app/repo_changes.dart';
 import '../../app/ui_kit.dart';
 import '../../core/cleanup/cleaner.dart';
+import '../../core/cleanup/empty_dirs.dart';
 import '../../core/cleanup/junk.dart';
 import '../../core/dedupe/content_reader.dart';
 import '../../core/dedupe/duplicates.dart';
@@ -203,6 +204,12 @@ class _OrganizePageState extends State<OrganizePage> {
           subtitle: '把所有子目录里的曲子搬到当前目录这一层（撞名自动加 _2，不覆盖）',
           icon: Icons.account_tree_outlined,
           onTap: all.isEmpty ? null : _flatten,
+        ),
+        MoTile(
+          title: '清理空文件夹',
+          subtitle: '递归删除没有任何文件的子目录（根目录与「未识别」保留）',
+          icon: Icons.folder_delete_outlined,
+          onTap: all.isEmpty && !_repo.hasRoot ? null : _emptyDirs,
         ),
         MoTile(
           title: '垃圾文件',
@@ -711,6 +718,7 @@ class _OrganizePageState extends State<OrganizePage> {
     final TaskControl? control = task?.control;
     int moved = 0;
     int removedDirs = 0;
+    int keptDirs = 0;
     int failed = 0;
     try {
       for (final MapEntry<String, List<FlattenPlan>> e in byRoot.entries) {
@@ -724,16 +732,123 @@ class _OrganizePageState extends State<OrganizePage> {
         );
         moved += r.moved;
         removedDirs += r.removedDirs;
+        keptDirs += r.failedDirs;
         failed += r.failed;
       }
       if (!mounted) return;
       await _repo.rescan();
       if (!mounted) return;
       moSnack(context, '已移动 $moved 个 · 删空目录 $removedDirs 个'
+          '${keptDirs > 0 ? ' · $keptDirs 个里还有封面 / 歌词等文件，未删' : ''}'
           '${failed > 0 ? ' · 失败 $failed 个' : ''}');
     } finally {
       TaskCenter.finish();
     }
+  }
+
+  /// 清理空文件夹：整棵树找出「子树里没有任何文件」的目录，预览后删除。
+  ///
+  /// 和扁平化自带的那一步是同一套逻辑（`EmptyDirs`）：删除后逐个复查，
+  /// 只按「确实不在了」计数 —— 安卓 SAF 上有过「返回成功但目录还在」，
+  /// 老代码按返回值报数，界面就成了「提示已清理、实际没少」。
+  Future<void> _emptyDirs() async {
+    if (_busy) return;
+    if (TaskCenter.isBusy()) {
+      moSnack(context, '已有任务在跑，先等它结束');
+      return;
+    }
+    final FileStore? st = _repo.store;
+    final TreeRef? root = _repo.root;
+    if (st == null || root == null) {
+      moSnack(context, '还没有选择曲库目录');
+      return;
+    }
+    final VFile rootDir = VFile(docId: root.rootDocId, name: '', dir: true);
+
+    final RunningTask? scanTask = TaskCenter.start('扫描空文件夹');
+    final TaskControl? scanControl = scanTask?.control;
+    EmptyDirPlan plan;
+    try {
+      plan = await EmptyDirs.plan(
+        st,
+        rootDir,
+        cancel: scanControl,
+        onProgress: (int n) => scanControl?.report(n, 0, '已检查 $n 个目录'),
+      );
+    } finally {
+      TaskCenter.finish();
+    }
+    if (!mounted) return;
+    if (plan.cancelled) return;
+    if (plan.count == 0) {
+      moSnack(context, '没有空文件夹（${plan.scannedDirs} 个目录都有内容）');
+      return;
+    }
+
+    const int maxShow = 300;
+    final List<EmptyDir> shown =
+        plan.empty.length > maxShow ? plan.empty.sublist(0, maxShow) : plan.empty;
+    final bool? go = await showMoSheet<bool>(
+      context,
+      title: '空文件夹（${plan.count} 个）',
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 0, MoKit.pagePad, 6),
+          child: Text(
+            '这些目录里没有任何文件（含子目录），删除后不可恢复。'
+            '${plan.protectedDirs.isEmpty ? '' : '「${TextUtil.unrecognizedDir}」已保留。'}',
+            style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context)),
+          ),
+        ),
+        for (final EmptyDir e in shown)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 3, MoKit.pagePad, 3),
+            child: Row(
+              children: <Widget>[
+                Icon(Icons.folder_outlined, size: 16, color: MoKit.faint(context)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(e.relPath,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: MoKit.fsBody, color: MoKit.text(context))),
+                ),
+              ],
+            ),
+          ),
+        if (plan.empty.length > maxShow)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 6, MoKit.pagePad, 4),
+            child: Text('另有 ${plan.empty.length - maxShow} 个未列出，会一起删除',
+                style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.faint(context))),
+          ),
+      ],
+      footer: SizedBox(
+        width: double.infinity,
+        child: MoButton('删除这 ${plan.count} 个空文件夹',
+            primary: false, onPressed: () => Navigator.of(context).pop(true)),
+      ),
+    );
+    if (go != true || !mounted) return;
+
+    final RunningTask? delTask = TaskCenter.start('删除空文件夹');
+    final TaskControl? delControl = delTask?.control;
+    EmptyDeleteResult result;
+    try {
+      result = await EmptyDirs.delete(
+        st,
+        plan.empty,
+        cancel: delControl,
+        onProgress: (int done, int total) =>
+            delControl?.report(done, total, '删除中'),
+      );
+    } finally {
+      TaskCenter.finish();
+    }
+    await _repo.rescan();
+    if (!mounted) return;
+    moSnack(context, result.summary());
   }
 
   Future<void> _junk() async {

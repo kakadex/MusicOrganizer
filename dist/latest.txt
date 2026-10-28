@@ -1,8 +1,8 @@
-version=0.2.18
-tag=v0.2.18
+version=0.2.19
+tag=v0.2.19
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.18/musicorganizer-arm64-v8a.apk
-size=19609181
-sha256=8d6c2380b42a5d3f768566916355a0f8594a8b9d85e264ff830c197a802243f4
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.18
-summary=歌词可换选候选；.lrc 与内嵌歌词同属一次写入；整理执行前核对文件；读标签限并发与内存；MP3 三套标签统一读写；改名模板可指定位数并实时预览。
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.19/musicorganizer-arm64-v8a.apk
+size=19609245
+sha256=100547b1013cf77445d0faaf131b1012a6855d2ffbfd92881f6a6bc909425e49
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.19
+summary=新增「清理空文件夹」（预览后删除、删后复查）；修复安卓扁平化后空目录仍在；更新检查收进「关于」。
