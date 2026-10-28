@@ -142,7 +142,16 @@ class TaskForegroundService : Service() {
 
     private fun buildNotification(title: String, text: String, done: Int, total: Int): Notification {
         ensureChannel()
-        val builder = Notification.Builder(this, CHANNEL_ID)
+        // Android 8.0（API 26）才有「通知渠道」与带 channelId 的 Builder；
+        // 7.0/7.1（API 24/25）上带 channelId 的双参构造器不存在，直接调用会抛异常，
+        // 通知永远建不出来。这里按版本分叉，老版本退回单参构造器。
+        val builder = if (Build.VERSION.SDK_INT >= 26) {
+            Notification.Builder(this, CHANNEL_ID)
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(this)
+        }
+        builder
             .setContentTitle(title)
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setOngoing(true)
