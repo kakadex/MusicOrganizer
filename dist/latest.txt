@@ -1,11 +1,11 @@
-version=0.2.23
-tag=v0.2.23
+version=0.2.24
+tag=v0.2.24
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.23/MusicOrganizer-0.2.23-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.24/MusicOrganizer-0.2.24-android-arm64-v8a.apk
 size=19805965
-sha256=7aa61474499549a0b60bbdbeb9ca0663cd0d0a643b12bbbdbb43637056d0e7cd
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.23/MusicOrganizer-0.2.23-windows-x64.zip
-zip_size=12559948
-zip_sha256=35cbaba7c54a81de578dcb1af39adf4e398634f46ca8133e582581a9f9703d55
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.23
-summary=修复写标签失败时误删备份并谎报「原文件未修改」。
+sha256=5b1d58497371c019e6fbedf1ad3f5fc7894bcb621f3fa04dae25c631559e944c
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.24/MusicOrganizer-0.2.24-windows-x64.zip
+zip_size=12564464
+zip_sha256=efc91cb64c80e1ff245308ae477312ece0f20d67e666d1fb96bed3d8637574b0
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.24
+summary=桌面端自动更新下载后校验安装包（大小 + SHA256），防止中途被换包。
