@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/ui_kit.dart';
+import '../../core/log/log.dart';
 import '../../core/net/http_client.dart';
 import '../../core/source/endpoints.dart';
 import '../../core/task/task_center.dart';
@@ -293,6 +294,25 @@ class _UpdateSheetState extends State<UpdateSheet> {
       final String sep = Platform.pathSeparator;
       final File zip = File('$tmp${sep}mo-update-${r.version}.zip');
       await zip.writeAsBytes(bytes, flush: true);
+      // 解压之前先校验安装包：大小 + SHA256 都要跟清单对上，防中途被换包 /
+      // 下载不完整。清单没给这两个值（老版本）时放行，但记一笔「未校验」。
+      if (DesktopUpdater.hasVerification(r.zipSize, r.zipSha256)) {
+        final String vErr = DesktopUpdater.verifyZip(bytes,
+            expectedSize: r.zipSize, expectedSha256: r.zipSha256);
+        if (vErr.isNotEmpty) {
+          try {
+            await zip.delete();
+          } catch (_) {}
+          if (!mounted) return;
+          setState(() {
+            _busy = false;
+            _error = '$vErr。已删除临时包，请手动到发布页下载';
+          });
+          return;
+        }
+      } else {
+        Log.warn('桌面更新：清单里没有 zipSize / zipSha256，本次未校验安装包');
+      }
       stage = DesktopUpdater.stagingDir(r.version);
       final String err = await DesktopUpdater.extract(zip.path, stage);
       if (err.isNotEmpty) {

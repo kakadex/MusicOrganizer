@@ -10,12 +10,38 @@
 library;
 
 import 'dart:io';
+import 'dart:typed_data';
 
 import '../log/log.dart';
 import '../update/app_update.dart';
+import 'sha256.dart';
 
 /// 一次桌面更新的进度。
 abstract final class DesktopUpdater {
+  /// 校验下载回来的安装包是否与发布清单一致。
+  ///
+  /// 返回空串 = 通过；否则是「为什么拒绝」。
+  /// [expectedSize] / [expectedSha256] 来自发布清单（`zipSize` / `zipSha256`），
+  /// 都是可选的（老版本清单可能没写）；没给哪个就跳过哪项校验。
+  static String verifyZip(Uint8List bytes,
+      {int expectedSize = 0, String expectedSha256 = ''}) {
+    if (expectedSize > 0 && bytes.length != expectedSize) {
+      return '安装包大小不符：清单是 $expectedSize 字节，实际 ${bytes.length} 字节';
+    }
+    final String want = expectedSha256.trim().toLowerCase();
+    if (want.isNotEmpty) {
+      final String got = sha256Hex(bytes).toLowerCase();
+      if (got != want) {
+        return '安装包 SHA-256 校验失败（可能被篡改或下载不完整）';
+      }
+    }
+    return '';
+  }
+
+  /// 清单里到底有没有给可校验的信息。
+  static bool hasVerification(int size, String sha256) =>
+      size > 0 || sha256.trim().isNotEmpty;
+
   /// 当前平台能不能自动更新（只有 Windows / Linux / macOS 桌面端可以）。
   static bool get supported =>
       Platform.isWindows || Platform.isLinux || Platform.isMacOS;
