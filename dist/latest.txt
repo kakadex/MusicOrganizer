@@ -1,11 +1,11 @@
-version=0.2.33
-tag=v0.2.33
+version=0.2.34
+tag=v0.2.34
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.33/MusicOrganizer-0.2.33-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.34/MusicOrganizer-0.2.34-android-arm64-v8a.apk
 size=19805965
-sha256=08597530238dedf0e5c09bb797cb4f9187cafca450118b38de553563fb72486f
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.33/MusicOrganizer-0.2.33-windows-x64.zip
-zip_size=12563966
-zip_sha256=d2bed8ed6801019f87d97b990bac96c2d5756764de7f5f3ba0ddec29e9cb8bb2
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.33
-summary=修复桌面更新的两处失败处理（复制失败不重启、Linux 无 unzip 明确报错）。
+sha256=87553602ce114444c5094607bd9f081a9d801c3ec324f64eb4b657269e14bc8b
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.34/MusicOrganizer-0.2.34-windows-x64.zip
+zip_size=12563959
+zip_sha256=d6ac943043d659e9f5b3fab8f5bbed83b8d15ac3f70eeaf676c10ad00c55a4a7
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.34
+summary=修复安卓 7.0/7.1 上长任务进度通知不显示的问题。
