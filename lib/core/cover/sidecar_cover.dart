@@ -8,8 +8,9 @@ import 'dart:typed_data';
 
 import '../fs/file_store.dart';
 import '../model/vfile.dart';
+import 'cover_mem_cache.dart';
 
-/// 同名图片封面查找（按文件缓存）。
+/// 同名图片封面查找（按文件缓存，同样走有界 + 过期，见 [CoverMemCache]）。
 abstract final class SidecarCover {
   /// 认得的图片扩展名（顺序即优先级：jpg 最常见，也最小）。
   static const List<String> exts = <String>['jpg', 'jpeg', 'png', 'webp'];
@@ -18,15 +19,18 @@ abstract final class SidecarCover {
   static const int maxBytes = 4 * 1024 * 1024;
 
   /// 文件 docId → 图片字节（null 表示确实没有）。
-  static final Map<String, Uint8List?> _cache = <String, Uint8List?>{};
+  static final CoverMemCache _cache = CoverMemCache();
 
   /// 曲库重扫后清缓存（否则新放进来的图片要等重启才认）。
   static void invalidate() => _cache.clear();
 
+  /// 当前缓存占用（界面 / 测试看内存用）。
+  static int get cachedBytes => _cache.bytes;
+
   /// 找某个音频旁边的同名图片；没有返回 null。
   static Future<Uint8List?> find(FileStore st, VFile audio) async {
     final String key = audio.docId;
-    if (_cache.containsKey(key)) return _cache[key];
+    if (_cache.contains(key)) return _cache.get(key);
     Uint8List? art;
     try {
       final String? parentId = audio.parentId;
@@ -45,7 +49,7 @@ abstract final class SidecarCover {
     } catch (_) {
       art = null;
     }
-    _cache[key] = art;
+    _cache.put(key, art);
     return art;
   }
 }

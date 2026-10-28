@@ -67,7 +67,7 @@ class _MatchSheetState extends State<_MatchSheet> {
   final Set<String> _picked = <String>{};
 
   static const List<String> _fields = <String>[
-    'title', 'artist', 'album', 'year', 'track', 'genre',
+    'title', 'artist', 'albumArtist', 'album', 'year', 'track', 'genre',
   ];
 
   @override

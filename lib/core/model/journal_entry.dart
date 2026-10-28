@@ -6,6 +6,37 @@ library;
 
 import '../json/json.dart';
 
+/// 写盘操作类型（记进 [JournalEntry.op]，撤销历史按它区分来源）。
+abstract final class JournalOp {
+  /// 改标签（用户手动 / 批量匹配的常规写入）。
+  static const String tags = 'tags';
+
+  /// 修乱码：编码是**猜**出来的，可能误判，撤销时要能单独挑出来。
+  static const String encoding = 'encoding';
+
+  /// 写内嵌歌词。
+  static const String lyrics = 'lyrics';
+
+  /// 写 / 删同名 `.lrc`。
+  static const String lrc = 'lrc';
+
+  /// 写封面。
+  static const String cover = 'cover';
+
+  /// 清空标签（批量删除）。
+  static const String clear = 'clear';
+
+  /// 展示名。
+  static String label(String op) => switch (op) {
+        encoding => '修乱码',
+        lyrics => '写歌词',
+        lrc => '歌词文件',
+        cover => '写封面',
+        clear => '清空标签',
+        _ => '改标签',
+      };
+}
+
 /// 一条标签写盘事务记录。
 class JournalEntry {
   String id = '';
@@ -16,6 +47,13 @@ class JournalEntry {
   Map<String, String> after = <String, String>{};
   String status = 'applied';
   String targetId = '';
+
+  /// 这次写盘是**干什么**（[JournalOp] 之一）。
+  ///
+  /// 没有它，撤销历史里「改标签」和「修乱码」长得一模一样；而后者是**猜测**
+  /// ——修错了要能一眼挑出来单独回退，不能和用户自己改的混在一起。
+  /// 旧记录没有这个字段，读出为空时按 [JournalOp.tags] 处理。
+  String op = JournalOp.tags;
 
   /// 文件名（仅用于撤销历史列表展示；旧记录为空时从 uri 推导）。
   String name = '';
@@ -30,6 +68,7 @@ class JournalEntry {
         '"after":${_mapJson(after)},'
         '"status":${Json.quote(status)},'
         '"targetId":${Json.quote(targetId)},'
+        '"op":${Json.quote(op)},'
         '"name":${Json.quote(name)}}';
   }
 
@@ -45,6 +84,8 @@ class JournalEntry {
       e.batchId = _str(m['batchId']);
       e.status = _str(m['status']).isEmpty ? 'applied' : _str(m['status']);
       e.targetId = _str(m['targetId']);
+      final String op = _str(m['op']);
+      e.op = op.isEmpty ? JournalOp.tags : op;
       e.name = _str(m['name']);
       e.before = _mapOf(m['before']);
       e.after = _mapOf(m['after']);

@@ -9,8 +9,6 @@ import 'app/mo_app.dart';
 import 'app/repo.dart';
 import 'app/theme/palette.dart';
 import 'app/theme/theme_controller.dart';
-import 'core/fs/desktop_file_store.dart';
-import 'core/fs/file_store.dart';
 import 'core/log/log.dart';
 import 'feature/crash/crash_screen.dart';
 import 'platform/external_open.dart';
@@ -21,12 +19,16 @@ Future<void> main(List<String> args) async {
   ExternalOpen.rememberLaunchArgs(args);
   WidgetsFlutterBinding.ensureInitialized();
   // 全局错误处理：记日志 + 弹崩溃页，别让 app 直接崩掉。
+  //
+  // 同一个异常可能被框架回调与平台回调各送一次（尤其异步 Zone 里的），不去重
+  // 会出现「同一条错误报两遍、崩溃页叠两层」。另外 details.stack 允许为 null
+  // （某些框架构造的错误没有栈），这里补一条当前栈，保证日志与崩溃页有据可查。
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
-    CrashScreen.report(details.exception, details.stack);
+    _reportOnce(details.exception, details.stack);
   };
   PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
-    CrashScreen.report(error, stack);
+    _reportOnce(error, stack);
     return true;
   };
   ErrorWidget.builder = (FlutterErrorDetails details) {
@@ -59,14 +61,12 @@ Future<void> main(List<String> args) async {
   try {
     await Log.init();
     final Repo repo = Repo.instance;
-    await repo.init();
-    // 桌面端：把系统目录选择器注入文件系统，否则「选择目录」会拿不到路径。
+    // 桌面端：系统目录选择器要在 init **之前**挂上——init 里恢复上次目录时
+    // 可能就要用它，晚了会出现「该选目录却没有选择器」。
     if (Repo.isDesktop) {
-      final FileStore? store = repo.store;
-      if (store is DesktopFileStore) {
-        store.directoryPicker = () => getDirectoryPath();
-      }
+      Repo.desktopDirectoryPicker = () => getDirectoryPath();
     }
+    await repo.init();
 
     // 主题：上次选的方案与明暗（存在 SharedPreferences 里，repo 初始化时已读回）
     final int themeId = repo.settings.get<int>('theme_id', fallback: 1) ?? 1;
@@ -84,6 +84,32 @@ Future<void> main(List<String> args) async {
     Log.error('应用启动失败', e: e, stack: st);
     runApp(_BootFailureApp(error: Log.sanitize('$e')));
   }
+}
+
+/// 同一条错误只上报一次（去重窗口内重复到达的直接丢掉）。
+///
+/// 判重用「错误对象身份 + 首行文本」：同一个异常对象被两条通道送到时身份相同；
+/// 不同对象但文案一致（重抛包装）时也按同一条处理，避免崩溃页叠两层。
+final Map<Object, DateTime> _seenErrors = <Object, DateTime>{};
+String? _lastErrorText;
+DateTime? _lastErrorAt;
+const Duration _dedupeWindow = Duration(milliseconds: 800);
+
+void _reportOnce(Object error, StackTrace? stack) {
+  final DateTime now = DateTime.now();
+  final DateTime? first = _seenErrors[error];
+  if (first != null && now.difference(first) < _dedupeWindow) return;
+  final String text = '$error'.split('\n').first.trim();
+  if (_lastErrorText == text &&
+      _lastErrorAt != null &&
+      now.difference(_lastErrorAt!) < _dedupeWindow) {
+    return;
+  }
+  _seenErrors[error] = now;
+  if (_seenErrors.length > 64) _seenErrors.clear();
+  _lastErrorText = text;
+  _lastErrorAt = now;
+  CrashScreen.report(error, stack ?? StackTrace.current);
 }
 
 /// 启动失败页：初始化抛异常时至少让用户看到原因、能复制。

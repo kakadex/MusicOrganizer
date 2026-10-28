@@ -3,8 +3,13 @@
 /// 固定键集 [keys] 刻意不含 lyrics（见 [lyrics]）；year 写盘前截断 4 位（架构设计 §2.1）。
 class Tags {
   /// 常规标签字段。
+  ///
+  /// `albumArtist`（专辑艺术家 / TPE2 / aART / ALBUMARTIST）单独成一个字段：
+  /// 合辑里每首歌的 [artist] 各不相同，但整张专辑属于同一个艺人，混成一个字段
+  /// 会让「按歌手归类」把合辑拆得七零八落。
   static const List<String> keys = <String>[
-    'title', 'artist', 'album', 'year', 'track', 'genre', 'comment',
+    'title', 'artist', 'albumArtist', 'album', 'year', 'track', 'genre',
+    'comment',
   ];
 
   /// 歌词（MP3 的 USLT 帧 / FLAC 的 LYRICS 字段）。
@@ -17,6 +22,7 @@ class Tags {
   static const Map<String, String> labels = <String, String>{
     'title': '标题',
     'artist': '艺术家',
+    'albumArtist': '专辑艺术家',
     'album': '专辑',
     'year': '年份',
     'track': '音轨',

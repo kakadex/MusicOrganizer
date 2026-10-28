@@ -10,6 +10,24 @@ import '../support/gen.dart';
 void main() {
   Uint8List mkMp3() => Uint8List.fromList(List<int>.filled(2048, 0xFF));
 
+  test('专辑艺术家不与艺术家互相覆盖（ID3 / FLAC）', () {
+    Uint8List mp3 = mkMp3();
+    mp3 = Id3.rewrite(mp3, <String, String>{
+      'artist': '周杰伦',
+      'albumArtist': '群星',
+      'album': '合辑',
+    });
+    final Tags t = Id3.read(mp3);
+    expect(t.get('artist'), '周杰伦');
+    expect(t.get('albumArtist'), '群星');
+    expect(t.get('album'), '合辑');
+
+    // 只改专辑艺术家，歌手不能被动到
+    mp3 = Id3.rewrite(mp3, <String, String>{'albumArtist': '群星二号'});
+    expect(Id3.read(mp3).get('albumArtist'), '群星二号');
+    expect(Id3.read(mp3).get('artist'), '周杰伦');
+  });
+
   test('ID3v2.3 首次写入全字段', () {
     Uint8List mp3 = mkMp3();
     mp3 = Id3.rewrite(mp3, <String, String>{

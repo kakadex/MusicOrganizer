@@ -12,7 +12,9 @@ import 'package:flutter/material.dart';
 import '../../app/repo.dart';
 import '../../app/ui_kit.dart';
 import '../../core/match/local_query.dart';
+import '../../core/match/match_queue.dart';
 import '../../core/net/net.dart';
+import '../../core/model/journal_entry.dart' show JournalOp;
 import '../../core/model/query.dart';
 import '../../core/model/tags.dart';
 import '../../core/model/task_control.dart';
@@ -55,11 +57,44 @@ class _CoversPageState extends State<CoversPage> {
   /// 当前任务控制器：退出页面时取消，避免关页后还在后台跑。
   TaskControl? _control;
 
+  /// 续跑队列（记住「哪首查到了封面地址、还没写」）。
+  MatchQueue? _queue;
+
+  /// 从上次中断处恢复出来的条数。
+  int _resumed = 0;
+
+  /// 用户点了「重新开始」：清掉续跑进度，这一轮全部重新查。
+  bool _restarted = false;
+
   @override
   void initState() {
     super.initState();
     _jobs = widget.files.map(CoverJob.new).toList();
+    _queue = Repo.instance.coverQueue;
+    _resume();
   }
+
+  /// 接上上次没写完的那批：指纹一致才认，文件被换过就当场作废。
+  void _resume() {
+    final MatchQueue? q = _queue;
+    if (q == null) return;
+    int n = 0;
+    for (final CoverJob job in _jobs) {
+      final MatchItem? item =
+          q.take(_keyOf(job.file), job.file.size, job.file.lastModified);
+      if (item == null) continue;
+      final String url = item.field('url', '');
+      if (url.isEmpty) continue;
+      job.resumeUrl = url;
+      job.resumed = true;
+      job.note = '上次查到的封面（未写入）';
+      n++;
+    }
+    _resumed = n;
+  }
+
+  /// 续跑用的键：有 docId 用它，没有就退回文件名。
+  static String _keyOf(VFile f) => f.docId.isNotEmpty ? f.docId : f.name;
 
   @override
   void dispose() {
@@ -99,6 +134,10 @@ class _CoversPageState extends State<CoversPage> {
   String _subtitle() {
     if (_jobs.isEmpty) return '没有曲目';
     if (_busy) return '正在处理 ${_jobs.length} 首';
+    // 续跑：上次查到但没写完的，进来就是「待确认」，不用再等一轮联网
+    if (_resumed > 0 && !_restarted) {
+      return '继续上次 $_resumed/${_jobs.length} 首（已查到，待确认写入）';
+    }
     if (!_done) return '${_jobs.length} 首 · 只补在线封面，不改标签';
     return '写入 $_written · 无封面 $_noCover · 跳过 $_skipped · 失败 $_failed';
   }
@@ -137,11 +176,31 @@ class _CoversPageState extends State<CoversPage> {
               padding: const EdgeInsets.only(right: 8),
               child: MoButton('撤销', primary: false, onPressed: _undoAll),
             ),
+          if (_resumed > 0 && !_restarted)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: MoButton('重新开始', primary: false, onPressed: _busy ? null : _restart),
+            ),
           MoButton(_done ? '再跑一次' : '开始补封面',
               busy: _busy, onPressed: _busy ? null : _run),
         ],
       ),
     );
+  }
+
+  /// 丢掉上次的进度，这一轮全部重新联网查。
+  Future<void> _restart() async {
+    _queue?.clear();
+    if (!mounted) return;
+    setState(() {
+      _restarted = true;
+      _resumed = 0;
+      _done = false;
+      for (final CoverJob job in _jobs) {
+        job.reset();
+      }
+    });
+    await _run();
   }
 
   Future<void> _run() async {
@@ -190,11 +249,23 @@ class _CoversPageState extends State<CoversPage> {
         }
         _update(job, CoverPhase.working, '查找在线封面…');
         try {
-          final Tags tags = await Scanner.readTags(store, job.file);
-          final Query q = LocalQuery.forFile(job.file, tags);
-          final AggregateResult agg = await Aggregator.tagCandidates(
-              q, chinese: LocalQuery.chinese(q));
-          final String url = CoverPick.urlOf(agg.candidates);
+          // 上次已经查到过地址的：直接用，不再联网问一遍（省时间也省配额）
+          String url = job.resumeUrl;
+          if (url.isEmpty) {
+            final Tags tags = await Scanner.readTags(store, job.file);
+            final Query q = LocalQuery.forFile(job.file, tags);
+            final AggregateResult agg = await Aggregator.tagCandidates(
+                q, chinese: LocalQuery.chinese(q));
+            url = CoverPick.urlOf(agg.candidates);
+            if (url.isNotEmpty) {
+              _queue?.put(
+                _keyOf(job.file),
+                job.file.size,
+                job.file.lastModified,
+                <String, String>{'url': url},
+              );
+            }
+          }
           if (url.isEmpty) {
             _noCover++;
             _update(job, CoverPhase.noCover, '没有带封面的候选');
@@ -298,14 +369,19 @@ class _CoversPageState extends State<CoversPage> {
           const <String, String>{},
           cover: j.pendingBytes,
           batchId: batchId,
+          op: JournalOp.cover,
         );
         if (err.isEmpty) {
           _written++;
           repo.invalidate(j.file);
           _undo.add(CoverUndo(j.file, j.previousBytes));
+          // 落地了：从续跑队列收尾，下次进来不再当成「没写完」
+          _queue?.mark(_keyOf(j.file), MatchQueue.written);
           _update(j, CoverPhase.written, '已写入内嵌封面');
         } else {
           _failed++;
+          // 失败的留着下次重试（指纹变了会自动作废）
+          _queue?.mark(_keyOf(j.file), MatchQueue.failed);
           _update(j, CoverPhase.failed, err);
         }
         j.pendingBytes = null;

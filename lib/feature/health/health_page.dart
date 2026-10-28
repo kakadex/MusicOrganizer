@@ -254,7 +254,15 @@ class _HealthPageState extends State<HealthPage> {
       await repo.loadMeta();
       final String rootId = repo.root?.rootDocId ?? '';
       final List<csv.Row> rows = <csv.Row>[];
-      for (final VFile f in csv.CsvExport.audioOnly(repo.files)) {
+      final List<VFile> audio = csv.CsvExport.audioOnly(repo.files);
+      // 曲库上万首时这一步要跑一会儿：给进度、也给「取消」的口子
+      // （否则用户只能干等，中途想停只能杀进程）
+      for (int i = 0; i < audio.length; i++) {
+        if (task.control.isCancelled()) {
+          if (mounted) moSnack(context, '已取消导出');
+          return;
+        }
+        final VFile f = audio[i];
         final Tags tags = f.cachedTags ?? Tags();
         final bool lyrics =
             f.cachedHasLyrics || tags.get(Tags.lyrics).trim().isNotEmpty;
@@ -263,6 +271,12 @@ class _HealthPageState extends State<HealthPage> {
         final int slash = rel.lastIndexOf('/');
         row.dir = slash > 0 ? rel.substring(0, slash) : '';
         rows.add(row);
+        if (i % 50 == 0 || i == audio.length - 1) {
+          task.control.report(i + 1, audio.length, f.name);
+          if (mounted) {
+            setState(() => _note = '正在生成清单 ${i + 1}/${audio.length}');
+          }
+        }
       }
       final String content = csv.CsvExport.build(rows);
       final Directory dir = await getApplicationSupportDirectory();

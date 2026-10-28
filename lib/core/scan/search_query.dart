@@ -11,7 +11,8 @@ class SearchQuery {
 
   /// 支持的字段名。
   static const List<String> knownFields = <String>[
-    'title', 'artist', 'album', 'genre', 'comment', 'lyrics', 'path', 'ext', 'year',
+    'title', 'artist', 'albumArtist', 'album', 'genre', 'comment', 'lyrics',
+    'path', 'ext', 'year',
   ];
 
   /// 别名（中文 / 英文）→ 规范字段名。
@@ -19,6 +20,7 @@ class SearchQuery {
     'title': 'title', '标题': 'title', '歌名': 'title', '曲名': 'title', 'name': 'title',
     'artist': 'artist', '艺术家': 'artist', '歌手': 'artist', '艺人': 'artist', 'singer': 'artist',
     'album': 'album', '专辑': 'album', '唱片': 'album',
+    'albumartist': 'albumArtist', '专辑艺术家': 'albumArtist', '专辑艺人': 'albumArtist',
     'genre': 'genre', '流派': 'genre', '风格': 'genre', '类型': 'genre',
     'comment': 'comment', '注释': 'comment', '备注': 'comment',
     'lyrics': 'lyrics', '歌词': 'lyrics', 'lrc': 'lyrics',

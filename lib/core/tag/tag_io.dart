@@ -18,13 +18,17 @@ import 'wma.dart';
 
 /// 标签读写调度（纯 Dart）。
 abstract final class TagIO {
-  /// 需要写入的字段名集合（comment 不参与批量写入）。
+  /// 需要写入的字段名集合（不在 [Tags.keys] 里的一律丢弃）。
+  ///
+  /// comment 也照样收：以前这里把它跳过了，上层（单文件编辑 / 批量改标签）
+  /// 显式传进来的注释会被静默吃掉，用户改完发现没写进去。codec 侧本来就只在
+  /// 「values 里有这个键」时才动它，不传就不会清掉已有的注释，所以保留是安全的。
   static Map<String, String> writableCopy(Map<String, String> values) {
     final Map<String, String> out = <String, String>{};
     for (final String k in Tags.keys) {
-      if (k == 'comment') continue;
       final String? v = values[k];
-      if (v != null) out[k] = v.trim();
+      if (v == null) continue;
+      out[k] = v.trim();
     }
     return out;
   }

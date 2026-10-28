@@ -35,6 +35,7 @@ abstract final class Ape {
   static const Map<String, String> _keys = <String, String>{
     'title': 'Title',
     'artist': 'Artist',
+    'albumArtist': 'Album Artist',
     'album': 'Album',
     'year': 'Year',
     'track': 'Track',

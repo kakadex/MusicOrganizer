@@ -80,6 +80,9 @@ abstract final class LibraryCache {
       if (m.isNotEmpty) out['g'] = m;
       if (f.cachedHasCover) out['c'] = 1;
       if (f.cachedHasLyrics) out['l'] = 1;
+      // 歌词被「太长不落盘」扔掉时留个记号：下次启动据此知道它其实有歌词，
+      // 不至于被当成缺歌词的歌反复重读 / 反复联网补
+      if (f.cachedLyricsOversize) out['L'] = 1;
       if (f.cachedDurationMs > 0) out['u'] = f.cachedDurationMs;
       if (f.cachedBitrateKbps > 0) out['b'] = f.cachedBitrateKbps;
     }
@@ -113,12 +116,14 @@ abstract final class LibraryCache {
       });
       final Object? cover = raw['c'];
       final Object? lyric = raw['l'];
+      final Object? oversize = raw['L'];
       final Object? dur = raw['u'];
       final Object? br = raw['b'];
       f.cacheMeta(
         t,
         cover: cover == 1,
         lyrics: lyric == 1,
+        lyricsOversize: oversize == 1,
         durationMs: dur is int ? dur : 0,
         bitrateKbps: br is int ? br : 0,
       );

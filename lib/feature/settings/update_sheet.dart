@@ -1,10 +1,15 @@
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/ui_kit.dart';
+import '../../core/net/http_client.dart';
 import '../../core/source/endpoints.dart';
 import '../../core/task/task_center.dart';
 import '../../core/update/app_update.dart';
+import '../../core/update/desktop_updater.dart';
 import '../../core/update/update_check.dart';
 import '../../core/version.dart';
 
@@ -31,6 +36,9 @@ class UpdateSheet extends StatefulWidget {
 }
 
 class _UpdateSheetState extends State<UpdateSheet> {
+  /// 桌面版 zip 的下载上限（200MB：正常版本几十 MB，留足余量）。
+  static const int _maxZipBytes = 200 * 1024 * 1024;
+
   bool _busy = true;
   String _step = '正在检查…';
   String _error = '';
@@ -155,9 +163,12 @@ class _UpdateSheetState extends State<UpdateSheet> {
           ? Row(
               children: <Widget>[
                 Expanded(
-                  child: MoButton('去下载',
+                  child: MoButton(
+                      _canSelfUpdate ? '下载并更新' : '去下载',
                       icon: Icons.download,
-                      onPressed: () => _open(_downloadUrl(r))),
+                      onPressed: _canSelfUpdate
+                          ? () => _updateNow(r)
+                          : () => _open(_downloadUrl(r))),
                 ),
                 const SizedBox(width: 10),
                 MoButton('发布页',
@@ -243,6 +254,94 @@ class _UpdateSheetState extends State<UpdateSheet> {
   String _downloadUrl(Release r) {
     if (r.hasApk) return r.apkUrl;
     return _pageUrl(r);
+  }
+
+  /// 桌面端能不能就地更新（有 zip、且是桌面平台）。
+  bool get _canSelfUpdate => DesktopUpdater.supported && (_release?.hasZip ?? false);
+
+  /// 桌面端「下载 → 解压 → 替换 → 重启」。
+  ///
+  /// 自己覆盖自己是不行的（Windows 锁着 exe），所以最后一步交给脚本：
+  /// 脚本等本程序退出后把新版本拷进安装目录、重启程序、再把自己删掉。
+  Future<void> _updateNow(Release r) async {
+    if (TaskCenter.isBusy()) {
+      moSnack(context, '另一个任务正在运行，等它结束再更新');
+      return;
+    }
+    final RunningTask? task = TaskCenter.start('下载更新');
+    if (task == null) return;
+    setState(() {
+      _busy = true;
+      _step = '正在下载桌面版…';
+    });
+    Uint8List? bytes;
+    String stage = '';
+    try {
+      bytes = await Http.getBytes(
+          r.zipUrl, null, null, Http.readTimeoutCnMs, _maxZipBytes);
+      task.control.report(1, 3, '下载完成');
+      if (!mounted) return;
+      if (bytes == null || bytes.isEmpty) {
+        setState(() {
+          _busy = false;
+          _error = '下载失败：${Http.lastError.isEmpty ? '没有拿到内容' : Http.lastError}';
+        });
+        return;
+      }
+      setState(() => _step = '正在解压…');
+      final String tmp = Directory.systemTemp.path;
+      final String sep = Platform.pathSeparator;
+      final File zip = File('$tmp${sep}mo-update-${r.version}.zip');
+      await zip.writeAsBytes(bytes, flush: true);
+      stage = DesktopUpdater.stagingDir(r.version);
+      final String err = await DesktopUpdater.extract(zip.path, stage);
+      if (err.isNotEmpty) {
+        if (!mounted) return;
+        setState(() {
+          _busy = false;
+          _error = '$err（已下载到 ${zip.path}，也可以手动解压覆盖）';
+        });
+        return;
+      }
+      if (!DesktopUpdater.stagingLooksRunnable(stage)) {
+        if (!mounted) return;
+        setState(() {
+          _busy = false;
+          _error = '解压出来的内容不像一个可运行的程序，已停手（新版本在 $stage）';
+        });
+        return;
+      }
+      setState(() => _step = '正在准备替换…');
+      final String script =
+          await DesktopUpdater.writeApplyScript(stage, DesktopUpdater.appDir);
+      if (script.isEmpty) {
+        if (!mounted) return;
+        setState(() {
+          _busy = false;
+          _error = '写不了更新脚本，请手动把 $stage 里的文件覆盖到 ${DesktopUpdater.appDir}';
+        });
+        return;
+      }
+      final bool started = await DesktopUpdater.launchAndExit(script);
+      if (!started) {
+        if (!mounted) return;
+        setState(() {
+          _busy = false;
+          _error = '启动更新脚本失败，请手动把 $stage 里的文件覆盖到 ${DesktopUpdater.appDir}';
+        });
+        return;
+      }
+      // 脚本已经接手：立刻退出自己，把文件锁让出来
+      exit(0);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = '更新失败：$e';
+      });
+    } finally {
+      TaskCenter.finish();
+    }
   }
 
   String _pageUrl(Release r) {

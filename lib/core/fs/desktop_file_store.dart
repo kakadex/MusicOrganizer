@@ -144,6 +144,27 @@ class DesktopFileStore implements FileStore {
   }
 
   @override
+  Future<Uint8List> rangeBytes(VFile f, int offset, int maxBytes) async {
+    _assertWithinRoots(f.docId);
+    if (maxBytes <= 0 || offset < 0) return Uint8List(0);
+    try {
+      final RandomAccessFile raf = await File(f.docId).open();
+      try {
+        final int len = await raf.length();
+        if (offset >= len) return Uint8List(0);
+        final int rest = len - offset;
+        final int n = maxBytes < rest ? maxBytes : rest;
+        await raf.setPosition(offset);
+        return await raf.read(n);
+      } finally {
+        await raf.close();
+      }
+    } on FileSystemException catch (e) {
+      throw FileStoreException('E_IO', e.message);
+    }
+  }
+
+  @override
   Future<void> copyToLocal(VFile f, File cacheTarget) async {
     _assertWithinRoots(f.docId);
     try {

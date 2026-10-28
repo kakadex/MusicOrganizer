@@ -22,6 +22,14 @@ Sources: MusicBrainz, Deezer, iTunes, NetEase Cloud Music, QQ Music, Kugou, Kuwo
 (tags); LRCLIB, NetEase Cloud Music, QQ Music, lyrics.ovh (lyrics). You can disable any
 source in **Settings → Data sources**.
 
+## Network / proxy
+
+Networking is **direct** by default. You may instead choose *follow system environment
+variables* or type a proxy host/port manually; **Settings → Network** includes a
+"test connectivity" button. A proxy address is only saved in local settings and used to
+open connections — it is never reported anywhere, and no request is made through it
+without you running an online feature first.
+
 ## Logs
 
 Logs are local. Before being written or exported they are sanitized: local paths,

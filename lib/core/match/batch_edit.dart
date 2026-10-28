@@ -21,7 +21,7 @@ class BatchEditSpec {
 
   /// 可批量编辑的字段（顺序即界面上的顺序）。
   static const List<String> fields = <String>[
-    'title', 'artist', 'album', 'genre', 'year', 'comment',
+    'title', 'artist', 'albumArtist', 'album', 'genre', 'year', 'comment',
   ];
 
   bool get isEmpty => values.isEmpty && !renumberTrack;

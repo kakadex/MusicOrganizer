@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import '../../app/repo.dart';
 import '../../app/ui_kit.dart';
 import '../../core/fs/file_store.dart';
+import '../../core/model/journal_entry.dart' show JournalOp;
 import '../../core/model/tags.dart';
 import '../../core/model/vfile.dart';
 import '../../core/scan/scanner.dart';
@@ -131,7 +132,8 @@ Future<void> runClearAllTags(BuildContext context, List<VFile> files) async {
     }
     if (updates.isEmpty && !removeLrc) continue;
     final String err =
-        await tx.apply(f, updates, batchId: batchId, removeLrc: removeLrc);
+        await tx.apply(f, updates,
+            batchId: batchId, removeLrc: removeLrc, op: JournalOp.clear);
     if (err.isEmpty) {
       done++;
       repo.invalidate(f);

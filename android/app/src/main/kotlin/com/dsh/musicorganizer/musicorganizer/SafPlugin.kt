@@ -188,6 +188,34 @@ class SafPlugin(private val resolver: ContentResolver) {
         }
     }
 
+    /** 从 offset 处读 maxBytes 字节（查重取中段指纹用；读不到返回 null）。 */
+    fun readRange(treeUri: String, docId: String, offset: Long, maxBytes: Int): ByteArray? {
+        if (maxBytes <= 0 || offset < 0) return null
+        val uri = documentUri(treeUri, docId)
+        val pfd = resolver.openFileDescriptor(uri, "r") ?: return null
+        try {
+            val size = pfd.statSize
+            if (size <= 0 || offset >= size) return null
+            val want = minOf(maxBytes.toLong(), size - offset).toInt()
+            val fis = FileInputStream(pfd.fileDescriptor)
+            try {
+                val channel: FileChannel = fis.channel
+                channel.position(offset)
+                val out = ByteArray(want)
+                val buffer = ByteBuffer.wrap(out)
+                while (buffer.hasRemaining()) {
+                    if (channel.read(buffer) <= 0) break
+                }
+                val got = buffer.position()
+                return if (got == out.size) out else out.copyOf(got)
+            } finally {
+                fis.close()
+            }
+        } finally {
+            pfd.close()
+        }
+    }
+
     // ------------------------------------------------------------------
     // 创建 / 删除 / 重命名 / 移动
     // ------------------------------------------------------------------

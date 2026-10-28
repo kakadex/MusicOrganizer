@@ -18,13 +18,14 @@ abstract final class TagFill {
 
   /// 在线候选能提供的字段（comment 永远不自动写，容易盖掉用户备注）。
   static const List<String> candidateFields = <String>[
-    'title', 'artist', 'album', 'year', 'track', 'genre',
+    'title', 'artist', 'albumArtist', 'album', 'year', 'track', 'genre',
   ];
 
   /// 字段中文标签（等价旧 Tags.LABELS； core/model/tags.dart 后改为引用）。
   static const Map<String, String> tagLabels = <String, String>{
     'title': '标题',
     'artist': '艺术家',
+    'albumArtist': '专辑艺术家',
     'album': '专辑',
     'year': '年份',
     'track': '音轨',

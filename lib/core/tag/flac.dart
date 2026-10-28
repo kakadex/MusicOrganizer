@@ -19,6 +19,8 @@ abstract final class Flac {
   static const Map<String, String> readKeys = <String, String>{
     'TITLE': 'title',
     'ARTIST': 'artist',
+    'ALBUMARTIST': 'albumArtist',
+    'ALBUM ARTIST': 'albumArtist',
     'ALBUM': 'album',
     'DATE': 'year',
     'TRACKNUMBER': 'track',
@@ -40,6 +42,7 @@ abstract final class Flac {
   static const Map<String, String> writeKeys = <String, String>{
     'title': 'TITLE',
     'artist': 'ARTIST',
+    'albumArtist': 'ALBUMARTIST',
     'album': 'ALBUM',
     'year': 'DATE',
     'track': 'TRACKNUMBER',

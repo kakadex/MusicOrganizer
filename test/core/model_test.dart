@@ -61,8 +61,10 @@ void main() {
       t.put('year', '2003-07-31');
       expect(t.get('year'), '2003');
       expect(t.anyValue(), isTrue);
-      expect(Tags.keys.length, 7);
+      expect(Tags.keys.length, 8);
+      expect(Tags.keys, contains('albumArtist'));
       expect(Tags.labels['lyrics'], '歌词');
+      expect(Tags.labels['albumArtist'], '专辑艺术家');
     });
 
     test('copy 独立', () {

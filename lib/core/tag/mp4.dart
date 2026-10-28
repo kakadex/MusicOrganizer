@@ -15,6 +15,7 @@ abstract final class Mp4 {
   static const Map<String, String> _atomFields = <String, String>{
     '\u00a9nam': 'title',
     '\u00a9ART': 'artist',
+    'aART': 'albumArtist',
     '\u00a9alb': 'album',
     '\u00a9day': 'year',
     'trkn': 'track',
@@ -27,6 +28,7 @@ abstract final class Mp4 {
   static const Map<String, String> _fieldAtoms = <String, String>{
     'title': '\u00a9nam',
     'artist': '\u00a9ART',
+    'albumArtist': 'aART',
     'album': '\u00a9alb',
     'year': '\u00a9day',
     'track': 'trkn',

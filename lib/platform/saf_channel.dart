@@ -166,6 +166,19 @@ class SafChannel {
     }
   }
 
+  /// 从 [offset] 处读 [maxBytes] 字节（查重取中段指纹用）。
+  Future<Uint8List?> readRange(
+      String treeUri, String docId, int offset, int maxBytes) async {
+    try {
+      final Object? r = await safChannel.invokeMethod('readRange',
+          <String, Object?>{'treeUri': treeUri, 'docId': docId,
+              'offset': offset, 'maxBytes': maxBytes});
+      return r as Uint8List?;
+    } catch (e) {
+      throw _mapError(e);
+    }
+  }
+
   /// 扫系统媒体库里的音频（需要读取音频权限）。
   Future<List<Map<String, Object?>>> mediaStoreAudio(int minDurationMs) async {
     try {

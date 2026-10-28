@@ -191,4 +191,33 @@ void main() {
     expect(MatchQueue.open(dir, 'none').countPending(), 0);
     expect(BatchMemory.open(dir, 'none').size(), 0);
   });
+
+  test('歌词 / 封面续跑：分类隔离 + 写完就不再当作待办', () {
+    final MatchQueue lyrics = MatchQueue.open(dir, 'lyrics');
+    final MatchQueue covers = MatchQueue.open(dir, 'covers');
+    lyrics.put('a.mp3', 10, 100, <String, String>{'text': '[00:01.00]歌词'});
+    covers.put('a.mp3', 10, 100, <String, String>{'url': 'https://x/y.jpg'});
+
+    expect(lyrics.countPending(), 1);
+    expect(covers.countPending(), 1);
+    expect(lyrics.take('a.mp3', 10, 100)!.field('text', ''), '[00:01.00]歌词');
+    expect(covers.take('a.mp3', 10, 100)!.field('url', ''), 'https://x/y.jpg');
+    // 两类的记录互不干扰
+    expect(lyrics.take('a.mp3', 10, 100)!.field('url', ''), '');
+
+    lyrics.mark('a.mp3', MatchQueue.written);
+    expect(lyrics.countPending(), 0, reason: '写过的不再是待写入');
+    expect(lyrics.take('a.mp3', 10, 100), isNull);
+    expect(covers.countPending(), 1, reason: '歌词写完不影响封面');
+  });
+
+  test('文件被换过（指纹变了）→ 旧进度作废', () {
+    final MatchQueue lyrics = MatchQueue.open(dir, 'lyrics2');
+    lyrics.put('b.mp3', 10, 100, <String, String>{'text': '旧歌词'});
+    // 大小变了：哪怕是同名同位置，也不能拿旧结果冒充
+    expect(lyrics.take('b.mp3', 11, 100), isNull);
+    expect(lyrics.countPending(), 0);
+    lyrics.put('b.mp3', 10, 100, <String, String>{'text': '旧歌词'});
+    expect(lyrics.take('b.mp3', 10, 999), isNull, reason: 'mtime 变了同样作废');
+  });
 }

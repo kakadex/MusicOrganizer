@@ -7,6 +7,7 @@
 /// 写盘串行：async 互斥队列保证同一文件 / 批量任务不会并发写。
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -14,12 +15,59 @@ import 'dart:typed_data';
 import '../fs/file_store.dart';
 import '../fs/temp_name.dart';
 import '../log/log.dart';
-import '../model/journal_entry.dart';
+import '../model/journal_entry.dart' show JournalEntry, JournalOp;
 import '../model/tags.dart';
 import '../model/vfile.dart';
 import '../tag/tag_io.dart';
 import 'journal.dart';
 import 'lrc_sidecar.dart';
+
+/// 批次备份：批内每首歌「写之前那份」的落点。
+class _Backup {
+  _Backup(this.file, this.backup, this.lrcBefore, this.lrcTouched, this.entryId,
+      this.op);
+
+  final VFile file;
+  final File backup;
+
+  /// 写之前的同名 `.lrc` 内容（没碰过歌词时为 null）。
+  final Uint8List? lrcBefore;
+  final bool lrcTouched;
+
+  /// 这次写入对应的 journal 记录 id（回滚后要把它标成已撤销）；
+  /// 在事务的第 7 步（追加日志）之后才回填，所以不是 final。
+  String entryId;
+  final String op;
+}
+
+/// 一个进行中的批次。
+class _Batch {
+  _Batch(this.id, this.maxBytes);
+
+  final String id;
+  final int maxBytes;
+  final List<_Backup> items = <_Backup>[];
+  int bytes = 0;
+  bool truncated = false;
+
+  /// 还能不能为 [size] 字节的文件留备份。
+  bool canHold(int size) {
+    if (bytes + size > maxBytes) {
+      truncated = true;
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> dispose() async {
+    for (final _Backup b in items) {
+      try {
+        await b.backup.delete();
+      } catch (_) {}
+    }
+    items.clear();
+  }
+}
 
 /// 标签事务写入（纯 Dart）。
 class TagTransaction {
@@ -40,12 +88,93 @@ class TagTransaction {
 
   Future<void> _tail = Future<void>.value();
 
+  /// 当前开启的批次（整批回滚用）；null = 没有批在用。
+  _Batch? _batch;
+
+  /// 批备份的**总量**上限（默认 1.5GB）。
+  ///
+  /// 整批回滚要留着「写之前那份」，等于批内每首歌多占一份磁盘。曲库动辄
+  /// 几千首，不设上限会把磁盘吃穿；超了就停止再留备份，并标记这批是
+  /// **部分可回滚**（界面要如实说「只能退回前 N 首」，不要假装全能退）。
+  static const int defaultBatchBackupBytes = 1536 * 1024 * 1024;
+
   /// 写盘串行互斥：任何一次事务完成（成功或失败）后才开始下一次。
   Future<T> _serialized<T>(Future<T> Function() action) {
     final Future<T> result = _tail.then((_) => action());
     _tail = result.then<void>((_) {}, onError: (_) {});
     return result;
   }
+
+  /// 开启一个批次：批内每首歌的原文件会留一份备份，直到 [commitBatch]
+  /// （成功，删备份）或 [rollbackBatch]（失败，整体退回）。
+  ///
+  /// 单文件事务只保证「这一首要么全改要么不改」；一批 200 首里第 137 首失败时，
+  /// 前 136 首已经落盘了 —— 有了批，才能说「这一批要么全成要么全退」。
+  /// 返回的 id 要传给批内每次 [apply] 的 `batchId`。
+  ///
+  /// 备份不额外读盘：单文件事务本来就要先备份原文件做回读校验，这里只是
+  /// **用完不删、留到批结束**，所以开批几乎不增加 IO，只占磁盘。
+  String beginBatch(String id, {int maxBytes = defaultBatchBackupBytes}) {
+    _Batch? old = _batch;
+    if (old != null) unawaited(commitBatch(old.id));
+    final _Batch b = _Batch(id, maxBytes);
+    _batch = b;
+    return id;
+  }
+
+  /// 批正常结束：丢掉备份。忘了调也没事——下次 [beginBatch] 会替你收尾。
+  Future<void> commitBatch(String id) async {
+    final _Batch? b = _batch;
+    if (b == null || b.id != id) return;
+    _batch = null;
+    await b.dispose();
+  }
+
+  /// 整批退回：把批内**所有**已写入的文件还原成写之前的样子。
+  ///
+  /// 返回 (恢复成功数, 失败数)。失败一般是文件被外部删了 / 变只读了，
+  /// 这种只能如实报出来：整批回滚的承诺「全退」在磁盘层面已经尽力，
+  /// 剩下的是环境原因，界面要把数字显示给用户看。
+  Future<(int, int)> rollbackBatch(String id) async {
+    final _Batch? b = _batch;
+    if (b == null || b.id != id) return (0, 0);
+    _batch = null;
+    int ok = 0;
+    int failed = 0;
+    // 逆序：后写的先退回去，中途被打断也最多是「后面没退、前面已退」
+    for (int i = b.items.length - 1; i >= 0; i--) {
+      final _Backup item = b.items[i];
+      try {
+        await store.writeFromLocal(item.file, item.backup);
+        item.file.clearMeta();
+        if (item.lrcTouched) {
+          await LrcSidecar.restore(store, item.file, item.lrcBefore);
+        }
+        await onRefresh?.call(item.file);
+        // 撤销日志里也要留痕：否则这条 applied 记录还挂着「可撤销」，
+        // 用户在历史里再点一次会退到一个不存在的状态
+        if (item.entryId.isNotEmpty) {
+          await journal.append(JournalEntry()
+            ..id = '${DateTime.now().millisecondsSinceEpoch}-rollback-$i'
+            ..timestamp = journalTimestamp()
+            ..uri = item.file.docId
+            ..name = item.file.name
+            ..batchId = id
+            ..status = 'reverted'
+            ..op = item.op
+            ..targetId = item.entryId);
+        }
+        ok++;
+      } catch (_) {
+        failed++;
+      }
+    }
+    await b.dispose();
+    return (ok, failed);
+  }
+
+  /// 这批是不是「部分可回滚」（备份总量到上限后停了）。
+  bool batchTruncated(String id) => _batch?.id == id && _batch!.truncated;
 
   /// 应用字段更新；updates 只含要修改的字段（空串=清除），cover: null=不动/空=删除。
   /// 返回 "" 表示成功，否则为错误信息（原文件保证未被修改）。
@@ -58,9 +187,10 @@ class TagTransaction {
       bool record = true,
       String batchId = '',
       String? lrcText,
-      bool removeLrc = false}) {
-    return _serialized(
-        () => _apply(f, updates, cover, record, batchId, lrcText, removeLrc));
+      bool removeLrc = false,
+      String op = JournalOp.tags}) {
+    return _serialized(() =>
+        _apply(f, updates, cover, record, batchId, lrcText, removeLrc, op));
   }
 
   /// 与 `Tags.put` 一致的归一化：去首尾空白，year 只留前 4 位。
@@ -71,7 +201,8 @@ class TagTransaction {
   }
 
   Future<String> _apply(VFile f, Map<String, String> updates, Uint8List? cover,
-      bool record, String batchId, String? lrcText, bool removeLrc) async {
+      bool record, String batchId, String? lrcText, bool removeLrc,
+      String op) async {
     final String ext = TagIO.extOf(f.name);
     if (!TagIO.canWrite(ext)) return '该格式不支持写标签：$ext';
     if (updates.isEmpty && cover == null) return '无变更，跳过写入';
@@ -93,6 +224,8 @@ class TagTransaction {
 
     File? tmp;
     File? backup;
+    _Backup? batchItem; // 非空 = 备份要留到批结束（整批回滚用），不能随手删
+    String entryId = '';
     try {
       // 1. 副本
       tmp = await _tempFile(ext);
@@ -122,6 +255,17 @@ class TagTransaction {
       // 4. 备份当前原文件
       backup = await _tempFile(ext);
       await store.copyToLocal(f, backup);
+      // 批开着且还放得下：这份备份留到批结束（成功 commit 时删、失败 rollback 时
+      // 写回去）。不额外读盘——单文件事务本来就要这份备份做回读校验。
+      final _Batch? b = _batch;
+      if (b != null && b.id == batchId) {
+        final int size = await backup.length();
+        if (b.canHold(size)) {
+          batchItem = _Backup(f, backup, lrcBefore, touchLrc, '', op);
+          b.items.add(batchItem);
+          b.bytes += size;
+        }
+      }
 
       // 5. 写回
       await store.writeFromLocal(f, tmp);
@@ -133,6 +277,9 @@ class TagTransaction {
         if (after.get(e.key) != e.value.trim()) {
           await store.writeFromLocal(f, backup);
           f.clearMeta();
+          // 已经就地还原了，这项不该再算进「批里已写入的」
+          _voidBatchBackup(batchItem);
+          batchItem = null;
           return '回读校验失败，已从备份恢复：${e.key}';
         }
       }
@@ -146,6 +293,8 @@ class TagTransaction {
           await store.writeFromLocal(f, backup);
           f.clearMeta();
           await LrcSidecar.restore(store, f, lrcBefore);
+          _voidBatchBackup(batchItem);
+          batchItem = null;
           return '歌词文件处理失败，已还原原文件：$lrcErr';
         }
       }
@@ -158,7 +307,8 @@ class TagTransaction {
           ..uri = f.docId
           ..targetId = f.docId
           ..name = f.name
-          ..batchId = batchId;
+          ..batchId = batchId
+          ..op = op;
         // lyrics 刻意不在 Tags.keys 里，但要单独记进日志：
         // 否则写了歌词再撤销，歌词不会被还原（before/after 里没有它）
         for (final String k in <String>[...Tags.keys, Tags.lyrics]) {
@@ -171,6 +321,7 @@ class TagTransaction {
           entry.after[LrcSidecar.journalKey] = LrcSidecar.encode(lrcAfter);
         }
         entry.status = 'applied';
+        entryId = entry.id; // 记下来：整批回滚后要把这条标成「已撤销」
         final bool logged = await journal.append(entry);
         if (!logged) {
           // 标签已经写入原文件，不能因为日志失败就回滚；但要留下痕迹，
@@ -181,8 +332,15 @@ class TagTransaction {
 
       f.clearMeta();
       await onRefresh?.call(f);
+      batchItem?.entryId = entryId;
       return '';
     } catch (e) {
+      // 异常路径下这份备份没用（要么没写成功、要么已经就地恢复过），
+      // 交给批回收即可，别把它留在批里当「可回滚」的证据
+      if (batchItem != null) {
+        _batch?.items.remove(batchItem);
+        batchItem = null;
+      }
       return '写入失败（原文件未修改）：$e';
     } finally {
       if (tmp != null) {
@@ -190,12 +348,18 @@ class TagTransaction {
           await tmp.delete();
         } catch (_) {}
       }
-      if (backup != null) {
+      if (backup != null && batchItem == null) {
         try {
           await backup.delete();
         } catch (_) {}
       }
     }
+  }
+
+  /// 把一项备份从批里摘掉（这一首没真正写成，不该被整批回滚碰）。
+  void _voidBatchBackup(_Backup? item) {
+    if (item == null) return;
+    _batch?.items.remove(item);
   }
 
   /// 撤销最近一次标签写入。

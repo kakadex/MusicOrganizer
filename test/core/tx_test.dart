@@ -135,6 +135,64 @@ void main() {
     expect(all.where((JournalEntry e) => e.status == 'reverted').length, 3);
   });
 
+  test('批次回滚：第 2 首失败后整批退回，第 3 首没被碰过', () async {
+    final List<File> fs = <File>[mp3('p0.mp3'), mp3('p1.mp3'), mp3('p2.mp3')];
+    final List<VFile> vs = <VFile>[
+      for (final File f in fs) (await store.stat(f.path))!,
+    ];
+    // 先给三首都写上「旧标题」，作为回滚的对照值
+    for (int i = 0; i < 3; i++) {
+      expect(await tx.apply(vs[i], <String, String>{'title': '旧标题$i'}), '');
+    }
+    final Uint8List before2 = await fs[2].readAsBytes();
+
+    // 用会写坏字节的 store：第 2 首的写盘会在回读校验这步失败
+    final _CorruptingStore st = _CorruptingStore();
+    st.addRoot(dir.path);
+    final TagTransaction t2 =
+        TagTransaction(store: st, journal: Journal(File('${dir.path}/jb.jsonl')));
+
+    const String batch = 'BATCH-1';
+    t2.beginBatch(batch);
+    expect(await t2.apply(vs[0], <String, String>{'title': '新标题0'},
+            batchId: batch),
+        '');
+    st.corruptNextWrite = true;
+    final String err = await t2.apply(vs[1], <String, String>{'title': '新标题1'},
+        batchId: batch);
+    expect(err, isNotEmpty);
+
+    // 整批退回
+    final (int ok, int bad) = await t2.rollbackBatch(batch);
+    expect(bad, 0);
+    expect(ok, greaterThanOrEqualTo(1));
+
+    // 第 1 首回到旧值；第 3 首压根没被写过（字节与之前完全一致）
+    final Tags t0 = TagIO.readLocal(await fs[0].readAsBytes(), '.mp3');
+    expect(t0.get('title'), '旧标题0');
+    final Uint8List after2 = await fs[2].readAsBytes();
+    expect(after2.length, before2.length);
+    bool same = true;
+    for (int i = 0; i < before2.length; i++) {
+      if (before2[i] != after2[i]) same = false;
+    }
+    expect(same, isTrue);
+  });
+
+  test('批次 commit 后备份被清掉，rollback 不再有作用', () async {
+    final File f = mp3('c0.mp3');
+    final VFile v = (await store.stat(f.path))!;
+    const String batch = 'BATCH-2';
+    tx.beginBatch(batch);
+    expect(await tx.apply(v, <String, String>{'title': '写入值'}, batchId: batch),
+        '');
+    await tx.commitBatch(batch);
+    final (int ok, int bad) = await tx.rollbackBatch(batch);
+    expect(ok, 0);
+    expect(bad, 0);
+    expect(TagIO.readLocal(await f.readAsBytes(), '.mp3').get('title'), '写入值');
+  });
+
   test('journal 2000 条回绕', () async {
     final Journal j = Journal(File('${dir.path}/j3.jsonl'));
     for (int i = 0; i < 2005; i++) {

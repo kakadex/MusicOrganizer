@@ -17,7 +17,9 @@ abstract final class Id3 {
   static const Map<String, String> readFields = <String, String>{
     'TIT2': 'title',
     'TPE1': 'artist',
-    'TPE2': 'artist',
+    // TPE2 是「专辑艺术家」，不是 artist：合辑里每首的 TPE1 不同、TPE2 相同。
+    // 以前它也被映射成 artist，于是整张合辑的歌手被 TPE2 统一盖掉。
+    'TPE2': 'albumArtist',
     'TALB': 'album',
     'TYER': 'year',
     'TDRC': 'year',
@@ -30,6 +32,7 @@ abstract final class Id3 {
   static const Map<String, List<String>> fieldFrames = <String, List<String>>{
     'title': <String>['TIT2'],
     'artist': <String>['TPE1'],
+    'albumArtist': <String>['TPE2'],
     'album': <String>['TALB'],
     'year': <String>['TYER', 'TDRC'],
     'track': <String>['TRCK'],
@@ -205,8 +208,14 @@ abstract final class Id3 {
     while (p + 10 <= d.length) {
       if (d[p] == 0) break;
       final String id = _ascii(d, p, 4);
-      final int frameSize = version >= 4 ? _syncsafe(d, p + 4) : _be32(d, p + 4);
-      if (frameSize <= 0 || p + 10 + frameSize > d.length) break;
+      int frameSize = version >= 4 ? _syncsafe(d, p + 4) : _be32(d, p + 4);
+      if (frameSize <= 0 || p + 10 + frameSize > d.length) {
+        // 与同步路径一致的兜底：标称 v2.4 却写了普通 32 位大小的转码器很常见
+        if (version < 4) break;
+        final int alt = _be32(d, p + 4);
+        if (alt <= 0 || p + 10 + alt > d.length) break;
+        frameSize = alt;
+      }
       _applyFrame(tags, id, Uint8List.sublistView(d, p + 10, p + 10 + frameSize));
       p += 10 + frameSize;
     }
@@ -239,7 +248,11 @@ abstract final class Id3 {
     if (id == 'COMM' || id == 'USLT') {
       tags.put(field, _decodeComm(data));
     } else if (id == 'TPE2') {
-      if (tags.get('artist').isEmpty) tags.put('artist', _decodeText(data));
+      final String v = _decodeText(data);
+      if (tags.get('albumArtist').isEmpty) tags.put('albumArtist', v);
+      // 兼容：不少文件只写了 TPE2、TPE1 空着。artist 空时用 TPE2 兜底，
+      // 免得改了映射之后这批文件突然「没有歌手」
+      if (tags.get('artist').isEmpty) tags.put('artist', v);
     } else {
       final String v = _decodeText(data);
       if (v.isNotEmpty) tags.put(field, v);
@@ -503,6 +516,9 @@ abstract final class Id3 {
     if (_has(values, 'artist')) {
       _putTextFrame(frames, version, 'TPE1', _orEmpty(values['artist']));
     }
+    if (_has(values, 'albumArtist')) {
+      _putTextFrame(frames, version, 'TPE2', _orEmpty(values['albumArtist']));
+    }
     if (_has(values, 'album')) {
       _putTextFrame(frames, version, 'TALB', _orEmpty(values['album']));
     }
@@ -628,9 +644,14 @@ abstract final class Id3 {
       while (pos + 10 <= tagEnd) {
         if (data[pos] == 0) break;
         final String id = _ascii(data, pos, 4);
-        final int frameSize =
+        int frameSize =
             version >= 4 ? _syncsafe(data, pos + 4) : _be32(data, pos + 4);
-        if (frameSize <= 0 || pos + 10 + frameSize > tagEnd) break;
+        if (frameSize <= 0 || pos + 10 + frameSize > tagEnd) {
+          if (version < 4) break;
+          final int alt = _be32(data, pos + 4);
+          if (alt <= 0 || pos + 10 + alt > tagEnd) break;
+          frameSize = alt;
+        }
         if (id == 'APIC') return true;
         pos += 10 + frameSize;
       }

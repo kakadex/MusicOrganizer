@@ -63,10 +63,31 @@ abstract final class Ogg {
     return false;
   }
 
+  /// 把一个字段值拆成 Vorbis 的多值列表（含 [multiSep] 才拆）。
+  ///
+  /// 只在**写盘**时拆：界面里「A; B」就是两个歌手，写进文件变成两条 ARTIST，
+  /// 别的播放器按多值显示，读回来还是「A; B」。
+  static List<String> splitMulti(String value) {
+    final String v = value.trim();
+    if (!v.contains(multiSep)) return <String>[v];
+    final List<String> out = <String>[
+      for (final String part in v.split(multiSep))
+        if (part.trim().isNotEmpty) part.trim(),
+    ];
+    return out.isEmpty ? <String>[v] : out;
+  }
+
+  /// 多值分隔符：Vorbis Comment 允许同名键出现多次（`ARTIST=A`、`ARTIST=B`），
+  /// 而 [Tags] 的值是单字符串，读时并成一个串、写时再拆回去。
+  ///
+  /// 用 `; ` 而不是换行：界面里是单行输入框，换行在里面既看不见也容易被清掉。
+  static const String multiSep = '; ';
+
   static void _applyComments(Tags tags, Uint8List packet) {
     final Map<String, String> c = parseComments(packet);
     _putIfPresent(tags, c, 'title', 'TITLE');
     _putIfPresent(tags, c, 'artist', 'ARTIST');
+    _putIfPresent(tags, c, 'albumArtist', 'ALBUMARTIST');
     _putIfPresent(tags, c, 'album', 'ALBUM');
     _putIfPresent(tags, c, 'year', 'DATE');
     _putIfPresent(tags, c, 'genre', 'GENRE');
@@ -92,9 +113,21 @@ abstract final class Ogg {
     if (v != null) tags.put(field, v);
   }
 
-  /// 解析 Vorbis Comment 包（键大写 → 值，同名只留第一个）。
+  /// 解析 Vorbis Comment 包（键大写 → 值，同名多个值用 [multiSep] 连起来）。
   static Map<String, String> parseComments(Uint8List packet) {
-    final Map<String, String> out = <String, String>{};
+    final Map<String, List<String>> multi = parseCommentsMulti(packet);
+    return <String, String>{
+      for (final MapEntry<String, List<String>> e in multi.entries)
+        e.key: e.value.join(multiSep),
+    };
+  }
+
+  /// 解析 Vorbis Comment 包，保留同名键的**全部**取值。
+  ///
+  /// Vorbis Comment 天生支持多值（一首歌多个 ARTIST 是合法的），以前只留第一个，
+  /// 于是「A / B」两个歌手写进去再读回来只剩「A」，信息平白丢一半。
+  static Map<String, List<String>> parseCommentsMulti(Uint8List packet) {
+    final Map<String, List<String>> out = <String, List<String>>{};
     int pos;
     if (_startsWith(packet, <int>[0x03, 0x76, 0x6F, 0x72, 0x62, 0x69, 0x73])) {
       pos = 7;
@@ -118,7 +151,7 @@ abstract final class Ogg {
       if (eq <= 0) continue;
       final String key = entry.substring(0, eq).toUpperCase();
       final String value = entry.substring(eq + 1);
-      out.putIfAbsent(key, () => value);
+      out.putIfAbsent(key, () => <String>[]).add(value);
     }
     return out;
   }
@@ -139,9 +172,17 @@ abstract final class Ogg {
         Uint8List.sublistView(packet, pos + 4, pos + 4 + len));
   }
 
-  /// 组装注释包：头 + vendor + 计数 + 「KEY=value」 + Vorbis 的 framed bit。
+  /// 组装注释包：头 + vendor + 计数 + 「KEY=value」（可多值） + framed bit。
   static Uint8List buildComment(
-      bool opus, String vendor, Map<String, String> comments) {
+          bool opus, String vendor, Map<String, String> comments) =>
+      buildCommentMulti(opus, vendor, <String, List<String>>{
+        for (final MapEntry<String, String> e in comments.entries)
+          e.key: <String>[e.value],
+      });
+
+  /// 组装注释包；同名键的每个值各写一条（这才是 Vorbis 的多值写法）。
+  static Uint8List buildCommentMulti(
+      bool opus, String vendor, Map<String, List<String>> comments) {
     final BytesBuilder body = BytesBuilder();
     if (opus) {
       body.add(_ascii('OpusTags'));
@@ -151,11 +192,17 @@ abstract final class Ogg {
     final Uint8List vb = Uint8List.fromList(utf8.encode(vendor));
     body.add(_intBytes(vb.length));
     body.add(vb);
-    body.add(_intBytes(comments.length));
-    for (final MapEntry<String, String> e in comments.entries) {
-      final Uint8List kv = Uint8List.fromList(utf8.encode('${e.key}=${e.value}'));
-      body.add(_intBytes(kv.length));
-      body.add(kv);
+    int count = 0;
+    for (final List<String> vs in comments.values) {
+      count += vs.isEmpty ? 1 : vs.length;
+    }
+    body.add(_intBytes(count));
+    for (final MapEntry<String, List<String>> e in comments.entries) {
+      for (final String v in e.value.isEmpty ? <String>[''] : e.value) {
+        final Uint8List kv = Uint8List.fromList(utf8.encode('${e.key}=$v'));
+        body.add(_intBytes(kv.length));
+        body.add(kv);
+      }
     }
     if (!opus) body.addByte(0x01);
     return body.toBytes();
@@ -182,7 +229,7 @@ abstract final class Ogg {
     }
     final _Page hostPage = pages[comment.startPage];
 
-    final Map<String, String> merged = parseComments(comment.data);
+    final Map<String, List<String>> merged = parseCommentsMulti(comment.data);
     String vendor = vendorOf(comment.data);
     if (vendor.isEmpty) vendor = 'MusicOrganizer';
     for (final MapEntry<String, String> e in values.entries) {
@@ -191,9 +238,9 @@ abstract final class Ogg {
       merged.remove(key);
       final String raw = e.value;
       final String v = e.key == 'lyrics' ? raw : raw.trim();
-      if (v.isNotEmpty) merged[key] = v;
+      if (v.isNotEmpty) merged[key] = splitMulti(v);
     }
-    final Uint8List newComment = buildComment(opus, vendor, merged);
+    final Uint8List newComment = buildCommentMulti(opus, vendor, merged);
     if (newComment.length > 255 * 255 * 8) {
       throw const FormatException('标签数据过大（超过 500KB）');
     }
@@ -256,6 +303,8 @@ abstract final class Ogg {
         return 'TITLE';
       case 'artist':
         return 'ARTIST';
+      case 'albumArtist':
+        return 'ALBUMARTIST';
       case 'album':
         return 'ALBUM';
       case 'year':

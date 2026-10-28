@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:musicorganizer/core/update/app_update.dart';
+import 'package:musicorganizer/core/update/desktop_updater.dart';
 
 const String _manifestUrl =
     'https://gitee.com/kakadex/MusicOrganizer/raw/main/dist/latest.txt';
@@ -198,6 +199,55 @@ size: 2048
       final String out = AppUpdate.shortNotes(long, 10);
       expect(out, contains('…（完整说明见发布页）'));
       expect(out.length, lessThan(120));
+    });
+  });
+
+  group('桌面版 zip', () {
+    final Map<String, Object?> release = <String, Object?>{
+      'tag_name': 'v0.2.22',
+      'assets': <Object?>[
+        <String, Object?>{
+          'name': 'MusicOrganizer-0.2.22-android-arm64-v8a.apk',
+          'browser_download_url': 'https://example.com/a.apk',
+          'size': 1000,
+          'digest': 'sha256:apkdigest',
+        },
+        <String, Object?>{
+          'name': 'MusicOrganizer-0.2.22-windows-x64.zip',
+          'browser_download_url': 'https://example.com/w.zip',
+          'size': 2000,
+          'digest': 'sha256:zipdigest',
+        },
+      ],
+    };
+
+    test('Release 里同时认出 apk 与 zip', () {
+      final Release r = AppUpdate.parseRelease(release)!;
+      expect(r.hasApk, isTrue);
+      expect(r.hasZip, isTrue);
+      expect(r.zipName, 'MusicOrganizer-0.2.22-windows-x64.zip');
+      expect(r.zipSize, 2000);
+      expect(r.zipSha256, 'zipdigest');
+      // apk 的信息不能被 zip 覆盖
+      expect(r.apkName, contains('arm64'));
+      expect(r.sha256, 'apkdigest');
+    });
+
+    test('清单里的 zip / zip_sha256 也读得出来', () {
+      final Release? r = AppUpdate.parseManifest(
+          'version=0.2.22\ntag=v0.2.22\n'
+          'apk=dist/MusicOrganizer-0.2.22-android-arm64-v8a.apk\n'
+          'zip=dist/MusicOrganizer-0.2.22-windows-x64.zip\n'
+          'zip_size=3456\nzip_sha256=abc123\n',
+          'https://example.com/dist/latest.txt');
+      expect(r, isNotNull);
+      expect(r!.zipUrl, 'https://example.com/dist/MusicOrganizer-0.2.22-windows-x64.zip');
+      expect(r.zipSize, 3456);
+      expect(r.zipSha256, 'abc123');
+    });
+
+    test('解压产物里没有可执行文件时不算可运行', () {
+      expect(DesktopUpdater.stagingLooksRunnable('/no/such/dir'), isFalse);
     });
   });
 }

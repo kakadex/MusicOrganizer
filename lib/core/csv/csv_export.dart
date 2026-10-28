@@ -9,8 +9,8 @@ import '../model/vfile.dart';
 /// 曲库清单 CSV 导出（纯 Dart）。
 abstract final class CsvExport {
   static const List<String> header = <String>[
-    '文件名', '标题', '歌手', '专辑', '年份', '音轨', '流派', '大小(字节)',
-    '有无封面', '有无歌词', '所在目录',
+    '文件名', '标题', '歌手', '专辑艺术家', '专辑', '年份', '音轨', '流派',
+    '大小(字节)', '有无封面', '有无歌词', '所在目录',
   ];
 
   /// 一行清单数据。
@@ -22,6 +22,7 @@ abstract final class CsvExport {
       ..lyrics = lyrics;
     r.title = tags.get('title').trim();
     r.artist = tags.get('artist').trim();
+    r.albumArtist = tags.get('albumArtist').trim();
     r.album = tags.get('album').trim();
     r.year = tags.get('year').trim();
     r.track = tags.get('track').trim();
@@ -42,14 +43,15 @@ abstract final class CsvExport {
       _appendCell(sb, r.name, 0);
       _appendCell(sb, r.title, 1);
       _appendCell(sb, r.artist, 2);
-      _appendCell(sb, r.album, 3);
-      _appendCell(sb, r.year, 4);
-      _appendCell(sb, r.track, 5);
-      _appendCell(sb, r.genre, 6);
-      _appendCell(sb, '${r.size}', 7);
-      _appendCell(sb, r.cover ? '有' : '', 8);
-      _appendCell(sb, r.lyrics ? '有' : '', 9);
-      _appendCell(sb, r.dir, 10);
+      _appendCell(sb, r.albumArtist, 3);
+      _appendCell(sb, r.album, 4);
+      _appendCell(sb, r.year, 5);
+      _appendCell(sb, r.track, 6);
+      _appendCell(sb, r.genre, 7);
+      _appendCell(sb, '${r.size}', 8);
+      _appendCell(sb, r.cover ? '有' : '', 9);
+      _appendCell(sb, r.lyrics ? '有' : '', 10);
+      _appendCell(sb, r.dir, 11);
       sb.write('\r\n');
     }
     return sb.toString();
@@ -119,6 +121,7 @@ class Row {
   String name = '';
   String title = '';
   String artist = '';
+  String albumArtist = '';
   String album = '';
   String year = '';
   String track = '';

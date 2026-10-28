@@ -107,6 +107,14 @@ class SafFileStore implements FileStore {
   }
 
   @override
+  Future<Uint8List> rangeBytes(VFile f, int offset, int maxBytes) async {
+    if (maxBytes <= 0 || offset < 0) return Uint8List(0);
+    final TreeRef t = _treeFor(f.docId);
+    return await _channel.readRange(t.treeUri, f.docId, offset, maxBytes) ??
+        Uint8List(0);
+  }
+
+  @override
   Future<Uint8List> tailBytes(VFile f, int maxBytes) async {
     final TreeRef t = _treeFor(f.docId);
     return await _channel.readTail(t.treeUri, f.docId, maxBytes) ?? Uint8List(0);

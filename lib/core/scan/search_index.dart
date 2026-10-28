@@ -37,6 +37,7 @@ class Entry {
 
   String title = '';
   String artist = '';
+  String albumArtist = '';
   String album = '';
   String genre = '';
   String comment = '';
@@ -64,6 +65,7 @@ class Entry {
   late String _nPath;
   late String _nTitle;
   late String _nArtist;
+  late String _nAlbumArtist;
   late String _nAlbum;
   late String _nGenre;
   late String _nComment;
@@ -103,6 +105,7 @@ class Entry {
     if (tags != null) {
       title = tags.get('title');
       artist = tags.get('artist');
+      albumArtist = tags.get('albumArtist');
       album = tags.get('album');
       genre = tags.get('genre');
       comment = tags.get('comment');
@@ -131,6 +134,7 @@ class Entry {
     _nPath = SearchQuery.norm(relPath);
     _nTitle = SearchQuery.norm(title);
     _nArtist = SearchQuery.norm(artist);
+    _nAlbumArtist = SearchQuery.norm(albumArtist);
     _nAlbum = SearchQuery.norm(album);
     _nGenre = SearchQuery.norm(genre);
     _nComment = SearchQuery.norm(comment);
@@ -204,6 +208,8 @@ class SearchIndex {
         return e._nTitle.isEmpty ? e._nName : e._nTitle;
       case 'artist':
         return e._nArtist;
+      case 'albumArtist':
+        return e._nAlbumArtist;
       case 'album':
         return e._nAlbum;
       case 'genre':
@@ -230,6 +236,7 @@ class SearchIndex {
       e._nTitle.contains(term) ||
       SearchQuery.norm(e.displayTitle()).contains(term) ||
       e._nArtist.contains(term) ||
+      e._nAlbumArtist.contains(term) ||
       e._nAlbum.contains(term) ||
       e._nGenre.contains(term) ||
       e._nComment.contains(term) ||

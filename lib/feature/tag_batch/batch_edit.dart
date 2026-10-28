@@ -189,6 +189,9 @@ Future<void> runBatchEdit(BuildContext context, List<VFile> files) async {
     return;
   }
   final String batchId = 'batchedit-${DateTime.now().millisecondsSinceEpoch}';
+  // 整批事务：批内每首写之前留一份备份，中途失败可以「要么全成、要么全退」。
+  // 单文件事务只保证一首不出半成品，200 首里第 137 首失败时前 136 首已经落盘了。
+  tx.beginBatch(batchId);
   int done = 0;
   int failed = 0;
   for (final WriteTarget t in picked) {
@@ -205,6 +208,39 @@ Future<void> runBatchEdit(BuildContext context, List<VFile> files) async {
       failed++;
     }
   }
+  if (failed > 0 && done > 0 && context.mounted) {
+    // 半途失败：已经写入的那部分是留着还是一起退回去，交给用户定
+    final bool? rollback = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: const Text('这一批没有全部写入成功'),
+        content: Text('已写入 $done 首，失败 $failed 首。\n\n'
+            '要不要把已经写入的 $done 首全部退回？'
+            '${tx.batchTruncated(batchId) ? '\n\n（备份空间到上限，只能退回其中一部分）' : ''}'),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('保留已写入的'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('整批退回'),
+          ),
+        ],
+      ),
+    );
+    if (rollback == true) {
+      final (int ok, int bad) = await tx.rollbackBatch(batchId);
+      for (final WriteTarget t in picked) {
+        final VFile? f = t.file as VFile?;
+        if (f != null) repo.invalidate(f);
+      }
+      if (!context.mounted) return;
+      moSnack(context, '已退回 $ok 首${bad > 0 ? '，退回失败 $bad 首' : ''}');
+      return;
+    }
+  }
+  await tx.commitBatch(batchId);
   if (!context.mounted) return;
   moSnack(context, '已写入 $done 首${failed > 0 ? '，失败 $failed 首' : ''}');
 }

@@ -28,11 +28,19 @@ class CoverJob {
   /// 写之前那张（撤销 / 预览「已有封面」用）。
   Uint8List? previousBytes;
 
+  /// 从上次中断处恢复出来的封面地址（省掉一次联网查询，直接下载）。
+  String resumeUrl = '';
+
+  /// 这条是续跑恢复出来的。
+  bool resumed = false;
+
   void reset() {
     phase = CoverPhase.waiting;
     note = '等待';
     pendingBytes = null;
     previousBytes = null;
+    resumeUrl = '';
+    resumed = false;
   }
 }
 

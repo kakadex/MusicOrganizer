@@ -81,6 +81,12 @@ class Journal {
   }
 
   /// 最近一个可撤销的 applied 记录。
+  ///
+  /// `targetId` 有两种语义，别混用：
+  /// - **applied** 记录：写的是目标文件的 docId（与 `uri` 同值，取谁都行）；
+  /// - **reverted** 记录：写的是**被撤销那条记录的 id**（不是文件 id）。
+  /// 所以这里判断「是否已撤销」要用 `reverted.contains(e.id)`（拿 reverted 的
+  /// targetId 去比对 applied 的 id），而不是拿 e.targetId 去比对。
   Future<JournalEntry?> findLastApplied() async {
     final List<JournalEntry> all = await readAll();
     final Set<String> reverted = <String>{};

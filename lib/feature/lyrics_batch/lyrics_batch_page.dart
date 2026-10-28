@@ -9,7 +9,9 @@ import 'package:flutter/material.dart';
 import '../../app/repo.dart';
 import '../../app/ui_kit.dart';
 import '../../core/match/local_query.dart';
+import '../../core/match/match_queue.dart';
 import '../../core/model/query.dart';
+import '../../core/model/lyric_hit.dart';
 import '../../core/model/tags.dart';
 import '../../core/model/task_control.dart';
 import '../../core/model/vfile.dart';
@@ -51,6 +53,29 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
   /// 是否合成双语（原文一行 + 译文一行；只有拿到译文的才生效）。
   bool _bilingual = true;
 
+  /// 续跑队列（记住「哪首查到了什么、还没写」）。
+  MatchQueue? _queue;
+
+  /// 从上次中断处恢复出来的条数（界面显示「继续上次 N 首」）。
+  int _resumed = 0;
+
+  /// 用户点了「重新开始」：清掉续跑进度，这一轮全部重新联网查。
+  bool _restarted = false;
+
+  Future<void> _restart() async {
+    _queue?.clear();
+    if (!mounted) return;
+    setState(() {
+      _restarted = true;
+      _resumed = 0;
+      _fetched = false;
+      for (final LyricRow row in _rows) {
+        row.reset();
+      }
+    });
+    await _fetchAll();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -58,7 +83,46 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
     _simplify = Repo.instance.settings.get<bool>('lyrics_simplify', fallback: true) ?? true;
     _bilingual =
         Repo.instance.settings.get<bool>('lyrics_bilingual', fallback: true) ?? true;
+    _queue = Repo.instance.lyricsQueue;
+    _resume();
   }
+
+  /// 接上上次没写完的那批：指纹（大小 + 修改时间）一致的才认，
+  /// 文件被换过就当场作废，不拿旧歌词冒充。
+  void _resume() {
+    final MatchQueue? q = _queue;
+    if (q == null) return;
+    int n = 0;
+    for (final LyricRow row in _rows) {
+      final MatchItem? item = q.take(_keyOf(row.file), row.file.size,
+          row.file.lastModified);
+      if (item == null) continue;
+      final String text = item.field('text', '');
+      if (text.isEmpty) continue;
+      final LyricHit hit = LyricHit()
+        ..title = item.field('title', row.file.stem())
+        ..artist = item.field('artist', '')
+        ..source = item.field('source', '')
+        ..synced = text;
+      final double score = double.tryParse(item.field('score', '')) ?? 1.0;
+      final LyricChoice c = LyricChoice(hit: hit, score: score)
+        ..simplify = _simplify
+        ..bilingual = _bilingual;
+      row.candidates = <LyricChoice>[c];
+      row.choice = c;
+      row.selected = !c.low;
+      row.status = '上次查到的歌词（未写入）';
+      row.resumed = true;
+      n++;
+    }
+    if (n > 0) {
+      _resumed = n;
+      _fetched = true;
+    }
+  }
+
+  /// 续跑用的键：有 docId 用它，没有（比如刚扫到还没登记）退回文件名。
+  static String _keyOf(VFile f) => f.docId.isNotEmpty ? f.docId : f.name;
 
   int get _selectedCount =>
       _rows.where((LyricRow r) => r.selected && r.choice != null).length;
@@ -91,6 +155,13 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
                     icon: Icon(Icons.arrow_back,
                         size: 20, color: MoKit.text(context)),
                   ),
+                if (_resumed > 0 && !_restarted)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: MoButton('重新开始',
+                        primary: false,
+                        onPressed: _fetching || _writing ? null : _restart),
+                  ),
                 MoButton(_fetched ? '重新获取' : '获取歌词',
                     busy: _fetching, onPressed: _fetching || _writing ? null : _fetchAll),
               ],
@@ -108,6 +179,10 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
     if (_rows.isEmpty) return '没有曲目';
     if (_fetching) return '正在搜索 ${_rows.length} 首';
     if (_writing) return '正在写入 $_selectedCount 首';
+    // 续跑：上次查到但没来得及写的，进来就摆在列表里，不用再等一轮联网
+    if (_resumed > 0 && !_restarted) {
+      return '继续上次 $_resumed/${_rows.length} 首（已查到，待确认写入）';
+    }
     if (!_fetched) return '${_rows.length} 首 · 多源取词，先确认再写';
     final int found = _rows.where((LyricRow r) => r.choice != null).length;
     final int low = _rows.where((LyricRow r) => r.choice?.low ?? false).length;
@@ -235,6 +310,13 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
           if (mounted) setState(() {});
           return;
         }
+        // 上次已经查到过的：直接用，不再联网（省时间也省源的配额）
+        if (row.resumed && row.choice != null) {
+          found++;
+          control?.report(i + 1, total, row.file.name);
+          if (mounted) setState(() {});
+          return;
+        }
         row.status = '搜索歌词…';
         // 页面可能已经被返回键关掉：此时 setState 会因 State 已卸载而崩
         if (mounted) setState(() {});
@@ -267,7 +349,23 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
           row.status = best == null
               ? '没有合格歌词'
               : (best.low ? '低置信，默认不勾选' : '已选中');
-          if (best != null) found++;
+          if (best != null) {
+            found++;
+            // 记进度：这一首「查到什么、还没写」。下次进来可以直接接着写，
+            // 不用再查一遍（进程被杀、用户点停止都靠它续上）。
+            _queue?.put(
+              _keyOf(row.file),
+              row.file.size,
+              row.file.lastModified,
+              <String, String>{
+                'text': best.text,
+                'title': best.hit.title,
+                'artist': best.hit.artist,
+                'source': best.hit.source,
+                'score': '${best.score}',
+              },
+            );
+          }
         } catch (e) {
           row.status = '搜索失败：$e';
         }
@@ -355,6 +453,33 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
       expandAll: true,
     );
     if (!mounted || picked == null || picked.isEmpty) return;
+    // 低置信是「机器觉得可能不是同一首歌」：默认不勾选已经挡掉一大半，
+    // 但用户主动勾上时仍要再问一次——写进文件的歌词覆盖掉原来的，退回来很麻烦
+    final int low = picked
+        .where((WriteTarget t) => t.lowConfidence)
+        .length;
+    if (low > 0) {
+      final bool? go = await showDialog<bool>(
+        context: context,
+        builder: (BuildContext ctx) => AlertDialog(
+          title: Text('有 $low 首是低置信歌词'),
+          content: const Text(
+              '这些歌词与曲目的匹配度偏低（多半是同名不同版本：现场版 / remix / 翻唱）。\n\n'
+              '写入会覆盖文件里原有的歌词，确定要写吗？'),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('先不写'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('照写'),
+            ),
+          ],
+        ),
+      );
+      if (go != true) return;
+    }
     await _write(picked);
   }
 
@@ -395,10 +520,14 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
           inlineOk++;
           repo.invalidate(plan.file);
           if (wantLrc) lrcOk++;
+          // 这首已经落地：从续跑队列里收尾，下次进来不再当成「没写完」
+          _queue?.mark(_keyOf(plan.file), MatchQueue.written);
           _setStatus(
               plan.file, wantLrc ? '已写入内嵌歌词与 .lrc' : '已写入内嵌歌词');
         } else {
           failed++;
+          // 失败的不丢：留着下次重试（指纹变了会自动作废）
+          _queue?.mark(_keyOf(plan.file), MatchQueue.failed);
           _setStatus(plan.file, '写入失败：$err');
         }
         done++;

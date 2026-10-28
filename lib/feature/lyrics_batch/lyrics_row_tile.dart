@@ -20,12 +20,16 @@ class LyricRow {
   bool selected = false;
   String status = '等待';
 
+  /// 这条是从上次中断处**恢复**出来的（已经查到过，不必再联网）。
+  bool resumed = false;
+
   /// 重新取词前复位。
   void reset() {
     choice = null;
     candidates = <LyricChoice>[];
     selected = false;
     status = '等待';
+    resumed = false;
   }
 
   /// 有没有可选的其他版本。

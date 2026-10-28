@@ -166,6 +166,14 @@ class MainActivity : FlutterActivity() {
                         call.argument<Int>("maxBytes") ?: 0
                     )
                 }
+                "readRange" -> safCall(result) {
+                    safPlugin.readRange(
+                        call.argument<String>("treeUri") ?: "",
+                        call.argument<String>("docId") ?: "",
+                        (call.argument<Number>("offset") ?: 0).toLong(),
+                        call.argument<Int>("maxBytes") ?: 0
+                    )
+                }
                 "createDocument" -> safCall(result) {
                     safPlugin.createDocument(
                         call.argument<String>("treeUri") ?: "",

@@ -219,6 +219,35 @@ void main() {
     expect(allCrcValid(w), isTrue);
   });
 
+  test('专辑艺术家（ALBUMARTIST）往返', () {
+    final Uint8List vorbis = writeVorbis(audioPackets);
+    final Uint8List w = Ogg.rewrite(vorbis, <String, String>{
+      'artist': '周杰伦',
+      'albumArtist': '群星',
+      'album': '合辑',
+    });
+    final Tags t = Ogg.read(w);
+    // 合辑里歌手与专辑艺术家是两回事，不能互相覆盖
+    expect(t.get('artist'), '周杰伦');
+    expect(t.get('albumArtist'), '群星');
+    expect(t.get('album'), '合辑');
+  });
+
+  test('同名多值：写入两个 ARTIST 能原样读回', () {
+    final Uint8List vorbis = writeVorbis(audioPackets);
+    final Uint8List w =
+        Ogg.rewrite(vorbis, <String, String>{'artist': '周杰伦${Ogg.multiSep}费玉清'});
+    final Map<String, List<String>> multi =
+        Ogg.parseCommentsMulti(rawPackets(w)[1]);
+    expect(multi['ARTIST'], <String>['周杰伦', '费玉清']);
+    // 读回来并成一个串，且能再次写回去（往返稳定）
+    expect(Ogg.read(w).get('artist'), '周杰伦${Ogg.multiSep}费玉清');
+    final Uint8List w2 =
+        Ogg.rewrite(w, <String, String>{'artist': Ogg.read(w).get('artist')});
+    expect(Ogg.parseCommentsMulti(rawPackets(w2)[1])['ARTIST'],
+        <String>['周杰伦', '费玉清']);
+  });
+
   test('TagIO 分发 + 非 OGG 拒绝', () {
     final Uint8List viaIo = writeVorbis(audioPackets);
     final (String err, Uint8List? out) = TagIO.writeLocal(viaIo, '.ogg', values);

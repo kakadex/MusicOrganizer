@@ -11,6 +11,7 @@ import '../core/cover/sidecar_cover.dart';
 import '../core/fs/desktop_file_store.dart';
 import '../core/fs/file_store.dart';
 import '../core/fs/saf_file_store.dart';
+import '../core/fs/temp_name.dart';
 import '../core/fs/tree_ref.dart';
 import '../core/match/batch_memory.dart';
 import '../core/match/tag_fill.dart';
@@ -109,6 +110,12 @@ class Repo extends ChangeNotifier {
   TagTransaction? tx;
   MatchRunner? runner;
 
+  /// 歌词批处理的续跑队列（记住「哪首查到了什么、还没写」）。
+  MatchQueue? lyricsQueue;
+
+  /// 封面批处理的续跑队列（同上，存封面地址而不是字节）。
+  MatchQueue? coverQueue;
+
   /// 设置。
   final SettingsStore settings = SettingsStore();
 
@@ -129,11 +136,26 @@ class Repo extends ChangeNotifier {
   static bool get isDesktop =>
       Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
+  /// 桌面端目录选择器：必须在 [init] **之前**注入。
+  ///
+  /// 初始化过程中就要用（恢复上次目录时校验、根目录失效弹选择），写晚了会
+  /// 出现「init 里要选目录但选择器还没挂上」。core 保持纯 Dart 不引
+  /// file_selector，所以由 main 把闭包塞进来，init 时转交给 [DesktopFileStore]。
+  static Future<String?> Function()? desktopDirectoryPicker;
+
   /// 初始化（幂等）。桌面直接用 dart:io，安卓走 SAF 通道。
   Future<void> init({FileStore? storeOverride}) async {
     if (_initialized) return;
     store = storeOverride ?? (isDesktop ? DesktopFileStore() : SafFileStore());
+    // 用局部变量接一下：store 是公共字段，类型提升（promotion）对它不生效
+    final FileStore? st0 = store;
+    if (st0 is DesktopFileStore) {
+      st0.directoryPicker = Repo.desktopDirectoryPicker;
+    }
     final Directory dir = await _dataDir();
+    // 上次进程被杀 / 断电留下的临时副本：启动时顺手清掉（只认本 app 的前缀、
+    // 只清 6 小时前的），不然缓存目录会一天天涨。失败不影响启动。
+    sweepTemp(Directory.systemTemp);
     journal = Journal(File('${dir.path}/tag_journal.jsonl'));
     tx = TagTransaction(
       store: store!,
@@ -147,6 +169,10 @@ class Repo extends ChangeNotifier {
       queue: MatchQueue.open(dir, 'tags'),
       memory: BatchMemory.open(dir, 'tags'),
     );
+    // 批量匹配早就能续跑，封面 / 歌词以前没有：几百首跑到一半被杀（或被用户
+    // 停掉）就得从头再查一遍，白烧时间和配额。这里给两条链路各配一个队列。
+    lyricsQueue = MatchQueue.open(dir, 'lyrics');
+    coverQueue = MatchQueue.open(dir, 'covers');
     await _loadSettings();
     Endpoints.install(_RepoEndpoints(this));
     applyProxy();

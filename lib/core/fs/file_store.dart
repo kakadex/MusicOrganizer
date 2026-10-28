@@ -60,6 +60,13 @@ abstract class FileStore {
   /// 读文件尾 [maxBytes] 字节。
   Future<Uint8List> tailBytes(VFile f, int maxBytes);
 
+  /// 从 [offset] 处读 [maxBytes] 字节（查重取中段指纹用）。
+  ///
+  /// 默认返回空：能力是可选的，取不到就退回「只用首尾」的旧判定，
+  /// 不会因为某个实现不支持而让整次查重失败。
+  Future<Uint8List> rangeBytes(VFile f, int offset, int maxBytes) async =>
+      Uint8List(0);
+
   /// 把文档复制到本地缓存文件。
   Future<void> copyToLocal(VFile f, File cacheTarget);
 

@@ -44,6 +44,13 @@ class VFile {
   /// 上次判定「有歌词」。
   bool cachedHasLyrics = false;
 
+  /// 歌词太长、没随缓存落盘（正文要现读，但**不算缺歌词**）。
+  ///
+  /// 没有这个标记的话，缓存恢复回来的条目有 [cachedHasLyrics] 却没有歌词正文，
+  /// 体检 / 批量补歌词会把它当成「缺歌词的歌」——于是每次冷启动都重读一遍、
+  /// 还要联网补一次，而它其实一直有歌词，只是太大没进缓存而已。
+  bool cachedLyricsOversize = false;
+
   /// 上次读到的时长（毫秒）/ 码率（kbps）。
   int cachedDurationMs = 0;
   int cachedBitrateKbps = 0;
@@ -81,11 +88,13 @@ class VFile {
   void cacheMeta(Tags? tags,
       {bool cover = false,
       bool lyrics = false,
+      bool lyricsOversize = false,
       int durationMs = 0,
       int bitrateKbps = 0}) {
     cachedTags = tags == null ? Tags() : tags.copy();
     cachedHasCover = cover;
     cachedHasLyrics = lyrics;
+    cachedLyricsOversize = lyricsOversize;
     cachedDurationMs = durationMs;
     cachedBitrateKbps = bitrateKbps;
   }
@@ -95,6 +104,7 @@ class VFile {
     cachedTags = null;
     cachedHasCover = false;
     cachedHasLyrics = false;
+    cachedLyricsOversize = false;
     cachedDurationMs = 0;
     cachedBitrateKbps = 0;
   }
@@ -136,6 +146,7 @@ class VFile {
     v.cachedTags = cachedTags;
     v.cachedHasCover = cachedHasCover;
     v.cachedHasLyrics = cachedHasLyrics;
+    v.cachedLyricsOversize = cachedLyricsOversize;
     v.cachedDurationMs = cachedDurationMs;
     v.cachedBitrateKbps = cachedBitrateKbps;
     return v;

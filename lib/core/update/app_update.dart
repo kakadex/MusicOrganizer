@@ -18,6 +18,10 @@ class Release {
     this.pageUrl = '',
     this.apkName = '',
     this.prerelease = false,
+    this.zipUrl = '',
+    this.zipSize = 0,
+    this.zipSha256 = '',
+    this.zipName = '',
   });
 
   /// 原始 tag（如 `v0.2.1`）；version 是去掉 v 前缀、保留 -beta 后缀的版本。
@@ -30,7 +34,15 @@ class Release {
   final String pageUrl;
   final String apkName;
   final bool prerelease;
+
+  /// Windows 桌面版 zip（桌面端自动更新用）。
+  final String zipUrl;
+  final int zipSize;
+  final String zipSha256;
+  final String zipName;
+
   bool get hasApk => apkUrl.isNotEmpty;
+  bool get hasZip => zipUrl.isNotEmpty;
   /// 展示串（数字开头时补 v）。
   String get display => AppUpdate.display(version);
 
@@ -48,20 +60,33 @@ abstract final class AppUpdate {
     final String tag = _str(root['tag_name']).trim();
     if (tag.isEmpty) return null;
     String apkUrl = '', apkName = '', sha = '';
-    int apkSize = 0;
+    // 桌面版 zip 一起找：安卓和桌面挂在同一条 Release 上，各自取自己那份
+    String zipUrl = '', zipName = '', zipSha = '';
+    int apkSize = 0, zipSize = 0;
     final Object? assets = root['assets'];
     if (assets is List) {
       for (final Object? a in assets) {
         if (a is! Map) continue;
         final String name = _str(a['name']);
         final String url = _str(a['browser_download_url']);
-        if (!name.toLowerCase().endsWith('.apk') || url.isEmpty) continue;
-        apkUrl = url;
-        apkName = name;
-        apkSize = _num(a['size']).toInt();
-        sha = _str(a['digest']);
-        if (sha.toLowerCase().startsWith('sha256:')) sha = sha.substring(7);
-        break;      }
+        final String lower = name.toLowerCase();
+        if (url.isEmpty) continue;
+        if (apkUrl.isEmpty && lower.endsWith('.apk')) {
+          apkUrl = url;
+          apkName = name;
+          apkSize = _num(a['size']).toInt();
+          sha = _str(a['digest']);
+          if (sha.toLowerCase().startsWith('sha256:')) sha = sha.substring(7);
+        } else if (zipUrl.isEmpty && lower.endsWith('.zip')) {
+          zipUrl = url;
+          zipName = name;
+          zipSize = _num(a['size']).toInt();
+          zipSha = _str(a['digest']);
+          if (zipSha.toLowerCase().startsWith('sha256:')) {
+            zipSha = zipSha.substring(7);
+          }
+        }
+      }
     }
     return Release(
       tag: tag,
@@ -73,6 +98,10 @@ abstract final class AppUpdate {
       pageUrl: _str(root['html_url']),
       apkName: apkName,
       prerelease: _bool(root['prerelease']) || _bool(root['draft']),
+      zipUrl: zipUrl,
+      zipSize: zipSize,
+      zipSha256: zipSha,
+      zipName: zipName,
     );
   }
 
@@ -96,6 +125,7 @@ abstract final class AppUpdate {
     if (tag.isEmpty) tag = 'v$version';
     if (version.isEmpty) version = stripPrefix(tag);
     final String rel = kv['apk'] ?? '', lower = tag.toLowerCase();
+    final String zipRel = kv['zip'] ?? '';
     return Release(
       tag: tag,
       version: stripPrefix(version),
@@ -108,6 +138,10 @@ abstract final class AppUpdate {
       prerelease: lower.contains('beta') ||
           lower.contains('rc') ||
           lower.contains('alpha'),
+      zipUrl: resolve(manifestUrl, zipRel),
+      zipSize: int.tryParse(kv['zip_size'] ?? '') ?? 0,
+      zipSha256: kv['zip_sha256'] ?? '',
+      zipName: zipRel.isEmpty ? '' : zipRel.substring(zipRel.lastIndexOf('/') + 1),
     );
   }
 

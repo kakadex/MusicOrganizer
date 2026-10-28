@@ -24,7 +24,7 @@ abstract final class TagFix {
 
   /// 会被处理的字段（与标签编辑器里的六个候选字段一致）。
   static const List<String> fields = <String>[
-    'title', 'artist', 'album', 'year', 'track', 'genre',
+    'title', 'artist', 'albumArtist', 'album', 'year', 'track', 'genre',
   ];
 
   /// 对一个值做指定修正；[ops] 为 0 或值本来就干净时返回原串。

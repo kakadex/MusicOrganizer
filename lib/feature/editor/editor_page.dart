@@ -14,6 +14,7 @@ import '../../app/cover_cache.dart';
 import '../../app/repo.dart';
 import '../../app/ui_kit.dart';
 import '../../core/fs/raw_write.dart';
+import '../../core/model/journal_entry.dart' show JournalOp;
 import '../../core/model/tags.dart';
 import '../../core/model/vfile.dart';
 import '../../core/scan/scanner.dart';
@@ -60,6 +61,9 @@ class _EditorPageState extends State<EditorPage> {
   Uint8List? _cover;
   bool _hasCover = false;
   bool _coverTouched = false;
+
+  /// 本次编辑里用过「按候选编码重解」（修乱码）：保存时把 op 标出来。
+  bool _fixApplied = false;
 
   @override
   void initState() {
@@ -232,6 +236,9 @@ class _EditorPageState extends State<EditorPage> {
       for (final FieldFix fix in byCharset[chosen] ?? const <FieldFix>[]) {
         _ctl[fix.key]!.text = fix.after;
       }
+      // 记一笔：本次保存里有「按猜测的编码重解」的字段，落 journal 时标出来，
+      // 之后在撤销历史里一眼能挑出来单独回退（编码是猜的，误判概率不低）
+      _fixApplied = true;
     });
     moSnack(context, '已按 $chosen 重解，确认无误后再保存');
   }
@@ -460,6 +467,7 @@ class _EditorPageState extends State<EditorPage> {
       updates,
       cover: coverArg,
       batchId: 'editor-${DateTime.now().millisecondsSinceEpoch}',
+      op: _fixApplied ? JournalOp.encoding : JournalOp.tags,
     );
     if (!mounted) return;
     setState(() => _saving = false);

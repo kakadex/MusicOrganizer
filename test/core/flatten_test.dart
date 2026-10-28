@@ -167,6 +167,10 @@ class _FakeStore implements FileStore {
       Uint8List(0);
 
   @override
+  Future<Uint8List> rangeBytes(VFile f, int offset, int maxBytes) async =>
+      Uint8List(0);
+
+  @override
   Future<void> copyToLocal(VFile f, File cacheTarget) async {}
 
   @override
