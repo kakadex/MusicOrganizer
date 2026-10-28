@@ -38,7 +38,10 @@ abstract final class Id3 {
     'track': <String>['TRCK'],
     'genre': <String>['TCON'],
     'comment': <String>['COMM'],
-    'lyrics': <String>['USLT'],
+    // 歌词有三个来源：USLT（普通歌词）、SYLT（同步歌词）、TXXX(desc 含 LYRICS)。
+    // 读端三种都认，写端只删 USLT 的话，清空后又被另外两种顶回来
+    // （「删除标签」清不掉歌词就是这个原因）。TXXX 不能整类删，见 rewrite 里的判断。
+    'lyrics': <String>['USLT', 'SYLT'],
   };
 
   // ------------------------------------------------------------------
@@ -108,10 +111,13 @@ abstract final class Id3 {
     return true;
   }
 
-  /// 同步文件尾的 ID3v1（只写 title / artist / album / year）。
+  /// 同步文件尾的 ID3v1（title / artist / album / year / comment）。
   ///
-  /// 为什么只写这四个：v1 的 comment 后 28 字节常被「音轨号」占用，
-  /// 覆盖会把音轨信息抹掉；其余字段本就已经过时，不值得为它冒风险。
+  /// 为什么这几个字段都要写：读端 [_fillFromTail] 会在 v2 缺字段时从 v1
+  /// 兜底，**只删 v2 的帧不清 v1**，那个字段读回来又是旧值——表现为
+  /// 「删除标签失败」「注释清不掉」。comment 只清前 28 字节，见
+  /// [_putV1Comment]（最后 2 字节可能被 ID3v1.1 征用成音轨号）。
+  /// 其余字段（音轨、流派）不写：v1 里本就没有可靠位置，v2 已够用。
   static Uint8List _syncV1(Uint8List data, Map<String, String> merged) {
     final int base = data.length - 128;
     if (base < 0) return data;
@@ -142,9 +148,33 @@ abstract final class Id3 {
           put(base + 63, 30, e.value);
         case 'year':
           put(base + 93, 4, e.value);
+        case 'comment':
+          _putV1Comment(out, base, e.value);
       }
     }
     return out;
+  }
+
+  /// 同步 ID3v1 的注释（30 字节字段，但只清写前 28 字节）。
+  ///
+  /// ID3v1.1 把最后 2 字节征用成音轨号（`[125]==0 && [126]!=0`），整段
+  /// 覆盖会把音轨信息抹掉，所以：
+  /// - 前 28 字节写注释（非 ASCII 值不写：v1 只有 Latin-1，写中文必乱码）；
+  /// - 没有音轨号的老格式（v1.0 用满 30 字节）才把 125/126 一起清干净。
+  static void _putV1Comment(Uint8List out, int base, String value) {
+    if (!_asciiOnly(value) && value.isNotEmpty) return;
+    for (int i = 97; i < 125; i++) {
+      out[base + i] = 0;
+    }
+    final int n = value.length > 28 ? 28 : value.length;
+    for (int i = 0; i < n; i++) {
+      out[base + 97 + i] = value.codeUnitAt(i);
+    }
+    final bool hasTrack = out[base + 125] == 0 && out[base + 126] != 0;
+    if (!hasTrack) {
+      out[base + 125] = 0;
+      out[base + 126] = 0;
+    }
   }
 
   /// 从 [offset] 处开始解析 ID3v2（DSF 的 metadata 块在文件中部/尾部）。
@@ -307,6 +337,15 @@ abstract final class Id3 {
     return (text, (p + 1) < data.length ? p + 1 : data.length);
   }
 
+  /// 这帧 TXXX 是不是「歌词」——判据与读端 [_applyFrame] 保持一致：
+  /// 描述符里含 LYRIC（大小写不敏感）。
+  static bool _isLyricTxxx(Uint8List data, int off, int size) {
+    if (size < 2) return false;
+    final Uint8List body = Uint8List.sublistView(data, off, off + size);
+    final (String desc, _) = _readTerminated(body, 1, body[0]);
+    return desc.toUpperCase().contains('LYRIC');
+  }
+
   static String _decodeText(Uint8List data) {
     if (data.isEmpty) return '';
     final int enc = data[0];
@@ -414,6 +453,9 @@ abstract final class Id3 {
       }
     }
     if (cover != null) replaceIds.add('APIC');
+    // 歌词字段出现在本次写入里（写新词或清空都算）：TXXX 里那份旧歌词要一并清掉，
+    // 否则读端先遇到它就填上了，新的 USLT 反而白写 / 清了又回来。
+    final bool touchLyrics = values.containsKey('lyrics');
 
     if (data.length >= 10 &&
         data[0] == 0x49 &&
@@ -449,10 +491,17 @@ abstract final class Id3 {
           }
         }
         if (!replaceIds.contains(id)) {
-          final Uint8List frame = Uint8List(10 + frameSize);
-          frame.setRange(0, 10, data, pos);
-          frame.setRange(10, 10 + frameSize, data, pos + 10);
-          preserved.add(frame);
+          // TXXX 是通用扩展帧，里面可能装着歌词、也可能装着别的自定义字段，
+          // 不能整类删：只有 desc 含 LYRIC 的那几帧才算歌词。
+          final bool dropLyricTxxx = touchLyrics &&
+              id == 'TXXX' &&
+              _isLyricTxxx(data, pos + 10, frameSize);
+          if (!dropLyricTxxx) {
+            final Uint8List frame = Uint8List(10 + frameSize);
+            frame.setRange(0, 10, data, pos);
+            frame.setRange(10, 10 + frameSize, data, pos + 10);
+            preserved.add(frame);
+          }
         }
         pos += 10 + frameSize;
       }
