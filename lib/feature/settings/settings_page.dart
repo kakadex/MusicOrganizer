@@ -841,12 +841,15 @@ class _SettingsPageState extends State<SettingsPage> {
               ],
             ),
           ),
-        Padding(
-          padding: const EdgeInsets.all(MoKit.pagePad),
-          child: MoButton('恢复这 ${diff.length} 项', primary: false,
-              onPressed: () => Navigator.of(context).pop(true)),
-        ),
       ],
+      // 固定底栏：要恢复的项再多也点得到
+      footer: Builder(
+        builder: (BuildContext fctx) => SizedBox(
+          width: double.infinity,
+          child: MoButton('恢复这 ${diff.length} 项', primary: false,
+              onPressed: () => Navigator.of(fctx).pop(true)),
+        ),
+      ),
     );
     if (go != true) return;
     final Map<String, Object> defaults = SettingsBackup.defaults();
