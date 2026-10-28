@@ -41,6 +41,20 @@ class _ThrowingStore extends DesktopFileStore {
   }
 }
 
+/// 连续 N 次写盘都抛异常：用来模拟「写入失败、连还原也失败」。
+class _FailingStore extends DesktopFileStore {
+  int failWrites = 0;
+
+  @override
+  Future<void> writeFromLocal(VFile f, File src) async {
+    if (failWrites > 0) {
+      failWrites--;
+      throw const FileSystemException('磁盘已满');
+    }
+    await super.writeFromLocal(f, src);
+  }
+}
+
 /// 最小 M4A（moov 在尾），供 track 非法值的副本校验失败测试。
 Uint8List _synthMp4() {
   final Uint8List ftyp =
@@ -276,6 +290,39 @@ void main() {
         .where((String n) => n.startsWith('mo_tx_'))
         .toList();
     expect(leftover, isNotEmpty, reason: '恢复失败的备份要保留，不能一起删');
+    await clean.delete(recursive: true);
+  });
+
+  test('还原也失败：如实说「原文件可能已损坏」并给出备份真实路径', () async {
+    final File f = mp3('double-fail.mp3');
+    final VFile v = (await store.stat(f.path))!;
+    final _FailingStore failing = _FailingStore();
+    failing.addRoot(dir.path);
+    final Directory clean = await Directory.systemTemp.createTemp('mo_clean_');
+    final TagTransaction t =
+        TagTransaction(store: failing, journal: journal, tempDir: clean);
+
+    // 先正常写一笔，把「写之前」的字节定下来
+    expect(await t.apply(v, <String, String>{'title': '原标题'}), '');
+
+    // 写原文件抛 + 拿备份还原也抛
+    failing.failWrites = 2;
+    final String err = await t.apply(v, <String, String>{'title': '新标题'});
+
+    expect(err, contains('原文件可能已损坏'));
+    expect(err, isNot(contains('已用备份恢复')));
+    expect(err, isNot(contains('原文件未修改')));
+
+    // 错误串里要有备份的真实路径，且备份文件确实还在
+    final List<File> backups = clean
+        .listSync()
+        .whereType<File>()
+        .where((File e) =>
+            e.path.split(RegExp(r'[/\\]')).last.startsWith('mo_tx_'))
+        .toList();
+    expect(backups, isNotEmpty, reason: '还原失败时备份必须保留');
+    expect(err, contains(backups.first.path));
+
     await clean.delete(recursive: true);
   });
 

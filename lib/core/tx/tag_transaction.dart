@@ -355,12 +355,14 @@ class TagTransaction {
       return '';
     } catch (e) {
       // 原文件可能已经被写坏：先拿备份还原，别谎报「没动过」。
+      bool restoreFailed = false;
       if (wroteOriginal && backup != null) {
         try {
           await store.writeFromLocal(f, backup);
           f.clearMeta();
         } catch (_) {
           // 还原也失败（比如盘真的满了）：备份不能删，留现场给用户自己救。
+          restoreFailed = true;
           keepBackup = true;
         }
       }
@@ -370,9 +372,16 @@ class TagTransaction {
         _batch?.items.remove(batchItem);
         batchItem = null;
       }
-      return wroteOriginal
-          ? '写入失败，已用备份恢复：$e'
-          : '写入失败（原文件未修改）：$e';
+      // 没动过原文件才是真的「未修改」；动过但还原失败，必须如实说可能坏了，
+      // 并把备份的真实路径给出来，否则用户以为没事、文件其实已经废了。
+      if (!wroteOriginal) return '写入失败（原文件未修改）：$e';
+      if (restoreFailed) {
+        final String where = backup?.path ?? '（备份路径不可用）';
+        Log.warn('写入失败且还原也失败：${f.name}，原文件可能已损坏，备份：$where');
+        return '写入失败，原文件可能已损坏，备份在 $where，'
+            '请联系开发者或手动替换：$e';
+      }
+      return '写入失败，已用备份恢复：$e';
     } finally {
       if (tmp != null) {
         try {
