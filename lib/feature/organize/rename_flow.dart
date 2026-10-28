@@ -67,14 +67,17 @@ Future<void> runRenameFlow(BuildContext context, List<VFile> files) async {
         child: Text(NameTemplate.help(),
             style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
       ),
-      Padding(
-        padding: const EdgeInsets.all(MoKit.pagePad),
+    ],
+    // 固定底栏：模板选项再多也不会把确认按钮顶出屏幕
+    footer: Builder(
+      builder: (BuildContext fctx) => SizedBox(
+        width: double.infinity,
         child: MoButton('用这个模板', primary: false, onPressed: () {
           pattern = custom.text.trim();
-          Navigator.of(context).pop(true);
+          Navigator.of(fctx).pop(true);
         }),
       ),
-    ],
+    ),
   );
   custom.dispose();
   if (picked != true) return;

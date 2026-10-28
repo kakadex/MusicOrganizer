@@ -18,10 +18,14 @@ class PreviewSheet extends StatelessWidget {
 
   /// 弹出预览；返回值 = 是否写入过。
   static Future<bool?> show(BuildContext context, List<FilePlan> plans) {
-    return showMoSheet<bool>(
-      context,
-      title: '确认写入',
-      children: <Widget>[_PreviewBody(plans: plans)],
+    return showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: MoKit.bg(context),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext ctx) => _PreviewBody(plans: plans),
     );
   }
 
@@ -50,9 +54,10 @@ class _PreviewBodyState extends State<_PreviewBody> {
     final int selected = _plans.where((FilePlan p) => p.selected && p.hasChange).length;
     final int low = _plans.where((FilePlan p) => p.lowConfidence).length;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
+    return MoSheetScaffold(
+      title: '确认写入',
+      // 只有曲目列表滚动；底栏固定，203 首也不会把「写入」按钮顶出屏幕
+      content: <Widget>[
         Padding(
           padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 0, MoKit.pagePad, 8),
           child: Text(
@@ -67,23 +72,20 @@ class _PreviewBodyState extends State<_PreviewBody> {
                 style: TextStyle(fontSize: MoKit.fsBody, color: MoKit.sub(context))),
           ),
         for (final FilePlan p in changed) _row(context, p),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 10, MoKit.pagePad, 8),
-          child: Row(
-            children: <Widget>[
-              Expanded(
-                child: Text(
-                  _status.isEmpty ? '将写入 $selected 首' : _status,
-                  style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context)),
-                ),
-              ),
-              MoButton('写入 $selected 首',
-                  busy: _busy,
-                  onPressed: selected == 0 ? null : () => _write(selected)),
-            ],
-          ),
-        ),
       ],
+      footer: Row(
+        children: <Widget>[
+          Expanded(
+            child: Text(
+              _status.isEmpty ? '将写入 $selected 首' : _status,
+              style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context)),
+            ),
+          ),
+          MoButton('写入 $selected 首',
+              busy: _busy,
+              onPressed: selected == 0 ? null : () => _write(selected)),
+        ],
+      ),
     );
   }
 

@@ -1,8 +1,8 @@
-version=0.2.14
-tag=v0.2.14
+version=0.2.15
+tag=v0.2.15
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.14/musicorganizer-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.15/musicorganizer-arm64-v8a.apk
 size=19609081
-sha256=e3b21965b6051311d5b264ca92be982c260f8076b0885c05275349836c23a12f
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.14
-summary=写入结果提示改为顶部横幅、3 秒自动消失，不再遮挡底部导航与操作按钮。
+sha256=2836e14e1faf39e3f6436a2534be4c761b457eb8613fdf8afb684470a5a9d0db
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.15
+summary=确认写入等面板的底部按钮固定在面板底部，曲目再多也不会被顶出屏幕。

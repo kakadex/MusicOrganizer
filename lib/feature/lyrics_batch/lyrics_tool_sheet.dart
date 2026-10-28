@@ -37,12 +37,15 @@ Future<void> runLyricsTool(BuildContext context, List<VFile> files) async {
     moSnack(context, '这首还没有歌词');
     return;
   }
-  await showMoSheet<void>(
-    context,
-    title: '歌词工具 · ${file.stem()}',
-    children: <Widget>[
-      _ToolSheet(store: store, file: file, source: text),
-    ],
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: MoKit.bg(context),
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (BuildContext ctx) =>
+        _ToolSheet(store: store, file: file, source: text),
   );
 }
 
@@ -100,10 +103,9 @@ class _ToolSheetState extends State<_ToolSheet> {
   @override
   Widget build(BuildContext context) {
     final bool canShift = LyricsShift.count(_result) > 0;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
+    return MoSheetScaffold(
+      title: '歌词工具 · ${widget.file.stem()}',
+      content: <Widget>[
         const Padding(
           padding: EdgeInsets.fromLTRB(MoKit.pagePad, 0, MoKit.pagePad, 4),
           child: Text('清洗（勾选要做的）',
@@ -175,22 +177,20 @@ class _ToolSheetState extends State<_ToolSheet> {
                     fontSize: MoKit.fsBody, color: MoKit.text(context))),
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.all(MoKit.pagePad),
-          child: Row(
-            children: <Widget>[
-              Expanded(
-                child: MoButton('查看原歌词', primary: false,
-                    onPressed: () => _showViewer(context, widget.source)),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: MoButton('写回', onPressed: _save),
-              ),
-            ],
-          ),
-        ),
       ],
+      // 固定底栏：预览再长也不用滚到底才能写回
+      footer: Row(
+        children: <Widget>[
+          Expanded(
+            child: MoButton('查看原歌词', primary: false,
+                onPressed: () => _showViewer(context, widget.source)),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: MoButton('写回', onPressed: _save),
+          ),
+        ],
+      ),
     );
   }
 

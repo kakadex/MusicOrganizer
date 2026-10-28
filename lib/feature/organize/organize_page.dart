@@ -434,6 +434,8 @@ class _OrganizePageState extends State<OrganizePage> {
       }
     }
     int pickedCount() => picked.values.where((bool b) => b).length;
+    // 底栏不参与滚动：勾选数变了要能实时刷新
+    final ValueNotifier<int> pickedNow = ValueNotifier<int>(pickedCount());
 
     final bool? go = await showMoSheet<bool>(
       context,
@@ -441,8 +443,30 @@ class _OrganizePageState extends State<OrganizePage> {
           ? '没有发现重复文件'
           : '重复 ${dups.length} 组'
               '${lookalikes.isEmpty ? '' : ' · 另有 ${lookalikes.length} 组只是名字像'}',
+      footer: Builder(
+        builder: (BuildContext fctx) => ValueListenableBuilder<int>(
+          valueListenable: pickedNow,
+          builder: (BuildContext _, int n, Widget? _) => Row(
+            children: <Widget>[
+              Expanded(
+                child: Text('已勾选 $n 个（每组至少留一个）',
+                    style: TextStyle(
+                        fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
+              ),
+              MoButton('删除勾选的 $n 个',
+                  primary: false,
+                  onPressed: n == 0 ? null : () => Navigator.of(fctx).pop(true)),
+            ],
+          ),
+        ),
+      ),
       children: <Widget>[
-        StatefulBuilder(builder: (BuildContext ctx, StateSetter setSheet) {
+        StatefulBuilder(builder: (BuildContext _, StateSetter setSheet) {
+          // 每次勾选都同步刷新底栏计数
+          void sync(VoidCallback fn) => setSheet(() {
+                fn();
+                pickedNow.value = pickedCount();
+              });
           return Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -456,7 +480,7 @@ class _OrganizePageState extends State<OrganizePage> {
                           fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
                 ),
               for (final DuplicateGroup g in dups.take(50))
-                _dupGroup(g, false, picked, setSheet),
+                _dupGroup(g, false, picked, sync),
               if (lookalikes.isNotEmpty) ...<Widget>[
                 Padding(
                   padding: const EdgeInsets.fromLTRB(
@@ -466,25 +490,8 @@ class _OrganizePageState extends State<OrganizePage> {
                           fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
                 ),
                 for (final DuplicateGroup g in lookalikes.take(50))
-                  _dupGroup(g, true, picked, setSheet),
+                  _dupGroup(g, true, picked, sync),
               ],
-              Padding(
-                padding: const EdgeInsets.all(MoKit.pagePad),
-                child: Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: Text('已勾选 ${pickedCount()} 个（每组至少留一个）',
-                          style: TextStyle(
-                              fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
-                    ),
-                    MoButton('删除勾选的 ${pickedCount()} 个',
-                        primary: false,
-                        onPressed: pickedCount() == 0
-                            ? null
-                            : () => Navigator.of(ctx).pop(true)),
-                  ],
-                ),
-              ),
             ],
           );
         }),

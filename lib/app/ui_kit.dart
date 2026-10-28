@@ -532,11 +532,96 @@ class EmptyState extends StatelessWidget {
   }
 }
 
+/// 底部面板的统一骨架：标题 + 可滚动内容 + 固定底栏。
+///
+/// **底栏不参与滚动**，永远贴在面板底部——确认按钮绝不能被内容顶出屏幕
+/// （条目一多，按钮跑到屏幕外，用户就没法确认了）。
+class MoSheetScaffold extends StatelessWidget {
+  const MoSheetScaffold({
+    super.key,
+    required this.title,
+    required this.content,
+    this.footer,
+    this.actionLabel,
+    this.onAction,
+    this.maxHeightFactor = 0.9,
+  });
+
+  final String title;
+  final List<Widget> content;
+
+  /// 固定在面板底部的操作区（不随内容滚动）。
+  final Widget? footer;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+  final double maxHeightFactor;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * maxHeightFactor),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Container(
+              width: 36,
+              height: 4,
+              margin: const EdgeInsets.only(top: 10, bottom: 8),
+              decoration: BoxDecoration(
+                  color: MoKit.line(context), borderRadius: BorderRadius.circular(2)),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 4, MoKit.pagePad, 8),
+              child: Row(
+                children: <Widget>[
+                  Expanded(
+                    child: Text(title,
+                        style: TextStyle(
+                            fontSize: MoKit.fsPage,
+                            fontWeight: FontWeight.w600,
+                            color: MoKit.text(context))),
+                  ),
+                  if (actionLabel != null)
+                    TextButton(onPressed: onAction, child: Text(actionLabel!)),
+                ],
+              ),
+            ),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                padding: EdgeInsets.only(bottom: footer == null ? 16 : 8),
+                children: content,
+              ),
+            ),
+            if (footer != null)
+              Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: MoKit.bg(context),
+                  border: Border(top: BorderSide(color: MoKit.line(context))),
+                ),
+                padding:
+                    const EdgeInsets.fromLTRB(MoKit.pagePad, 8, MoKit.pagePad, 10),
+                child: footer,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// 底部面板（统一圆角与拖拽条）。
+///
+/// 需要固定确认按钮时传 [footer]；它会被放在滚动区外，条目再多也点得到。
 Future<T?> showMoSheet<T>(
   BuildContext context, {
   required String title,
   required List<Widget> children,
+  Widget? footer,
   String? actionLabel,
   VoidCallback? onAction,
 }) {
@@ -547,49 +632,14 @@ Future<T?> showMoSheet<T>(
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
-    builder: (BuildContext ctx) {
-      return SafeArea(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(ctx).size.height * 0.82),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Container(
-                width: 36,
-                height: 4,
-                margin: const EdgeInsets.only(top: 10, bottom: 8),
-                decoration: BoxDecoration(
-                    color: MoKit.line(ctx), borderRadius: BorderRadius.circular(2)),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 4, MoKit.pagePad, 8),
-                child: Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: Text(title,
-                          style: TextStyle(
-                              fontSize: MoKit.fsPage,
-                              fontWeight: FontWeight.w600,
-                              color: MoKit.text(ctx))),
-                    ),
-                    if (actionLabel != null)
-                      TextButton(onPressed: onAction, child: Text(actionLabel)),
-                  ],
-                ),
-              ),
-              Flexible(
-                child: ListView(
-                  shrinkWrap: true,
-                  padding: const EdgeInsets.only(bottom: 16),
-                  children: children,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    },
+    builder: (BuildContext ctx) => MoSheetScaffold(
+      title: title,
+      content: children,
+      footer: footer,
+      actionLabel: actionLabel,
+      onAction: onAction,
+      maxHeightFactor: 0.82,
+    ),
   );
 }
 

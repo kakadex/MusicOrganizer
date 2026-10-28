@@ -616,21 +616,19 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.all(MoKit.pagePad),
-          child: Row(
-            children: <Widget>[
-              Expanded(
-                child: MoButton('导出日志', primary: false, onPressed: _exportLog),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: MoButton('清空', primary: false, onPressed: _clearLog),
-              ),
-            ],
-          ),
-        ),
       ],
+      // 固定底栏：日志再长也能直接导出 / 清空
+      footer: Row(
+        children: <Widget>[
+          Expanded(
+            child: MoButton('导出日志', primary: false, onPressed: _exportLog),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: MoButton('清空', primary: false, onPressed: _clearLog),
+          ),
+        ],
+      ),
     );
   }
 

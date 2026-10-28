@@ -932,27 +932,40 @@ class _LibraryPageState extends State<LibraryPage> {
               _kv('大小', '${(e.size / 1024 / 1024).toStringAsFixed(2)} MB'),
               _kv('封面', e.hasCover ? '有' : '无'),
               _kv('歌词', e.hasLyrics ? '有' : '无'),
-              const SizedBox(height: 6),
-              MoButton('编辑标签', icon: Icons.edit_outlined, onPressed: () async {
-                final VFile? f = e.file;
-                if (f == null) return;
-                Navigator.of(context).pop();
-                final bool? changed = await EditorPage.show(context, f);
-                if (changed == true && mounted) _applyFilter();
-              }),
-              const SizedBox(height: 8),
-              MoButton('归类到歌手目录', primary: false,
-                  icon: Icons.drive_file_move_outline,
-                  onPressed: () async {
-                final VFile? f = e.file;
-                if (f == null) return;
-                Navigator.of(context).pop();
-                await _classifyToArtist(f);
-              }),
             ],
           ),
         ),
       ],
+      // 固定底栏：信息再多也不用滚到底才能操作
+      footer: Builder(
+        builder: (BuildContext fctx) => Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            SizedBox(
+              width: double.infinity,
+              child: MoButton('编辑标签', icon: Icons.edit_outlined, onPressed: () async {
+                final VFile? f = e.file;
+                if (f == null) return;
+                Navigator.of(fctx).pop();
+                final bool? changed = await EditorPage.show(context, f);
+                if (changed == true && mounted) _applyFilter();
+              }),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: MoButton('归类到歌手目录', primary: false,
+                  icon: Icons.drive_file_move_outline,
+                  onPressed: () async {
+                final VFile? f = e.file;
+                if (f == null) return;
+                Navigator.of(fctx).pop();
+                await _classifyToArtist(f);
+              }),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

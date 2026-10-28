@@ -83,27 +83,24 @@ Future<void> runMediaImport(BuildContext context) async {
     if (skippedInLibrary > 0) '$skippedInLibrary 首已在曲库目录里',
     if (skippedKnown > 0) '$skippedKnown 首已导入过',
   ].join('，');
-  await showMoSheet<void>(
-    context,
-    title: '系统媒体库（${tracks.length} 首）',
-    children: <Widget>[
-      Padding(
-        padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 0, MoKit.pagePad, 4),
-        child: Text(
-            '勾选后复制进曲库的「导入/」目录；原文件不动。'
-            '${skipNote.isEmpty ? '' : '已略过：$skipNote。'}',
-            style: TextStyle(fontSize: MoKit.fsCaption)),
-      ),
-      _PickList(tracks: tracks),
-    ],
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: MoKit.bg(context),
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (BuildContext ctx) =>
+        _PickList(tracks: tracks, skipNote: skipNote),
   );
 }
 
 /// 勾选 + 导入。
 class _PickList extends StatefulWidget {
-  const _PickList({required this.tracks});
+  const _PickList({required this.tracks, required this.skipNote});
 
   final List<MediaTrack> tracks;
+  final String skipNote;
 
   @override
   State<_PickList> createState() => _PickListState();
@@ -120,10 +117,16 @@ class _PickListState extends State<_PickList> {
     final Repo repo = Repo.instance;
     final FileStore? store = repo.store;
     final root = repo.root;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
+    return MoSheetScaffold(
+      title: '系统媒体库（${widget.tracks.length} 首）',
+      content: <Widget>[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 0, MoKit.pagePad, 4),
+          child: Text(
+              '勾选后复制进曲库的「导入/」目录；原文件不动。'
+              '${widget.skipNote.isEmpty ? '' : '已略过：${widget.skipNote}。'}',
+              style: TextStyle(fontSize: MoKit.fsCaption)),
+        ),
         ConstrainedBox(
           constraints: const BoxConstraints(maxHeight: 320),
           child: ListView.builder(
@@ -159,27 +162,29 @@ class _PickListState extends State<_PickList> {
             },
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 4, MoKit.pagePad, 0),
-          child: Text(
-            _busy
-                ? '正在导入 $_done / ${_picked.length}…'
-                : (_failed.isEmpty ? '' : '有 $_failed 首没导入成功'),
-            style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context)),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.all(MoKit.pagePad),
-          child: Row(
+      ],
+      // 操作区固定：曲目再多也不会把「导入」顶出屏幕
+      footer: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          if (_busy || _failed.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  _busy
+                      ? '正在导入 $_done / ${_picked.length}…'
+                      : '有 $_failed 首没导入成功',
+                  style:
+                      TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context)),
+                ),
+              ),
+            ),
+          Row(
             children: <Widget>[
               Expanded(
-                child: MoButton('全选', primary: false, onPressed: _busy
-                    ? null
-                    : () => setState(() {
-                          _picked
-                            ..clear()
-                            ..addAll(widget.tracks.map((MediaTrack t) => t.id));
-                        })),
+                child: MoButton('全选', primary: false, onPressed: _busy ? null : _selectAll),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -192,9 +197,17 @@ class _PickListState extends State<_PickList> {
               ),
             ],
           ),
-        ),
-      ],
+        ],
+      ),
     );
+  }
+
+  void _selectAll() {
+    setState(() {
+      _picked
+        ..clear()
+        ..addAll(widget.tracks.map((MediaTrack t) => t.id));
+    });
   }
 
   Future<void> _import(FileStore store, TreeRef root) async {

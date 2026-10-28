@@ -15,10 +15,14 @@ class UpdateSheet extends StatefulWidget {
   const UpdateSheet({super.key});
 
   static Future<void> show(BuildContext context) {
-    return showMoSheet<void>(
-      context,
-      title: '检查更新',
-      children: const <Widget>[UpdateSheet()],
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: MoKit.bg(context),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext ctx) => const UpdateSheet(),
     );
   }
 
@@ -101,25 +105,67 @@ class _UpdateSheetState extends State<UpdateSheet> {
   @override
   Widget build(BuildContext context) {
     if (_busy) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 24, MoKit.pagePad, 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            const SizedBox(
-              width: 22,
-              height: 22,
-              child: CircularProgressIndicator(strokeWidth: 2),
+      return MoSheetScaffold(
+        title: '检查更新',
+        content: <Widget>[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 24, MoKit.pagePad, 32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(height: 12),
+                Text(_step,
+                    style: TextStyle(
+                        fontSize: MoKit.fsBody, color: MoKit.sub(context))),
+              ],
             ),
-            const SizedBox(height: 12),
-            Text(_step,
-                style: TextStyle(fontSize: MoKit.fsBody, color: MoKit.sub(context))),
+          ),
+        ],
+      );
+    }
+    if (_error.isNotEmpty) {
+      return MoSheetScaffold(
+        title: '检查更新',
+        content: <Widget>[_errorView()],
+        // 固定底栏：失败原因再多也不影响重试
+        footer: Row(
+          children: <Widget>[
+            MoButton('重试', icon: Icons.refresh, onPressed: _check),
+            const SizedBox(width: 10),
+            Expanded(
+              child: MoButton('打开发布页',
+                  primary: false,
+                  onPressed: () => _open(Endpoints.urlOf('gitee', 1))),
+            ),
           ],
         ),
       );
     }
-    if (_error.isNotEmpty) return _errorView();
-    return _resultView(_release!);
+    final Release r = _release!;
+    return MoSheetScaffold(
+      title: '检查更新',
+      content: <Widget>[_resultView(r)],
+      // 固定底栏：更新说明再长，「去下载」也一直点得到
+      footer: _newer
+          ? Row(
+              children: <Widget>[
+                Expanded(
+                  child: MoButton('去下载',
+                      icon: Icons.download,
+                      onPressed: () => _open(_downloadUrl(r))),
+                ),
+                const SizedBox(width: 10),
+                MoButton('发布页',
+                    primary: false, onPressed: () => _open(_pageUrl(r))),
+              ],
+            )
+          : null,
+    );
   }
 
   Widget _errorView() {
@@ -136,18 +182,6 @@ class _UpdateSheetState extends State<UpdateSheet> {
         const SizedBox(height: 6),
         Text('当前版本 $kAppVersionFull',
             style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.faint(context))),
-        const SizedBox(height: 10),
-        Row(
-          children: <Widget>[
-            MoButton('重试', icon: Icons.refresh, onPressed: _check),
-            const SizedBox(width: 10),
-            Expanded(
-              child: MoButton('打开发布页',
-                  primary: false,
-                  onPressed: () => _open(Endpoints.urlOf('gitee', 1))),
-            ),
-          ],
-        ),
       ],
     );
   }
@@ -178,21 +212,6 @@ class _UpdateSheetState extends State<UpdateSheet> {
             ),
           ],
         ),
-        if (_newer)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 4, MoKit.pagePad, 16),
-            child: Row(
-              children: <Widget>[
-                Expanded(
-                  child: MoButton('去下载',
-                      icon: Icons.download, onPressed: () => _open(_downloadUrl(r))),
-                ),
-                const SizedBox(width: 10),
-                MoButton('发布页',
-                    primary: false, onPressed: () => _open(_pageUrl(r))),
-              ],
-            ),
-          ),
       ],
     );
   }

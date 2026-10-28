@@ -104,14 +104,17 @@ Future<void> runBatchEdit(BuildContext context, List<VFile> files) async {
                 ],
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.all(MoKit.pagePad),
-              child: MoButton('生成预览', onPressed: () => Navigator.of(ctx).pop(true)),
-            ),
           ],
         );
       }),
     ],
+    // 固定底栏：字段再多、键盘弹起时也不会把「生成预览」顶出屏幕
+    footer: Builder(
+      builder: (BuildContext fctx) => SizedBox(
+        width: double.infinity,
+        child: MoButton('生成预览', onPressed: () => Navigator.of(fctx).pop(true)),
+      ),
+    ),
   );
   for (final TextEditingController c in ctl.values) {
     c.dispose();
