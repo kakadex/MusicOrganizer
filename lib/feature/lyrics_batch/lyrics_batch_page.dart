@@ -19,6 +19,7 @@ import '../../core/source/aggregator.dart';
 import '../../core/source/source_registry.dart';
 import '../../core/tag/tag_io.dart';
 import '../../core/task/task_center.dart';
+import '../../core/tx/lrc_sidecar.dart';
 import '../../core/tx/write_preview.dart';
 import '../common/write_confirm_sheet.dart';
 import 'lyrics_candidate_sheet.dart';
@@ -36,8 +37,8 @@ class LyricsBatchPage extends StatefulWidget {
 }
 
 class _LyricsBatchPageState extends State<LyricsBatchPage> {
-  /// .lrc 在预览里的行键（不是标签字段，单独判断）。
-  static const String _lrcKey = '__lrc';
+  /// .lrc 在预览里的行键（不是标签字段，单独判断；与事务日志用同一个键）。
+  static const String _lrcKey = LrcSidecar.journalKey;
 
   late List<LyricRow> _rows;
   bool _fetching = false;
