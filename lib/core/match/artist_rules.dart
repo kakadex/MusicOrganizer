@@ -43,7 +43,7 @@ abstract final class ArtistRules {
   /// - 一个字母 / 汉字都没有（纯符号或纯数字）：`***` / `123456`；
   /// - 网址。
   ///
-  /// 为什么需要：`李玉刚-新贵妃醉酒` 曾被匹配成某源上同名条目的歌手
+  /// 为什么需要：曾有曲目被匹配成某源上同名条目的歌手
   /// `yyyyyy` —— 那是一条用户上传的垃圾记录，标题与正版一模一样。
   static bool looksLikeNoise(String? raw) {
     final String v = (raw ?? '').trim();

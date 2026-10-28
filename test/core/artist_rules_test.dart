@@ -47,8 +47,8 @@ void main() {
     expect(ArtistRules.looksLikeNoise('123456'), isTrue);
     expect(ArtistRules.looksLikeNoise('http://spam.example'), isTrue);
     // 真名不能误伤
-    expect(ArtistRules.looksLikeNoise('李玉刚'), isFalse);
-    expect(ArtistRules.looksLikeNoise('Li Yugang'), isFalse);
+    expect(ArtistRules.looksLikeNoise('张三'), isFalse);
+    expect(ArtistRules.looksLikeNoise('Zhang San'), isFalse);
     expect(ArtistRules.looksLikeNoise('DJ冷冰冰'), isFalse);
     expect(ArtistRules.looksLikeNoise('Y'), isFalse, reason: '单字母真名不判噪声');
     expect(ArtistRules.looksLikeNoise(''), isFalse);

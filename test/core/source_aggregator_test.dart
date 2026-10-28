@@ -378,9 +378,9 @@ void main() {
                 'songs': <Object>[
                   for (final String a in artists)
                     <String, Object>{
-                      'name': '新贵妃醉酒',
+                      'name': '示例歌曲',
                       'artists': <Object>[<String, Object>{'name': a}],
-                      'album': <String, Object>{'name': '新贵妃醉酒'},
+                      'album': <String, Object>{'name': '示例歌曲'},
                       'duration': 275000,
                     }
                 ]
@@ -389,29 +389,29 @@ void main() {
 
     test('歌手是 yyyyyy 的同名条目被淘汰，只留正版', () async {
       final AggregateResult r = await Aggregator.tagCandidates(
-        q(artist: '李玉刚', title: '新贵妃醉酒', duration: 275),
+        q(artist: '张三', title: '示例歌曲', duration: 275),
         only: <String>['netease'],
-        fetch: songs(<String>['yyyyyy', '李玉刚']),
+        fetch: songs(<String>['yyyyyy', '张三']),
       );
       expect(r.candidates.length, 1);
-      expect(r.candidates.first.artist, '李玉刚');
+      expect(r.candidates.first.artist, '张三');
       // 综合分要能被界面用上
       expect(r.candidates.first.matchScore, greaterThan(0.6));
     });
 
     test('本地没有歌手信息时，也不会挑走垃圾条目', () async {
       final AggregateResult r = await Aggregator.tagCandidates(
-        q(artist: '', title: '新贵妃醉酒', duration: 275),
+        q(artist: '', title: '示例歌曲', duration: 275),
         only: <String>['netease'],
-        fetch: songs(<String>['yyyyyy', '李玉刚']),
+        fetch: songs(<String>['yyyyyy', '张三']),
       );
       expect(r.candidates.length, 1);
-      expect(r.candidates.first.artist, '李玉刚');
+      expect(r.candidates.first.artist, '张三');
     });
 
     test('歌手完全对不上（不是噪声）也要淘汰，宁可不写', () async {
       final AggregateResult r = await Aggregator.tagCandidates(
-        q(artist: '李玉刚', title: '新贵妃醉酒', duration: 275),
+        q(artist: '张三', title: '示例歌曲', duration: 275),
         only: <String>['netease'],
         fetch: songs(<String>['别人的名字']),
       );
@@ -420,13 +420,13 @@ void main() {
 
     test('手动匹配（verify: false）不淘汰，只把不像的排后面', () async {
       final AggregateResult r = await Aggregator.tagCandidates(
-        q(artist: '李玉刚', title: '新贵妃醉酒', duration: 275),
+        q(artist: '张三', title: '示例歌曲', duration: 275),
         only: <String>['netease'],
-        fetch: songs(<String>['别人的名字', '李玉刚']),
+        fetch: songs(<String>['别人的名字', '张三']),
         verify: false,
       );
       expect(r.candidates.length, 2, reason: '手动挑选要能看到全部候选');
-      expect(r.candidates.first.artist, '李玉刚', reason: '像的那条排前面');
+      expect(r.candidates.first.artist, '张三', reason: '像的那条排前面');
     });
   });
 }
