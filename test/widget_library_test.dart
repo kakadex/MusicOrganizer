@@ -117,7 +117,9 @@ void main() {
 
     expect(find.textContaining('已选'), findsOneWidget);
     expect(find.text('全选'), findsOneWidget);
-    expect(find.text('匹配标签'), findsOneWidget);
+    // 批量补标签已收进「更多」，底部不再有独立按钮
+    expect(find.text('更多'), findsOneWidget);
+    expect(find.text('匹配标签'), findsNothing);
   });
 
   testWidgets('Ctrl+A 全选并进入多选，Esc 退出多选', (WidgetTester tester) async {
@@ -233,6 +235,7 @@ void main() {
     await tester.tap(find.text('更多'));
     await tester.pumpAndSettle();
 
+    expect(find.text('批量补标签'), findsOneWidget);
     expect(find.text('批量改标签'), findsOneWidget);
     expect(find.text('按标签改名'), findsOneWidget);
     expect(find.text('歌词工具'), findsOneWidget);

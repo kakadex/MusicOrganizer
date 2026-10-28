@@ -88,4 +88,38 @@ void main() {
     // 内容从第一行开始排（后面的滚在列表里，不影响底栏）
     expect(find.text('行 0'), findsOneWidget);
   });
+
+  testWidgets('确认写入：点右侧箭头能展开字段', (WidgetTester tester) async {
+    smallScreen(tester);
+    final FilePlan plan = FilePlan(
+      file: VFile(docId: 'doc1', name: 'song.mp3', size: 1, lastModified: 1),
+      fields: <PlanField>[
+        PlanField(
+            key: 'title', oldValue: '', newValue: '新标题', mode: TagFill.supplement),
+        PlanField(
+            key: 'artist', oldValue: '', newValue: '新歌手', mode: TagFill.supplement),
+        PlanField(
+            key: 'album', oldValue: '', newValue: '新专辑', mode: TagFill.supplement),
+        PlanField(
+            key: 'year', oldValue: '', newValue: '2026', mode: TagFill.supplement),
+      ],
+    );
+
+    await pumpHost(
+        tester, (BuildContext ctx) => PreviewSheet.show(ctx, <FilePlan>[plan]));
+    await tester.tap(find.text('打开'));
+    await tester.pumpAndSettle();
+
+    // 未展开时看不到字段行
+    expect(find.text('标题'), findsNothing);
+    // 点右侧箭头（箭头在整行点击区内）
+    await tester.tap(find.byIcon(Icons.expand_more));
+    await tester.pumpAndSettle();
+    expect(find.text('标题'), findsOneWidget);
+    expect(find.textContaining('新标题', findRichText: true), findsOneWidget);
+    // 再点一次收起
+    await tester.tap(find.byIcon(Icons.expand_less));
+    await tester.pumpAndSettle();
+    expect(find.text('标题'), findsNothing);
+  });
 }

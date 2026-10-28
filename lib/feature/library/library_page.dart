@@ -488,13 +488,6 @@ class _LibraryPageState extends State<LibraryPage> {
               ? '${_shown.length} 首${_status.isEmpty ? '' : ' · $_status'}'
               : '还没有选择曲库目录',
           actions: <Widget>[
-            // 先筛后批：当前筛选/搜索出来的这一批，直接就能送去匹配，不用再全选一遍
-            if (repo.hasRoot && _shown.isNotEmpty)
-              _icon(
-                Icons.auto_fix_high,
-                '批量匹配当前 ${_shown.length} 首',
-                _busy ? null : () => _matchSelected(),
-              ),
             _icon(Icons.sort, '排序', _showSort, key: _sortKey),
             _icon(Icons.refresh, '重新扫描', _busy ? null : _scan),
           ],
@@ -738,11 +731,8 @@ class _LibraryPageState extends State<LibraryPage> {
             child: const Text('关闭'),
           ),
           const SizedBox(width: 6),
-          TextButton(
-            onPressed: _busy ? null : _moreForSelection,
-            child: const Text('更多'),
-          ),
-          MoButton('匹配标签', busy: _busy, onPressed: _matchSelected),
+          // 批量补标签等动作统一收进「更多」，不再占底部独立按钮
+          MoButton('更多', busy: _busy, onPressed: _busy ? null : _moreForSelection),
         ],
       ),
     );
@@ -760,6 +750,15 @@ class _LibraryPageState extends State<LibraryPage> {
       context,
       title: '对选中的 ${files.length} 首',
       children: <Widget>[
+        MoTile(
+          title: '批量补标签',
+          subtitle: '多源匹配，先预览再写入',
+          icon: Icons.auto_fix_high,
+          onTap: () {
+            Navigator.of(context).pop();
+            _matchSelected();
+          },
+        ),
         MoTile(
           title: '批量补封面',
           subtitle: '多源取图写入内嵌封面',

@@ -1,8 +1,8 @@
-version=0.2.15
-tag=v0.2.15
+version=0.2.16
+tag=v0.2.16
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.15/musicorganizer-arm64-v8a.apk
-size=19609081
-sha256=2836e14e1faf39e3f6436a2534be4c761b457eb8613fdf8afb684470a5a9d0db
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.15
-summary=确认写入等面板的底部按钮固定在面板底部，曲目再多也不会被顶出屏幕。
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.16/musicorganizer-arm64-v8a.apk
+size=19609077
+sha256=23c8b9b02c4882708e2dbc74b510d7010ea7fdabe5f1199f4b2da0e1f3ac16a5
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.16
+summary=批量补标签收进长按选择后的「更多」；确认写入每首整行可点开展开，右侧箭头不再点不动。

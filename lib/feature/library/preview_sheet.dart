@@ -109,7 +109,9 @@ class _PreviewBodyState extends State<_PreviewBody> {
                 onChanged: (bool? v) => setState(() => p.selected = v ?? false),
               ),
               Expanded(
-                child: GestureDetector(
+                // 整行标题都可点：右侧「N 项」和箭头也在点击区内，
+                // 不用非要去点歌名那一小段才能展开
+                child: InkWell(
                   onTap: () => setState(() {
                     if (open) {
                       _expanded.remove(p.file.docId);
@@ -117,47 +119,65 @@ class _PreviewBodyState extends State<_PreviewBody> {
                       _expanded.add(p.file.docId);
                     }
                   }),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(p.file.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontSize: MoKit.fsBody,
-                              fontWeight: FontWeight.w500,
-                              color: MoKit.text(context))),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: <Widget>[
-                          if (p.lowConfidence)
-                            Container(
-                              margin: const EdgeInsets.only(right: 6),
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                              decoration: BoxDecoration(
-                                  color: MoKit.warn(context).withValues(alpha: 0.16),
-                                  borderRadius: BorderRadius.circular(6)),
-                              child: Text('低置信',
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(p.file.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
-                                      fontSize: 10, color: MoKit.warn(context))),
-                            ),
-                          Expanded(
-                            child: Text(p.note,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                    fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
+                                      fontSize: MoKit.fsBody,
+                                      fontWeight: FontWeight.w500,
+                                      color: MoKit.text(context))),
+                              const SizedBox(height: 2),
+                              Row(
+                                children: <Widget>[
+                                  if (p.lowConfidence)
+                                    Container(
+                                      margin: const EdgeInsets.only(right: 6),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 6, vertical: 1),
+                                      decoration: BoxDecoration(
+                                          color: MoKit.warn(context)
+                                              .withValues(alpha: 0.16),
+                                          borderRadius: BorderRadius.circular(6)),
+                                      child: Text('低置信',
+                                          style: TextStyle(
+                                              fontSize: 10,
+                                              color: MoKit.warn(context))),
+                                    ),
+                                  Expanded(
+                                    child: Text(p.note,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                            fontSize: MoKit.fsCaption,
+                                            color: MoKit.sub(context))),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    ],
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                            '${p.fields.where((PlanField f) => f.accepted).length} 项',
+                            style: TextStyle(
+                                fontSize: MoKit.fsCaption,
+                                color: MoKit.sub(context))),
+                        Icon(open ? Icons.expand_less : Icons.expand_more,
+                            size: 18, color: MoKit.faint(context)),
+                      ],
+                    ),
                   ),
                 ),
               ),
-              Text('${p.fields.where((PlanField f) => f.accepted).length} 项',
-                  style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
-              Icon(open ? Icons.expand_less : Icons.expand_more,
-                  size: 18, color: MoKit.faint(context)),
             ],
           ),
           if (open)
