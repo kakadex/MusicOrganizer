@@ -593,43 +593,129 @@ Future<T?> showMoSheet<T>(
   );
 }
 
-/// 轻提示（带可选操作，用于「写入成功 · 撤销」）。
-/// 提示条序号：只有最新一条到点才允许自动摘除。
+/// 轻提示：顶部横幅，固定 3 秒自动消失，点一下也能收掉。
+///
+/// 为什么不放底部：浮动提示会压住底部导航栏 / 任务条上的按钮，用户得先等它
+/// 自己走才能点（实测反馈）。放顶部只遮内容、不遮底部操作区，且 3 秒必收。
+/// 为什么用 root overlay 而不是 ScaffoldMessenger：从底部面板 / 弹窗里弹完提示
+/// 立刻 pop 时，SnackBar 会跟着那条路由一起没掉；带操作按钮的 SnackBar 在部分
+/// 时序 / 无障碍模式下还会不启动倒计时，一直停在屏幕上。
+OverlayEntry? _snackEntry;
+Timer? _snackTimer;
 int _snackSeq = 0;
 
+/// 提示停留时长（用户口径：3 秒）。
+const Duration _snackLife = Duration(seconds: 3);
+
 void moSnack(BuildContext context, String message,
-    {String? actionLabel,
-    VoidCallback? onAction,
-    double extraBottom = 0}) {
-  final ScaffoldMessengerState m = ScaffoldMessenger.of(context);
-  // 只留一条：连着弹两条时，用户看到的是上一条在闪
-  m.hideCurrentSnackBar();
-  final double bottomInset = MediaQuery.of(context).viewPadding.bottom;
-  final int seconds = actionLabel == null ? 3 : 5;
-  // 自带兜底计时器：SnackBar 自己的倒计时在「带按钮 + 路由刚切过」这类情况下
-  // 会不启动（实测停在屏幕上一直不走），所以到点直接把它从队列里摘掉。
+    {String? actionLabel, VoidCallback? onAction}) {
+  if (!context.mounted) return;
+  final OverlayState? overlay = Overlay.maybeOf(context, rootOverlay: true);
+  if (overlay == null) return; // 还没挂上 Overlay：提示丢了不影响主流程
+
+  // 只留一条：新提示直接顶掉旧的，连点不会叠成一摞
   final int seq = ++_snackSeq;
-  Timer(Duration(seconds: seconds + 1), () {
-    if (seq != _snackSeq) return; // 已经有更新的提示了，别误伤
-    m.removeCurrentSnackBar();
-  });
-  m.showSnackBar(SnackBar(
-    // 点一下就收：底部提示挡住操作条时，不用等它自己走
-    content: Listener(
-      // Listener 不参与手势竞争，提示条上轻轻一碰就能收掉
-      behavior: HitTestBehavior.opaque,
-      onPointerDown: (_) => m.removeCurrentSnackBar(),
-      child: Text(message, style: const TextStyle(fontSize: MoKit.fsBody)),
-    ),
-    behavior: SnackBarBehavior.floating,
-    margin: EdgeInsets.fromLTRB(12, 12, 12, 12 + bottomInset + extraBottom),
-    duration: Duration(seconds: seconds),
-    dismissDirection: DismissDirection.down,
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-    action: actionLabel == null
-        ? null
-        : SnackBarAction(label: actionLabel, onPressed: onAction ?? () {}),
-  ));
+  _dismissSnack();
+
+  final Color bg = MoKit.card(context);
+  final Color fg = MoKit.text(context);
+  final Color accent = MoKit.primary(context);
+
+  final OverlayEntry entry = OverlayEntry(
+    builder: (BuildContext ctx) {
+      // 落在标题栏下方：标题栏右侧通常有批量 / 排序 / 刷新这类按钮，
+      // 贴到状态栏下面会把它们盖住，所以让出约一行标题的高度。
+      final double top = MediaQuery.of(ctx).padding.top + 72;
+      final Widget body = Semantics(
+        liveRegion: true,
+        container: true,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _dismissSnack(seq),
+          child: Container(
+            padding: EdgeInsets.fromLTRB(
+                14, actionLabel == null ? 12 : 4, 8, actionLabel == null ? 12 : 4),
+            decoration: BoxDecoration(
+              color: bg,
+              borderRadius: BorderRadius.circular(MoKit.radiusRow),
+              boxShadow: <BoxShadow>[
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.18),
+                  blurRadius: 18,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    message,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: MoKit.fsBody, color: fg),
+                  ),
+                ),
+                if (actionLabel != null)
+                  TextButton(
+                    onPressed: () {
+                      _dismissSnack(seq);
+                      onAction?.call();
+                    },
+                    child: Text(actionLabel,
+                        style: TextStyle(fontSize: MoKit.fsBody, color: accent)),
+                  )
+                else
+                  const SizedBox(width: 6),
+              ],
+            ),
+          ),
+        ),
+      );
+      return Positioned(
+        top: top,
+        left: 12,
+        right: 12,
+        child: Material(
+          color: Colors.transparent,
+          child: TweenAnimationBuilder<double>(
+            tween: Tween<double>(begin: 0, end: 1),
+            duration: const Duration(milliseconds: 140),
+            curve: Curves.easeOut,
+            builder: (BuildContext c, double t, Widget? child) => Opacity(
+              opacity: t,
+              child: Transform.translate(
+                  offset: Offset(0, (1 - t) * -10), child: child),
+            ),
+            child: body,
+          ),
+        ),
+      );
+    },
+  );
+
+  try {
+    overlay.insert(entry);
+    _snackEntry = entry;
+  } catch (_) {
+    return; // overlay 已销毁：提示丢了就丢了
+  }
+  _snackTimer = Timer(_snackLife, () => _dismissSnack(seq));
+}
+
+/// 收起当前提示；带 [seq] 时只收自己那条，旧定时器不会误伤新提示。
+void _dismissSnack([int? seq]) {
+  if (seq != null && seq != _snackSeq) return;
+  _snackTimer?.cancel();
+  _snackTimer = null;
+  final OverlayEntry? entry = _snackEntry;
+  _snackEntry = null;
+  if (entry == null) return;
+  try {
+    entry.remove();
+  } catch (_) {
+    // 已经被 overlay 收走了
+  }
 }
 
 /// 任务条：**只在有任务时出现**，结束 1.2 秒后自动隐藏。

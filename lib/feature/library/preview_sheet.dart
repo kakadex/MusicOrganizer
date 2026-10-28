@@ -223,27 +223,18 @@ class _PreviewBodyState extends State<_PreviewBody> {
       _busy = false;
       _status = report.summary();
     });
-    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(SnackBar(
-      content: Text(report.summary()),
-      behavior: SnackBarBehavior.floating,
-      margin: const EdgeInsets.all(12),
-      action: report.written == 0
-          ? null
-          : SnackBarAction(
-              label: '撤销',
-              onPressed: () async {
-                final int? n =
-                    await undoBatchWithPreview(context, batchId: batchId);
-                if (n == null) return;
-                messenger.showSnackBar(SnackBar(
-                    content: Text('已撤销 $n 处改动'),
-                    behavior: SnackBarBehavior.floating,
-                    margin: const EdgeInsets.all(12)));
-              },
-            ),
-    ));
+    // 提示条挂在 root overlay 上，pop 之后仍然在；但撤销确认面板需要一个还活着
+    // 的 context——sheet 自己马上就要 pop，用 overlay 的 context（它比这条 modal
+    // 路由活得久）才不会点了撤销反而报「deactivated widget's ancestor」。
+    final BuildContext alive =
+        Overlay.maybeOf(context, rootOverlay: true)?.context ?? context;
+    moSnack(context, report.summary(),
+        actionLabel: report.written == 0 ? null : '撤销',
+        onAction: () async {
+          final int? n = await undoBatchWithPreview(alive, batchId: batchId);
+          if (n == null || !alive.mounted) return;
+          moSnack(alive, n == 0 ? '没有可还原的改动' : '已撤销 $n 处改动');
+        });
     Navigator.of(context).pop(true);
   }
 }

@@ -1,8 +1,8 @@
-version=0.2.13
-tag=v0.2.13
+version=0.2.14
+tag=v0.2.14
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.13/musicorganizer-arm64-v8a.apk
-size=19674617
-sha256=4f4851a55b3bbb4a89299023efe9d2ba822bfba2f5146d5e7e6674682a5cbefe
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.13
-summary=自动整理支持目录规则模板（四套内置）；批量匹配可对当前筛选结果整批处理；Windows 版可手动关联音频扩展名，双击直接进编辑；目录读不到时单独提示。
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.14/musicorganizer-arm64-v8a.apk
+size=19609081
+sha256=e3b21965b6051311d5b264ca92be982c260f8076b0885c05275349836c23a12f
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.14
+summary=写入结果提示改为顶部横幅、3 秒自动消失，不再遮挡底部导航与操作按钮。
