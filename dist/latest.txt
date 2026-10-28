@@ -1,11 +1,11 @@
-version=0.2.35
-tag=v0.2.35
+version=0.2.36
+tag=v0.2.36
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.35/MusicOrganizer-0.2.35-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.36/MusicOrganizer-0.2.36-android-arm64-v8a.apk
 size=19805965
-sha256=ba09be5965da5f4b71d9f8ee2c486f9503def57a5f7e2054826ec1924f65260e
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.35/MusicOrganizer-0.2.35-windows-x64.zip
-zip_size=12573257
-zip_sha256=3077d55e4f8ae44d5ebd3037b8a3ed08c28b68b14ace9e5c2ddf1fb5da2a89f9
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.35
-summary=第二批审查 7 条修复：写入失败与还原如实告知、歌词续跑真续上、更新包校验更严。
+sha256=d72c5a27367848a2664667d512b3a79baf3a4bcd0a0d893e7c256cbe0a024ebd
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.36/MusicOrganizer-0.2.36-windows-x64.zip
+zip_size=12573628
+zip_sha256=807ea40a565612e1c5e7586488f3b1e67501b51181e5a7763d9a4363c1bcc6c9
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.36
+summary=修复部分 MP3 无法删除标签的问题。
