@@ -210,6 +210,11 @@ Future<void> runBatchEdit(BuildContext context, List<VFile> files) async {
       failed++;
     }
   }
+  // 退回时也要走同一个补读出口：退回把标签还原成写之前的字节，但 invalidate
+  // 已经把缓存清了，不补读列表里这些歌的标题与封面又会变空。
+  bool rolledBack = false;
+  int rolledBackOk = 0;
+  int rolledBackBad = 0;
   if (failed > 0 && done > 0 && context.mounted) {
     // 半途失败：已经写入的那部分是留着还是一起退回去，交给用户定
     final bool? rollback = await showDialog<bool>(
@@ -233,22 +238,26 @@ Future<void> runBatchEdit(BuildContext context, List<VFile> files) async {
     );
     if (rollback == true) {
       final (int ok, int bad) = await tx.rollbackBatch(batchId);
+      rolledBackOk = ok;
+      rolledBackBad = bad;
       for (final WriteTarget t in picked) {
         final VFile? f = t.file as VFile?;
         if (f != null) repo.invalidate(f);
       }
-      if (!context.mounted) return;
-      moSnack(context, '已退回 $ok 首${bad > 0 ? '，退回失败 $bad 首' : ''}');
-      return;
+      rolledBack = true;
     }
   }
-  await tx.commitBatch(batchId);
-  // 改标签没动封面，但 invalidate 会把封面标记一起清掉；补读一次恢复封面，
-  // 否则用户改个标题，列表里的封面就整片没了。
+  if (!rolledBack) await tx.commitBatch(batchId);
+  // 统一出口：写入成功与整批退回都补读一次，否则列表里的标题/封面会变空
   if (touched.isNotEmpty) {
     await repo.loadMeta(only: touched);
   }
   if (!context.mounted) return;
+  if (rolledBack) {
+    moSnack(context,
+        '已退回 $rolledBackOk 首${rolledBackBad > 0 ? '，退回失败 $rolledBackBad 首' : ''}');
+    return;
+  }
   moSnack(context, '已写入 $done 首${failed > 0 ? '，失败 $failed 首' : ''}');
 }
 
