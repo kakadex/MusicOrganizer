@@ -1,11 +1,11 @@
-version=0.2.24
-tag=v0.2.24
+version=0.2.25
+tag=v0.2.25
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.24/MusicOrganizer-0.2.24-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.25/MusicOrganizer-0.2.25-android-arm64-v8a.apk
 size=19805965
-sha256=5b1d58497371c019e6fbedf1ad3f5fc7894bcb621f3fa04dae25c631559e944c
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.24/MusicOrganizer-0.2.24-windows-x64.zip
-zip_size=12564464
-zip_sha256=efc91cb64c80e1ff245308ae477312ece0f20d67e666d1fb96bed3d8637574b0
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.24
-summary=桌面端自动更新下载后校验安装包（大小 + SHA256），防止中途被换包。
+sha256=24b13e745b3567555d2c58701784d4d3fc65e26941ed7ed73d9466bbe30bdc24
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.25/MusicOrganizer-0.2.25-windows-x64.zip
+zip_size=12564588
+zip_sha256=5d4ee5e2b0915459bb379c3f0724176f85f38309aaa523653553e8ca394f62fc
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.25
+summary=修复封面批量「继续上次」没续上的问题。
