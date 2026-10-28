@@ -34,6 +34,11 @@ class LyricsBatchPage extends StatefulWidget {
 
   final List<VFile> files;
 
+  /// 测试用：替换真实的取词通道，好统计「到底联网查了几首」。
+  /// 生产环境保持 null，走 [Aggregator.lyricCandidates]。
+  @visibleForTesting
+  static Future<LyricAggregateResult> Function(Object query)? debugLyricFetcher;
+
   @override
   State<LyricsBatchPage> createState() => _LyricsBatchPageState();
 }
@@ -62,6 +67,12 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
   /// 用户点了「重新开始」：清掉续跑进度，这一轮全部重新联网查。
   bool _restarted = false;
 
+  /// 本次会话**真的取过词**（跑完过一轮）。
+  ///
+  /// 不能拿 `_fetched` 判断：续跑进来时 `_fetched` 也会被置 true（界面要显示
+  /// 「找到 N 首」），于是按钮变成「重新获取」，用户一点就把续跑清掉了。
+  bool _fetchedThisSession = false;
+
   Future<void> _restart() async {
     _queue?.clear();
     if (!mounted) return;
@@ -69,6 +80,7 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
       _restarted = true;
       _resumed = 0;
       _fetched = false;
+      _fetchedThisSession = false;
       for (final LyricRow row in _rows) {
         row.forgetResume();
         row.reset();
@@ -163,7 +175,7 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
                         primary: false,
                         onPressed: _fetching || _writing ? null : _restart),
                   ),
-                MoButton(_fetched ? '重新获取' : '获取歌词',
+                MoButton(_fetchedThisSession ? '重新获取' : '获取歌词',
                     busy: _fetching, onPressed: _fetching || _writing ? null : _fetchAll),
               ],
             ),
@@ -282,15 +294,23 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
       moSnack(context, '已有任务在跑，先等它结束');
       return;
     }
-    // 「重新获取」（_fetched 已为 true）要清掉续跑重新联网；
-    // 首次「获取歌词」保留续跑，接着上次跳过已查到的。
-    final bool rerun = _fetched;
+    // 「重新获取」要清掉续跑重新联网；首次「获取歌词」保留续跑、跳过已查到的。
+    // 判断依据是「本次会话真的取过词」，不是 `_fetched`（续跑也会把它置 true）。
+    final bool rerun = _fetchedThisSession;
     setState(() {
       _fetching = true;
       _fetched = false;
       for (final LyricRow row in _rows) {
-        row.reset();
-        if (rerun) row.forgetResume();
+        if (rerun) {
+          // 重新获取：续跑标记与旧候选一起清掉，逐首重查
+          row.forgetResume();
+          row.reset();
+        } else if (!row.resumed) {
+          // 首次获取的非续跑行：清掉上一次的残留状态
+          row.reset();
+        }
+        // 续跑行（resumed && !rerun）：**不能 reset**，否则候选被清空，
+        // 下面「跳过联网」的条件就命不中，等于白续跑
       }
     });
 
@@ -337,8 +357,11 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
               durationMs: row.file.cachedDurationMs,
               bitrateKbps: row.file.cachedBitrateKbps);
           final Query q = LocalQuery.forFile(row.file, tags);
-          final LyricAggregateResult agg = await Aggregator.lyricCandidates(
-              LocalQuery.lyric(q, album: tags.get('album')));
+          final lq = LocalQuery.lyric(q, album: tags.get('album'));
+          final LyricAggregateResult agg =
+              LyricsBatchPage.debugLyricFetcher != null
+                  ? await LyricsBatchPage.debugLyricFetcher!(lq)
+              : await Aggregator.lyricCandidates(lq);
           netErrors.addAll(agg.errors);
           // 保留全部候选：机器只按「像不像同一首歌」打分，同名不同版本
           // （现场版 / remix / 翻唱）经常挨在一起，让用户自己挑更靠谱。
@@ -384,6 +407,7 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
     setState(() {
       _fetching = false;
       _fetched = true;
+      _fetchedThisSession = true;
     });
     final int enabled = SourceRegistry.lyrics().length;
     final bool allDown = enabled > 0 && netErrors.length >= enabled;
