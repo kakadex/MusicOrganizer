@@ -1,11 +1,11 @@
-version=0.2.31
-tag=v0.2.31
+version=0.2.32
+tag=v0.2.32
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.31/MusicOrganizer-0.2.31-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.32/MusicOrganizer-0.2.32-android-arm64-v8a.apk
 size=19805965
-sha256=4386f179ef1df08ad47b0bf7574ebafc0bae629fa04714cf4912066023898e99
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.31/MusicOrganizer-0.2.31-windows-x64.zip
-zip_size=12563907
-zip_sha256=17ffe75d839f1e15a7562aaf7ccf091bbfca3eccc5d88e87dc3d88f35dde1b7c
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.31
-summary=修复整批回滚时恢复失败的备份被一起删掉的问题。
+sha256=0fba7fd51eb1d1bd16cdbc57c7845e41358242dddeb5c43f5f167e9b5308c935
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.32/MusicOrganizer-0.2.32-windows-x64.zip
+zip_size=12563858
+zip_sha256=4f58b0fb681138e2b2b6157069a2919a914b2d3dcbe7d6dba3fe230acfad7ec7
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.32
+summary=修复后台读标签时刚写完的文件不被补读的问题。
