@@ -2,10 +2,10 @@
 
 /// 版本戳工具（骨架；T15 接入发布链）。
 ///
-/// 职责：以 VERSION 文件为唯一真源，计算 lib/ 源码内容哈希（6 位），
+/// 职责：以 VERSION 文件为唯一真源，计算 lib/ 源码内容哈希（6 位，大写），
 /// 生成 `lib/core/version.dart`：
 /// ```dart
-/// const kAppVersionFull = 'X.Y.Z-abc123';
+/// const kAppVersionFull = 'X.Y.Z-ABC123';
 /// ```
 ///
 /// 用法（项目根目录执行）：
@@ -77,7 +77,7 @@ void main(List<String> args) {
   stdout.writeln('stamped $full (build $build) -> $kOutputFile');
 }
 
-/// 计算 lib/ 源码内容哈希（FNV-1a 64 位 → base36 → 末 6 位）。
+/// 计算 lib/ 源码内容哈希（FNV-1a 64 位 → base36 → 末 6 位 → 大写）。
 ///
 /// 口径：递归收集 lib/ 下全部 `.dart`，按路径排序，依次混入
 /// 「相对路径 + 0 字节 + 文件内容」——改文件名 / 改内容都会变。
@@ -114,9 +114,10 @@ String sourceHash() {
     }
   }
   final String encoded = (h & 0xFFFFFFFFFFFFFFFF).toRadixString(36);
-  return encoded.length >= kHashLength
+  final String hash = encoded.length >= kHashLength
       ? encoded.substring(encoded.length - kHashLength)
       : encoded.padLeft(kHashLength, '0');
+  return hash.toUpperCase();
 }
 
 /// FNV-1a 单步混合（64 位回绕）。
@@ -142,7 +143,7 @@ String render(String version, String full, int build) {
       '/// `X.Y.Z+NNN`（build 号 = versionCode，须为整数）—— 见架构设计 §6 / R6。\n'
       'library;\n'
       '\n'
-      "/// 完整版本串：`X.Y.Z-abc123`（UI 顶栏 / 设置页展示）。\n"
+      "/// 完整版本串：`X.Y.Z-ABC123`（UI 顶栏 / 设置页展示）。\n"
       "const String kAppVersionFull = '$full';\n"
       '\n'
       "/// 语义版本（与 VERSION 文件一致）。\n"

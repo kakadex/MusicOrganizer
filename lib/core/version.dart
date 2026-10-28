@@ -5,8 +5,8 @@
 /// `X.Y.Z+NNN`（build 号 = versionCode，须为整数）—— 见架构设计 §6 / R6。
 library;
 
-/// 完整版本串：`X.Y.Z-abc123`（UI 顶栏 / 设置页展示）。
-const String kAppVersionFull = '0.2.20-llsuef';
+/// 完整版本串：`X.Y.Z-ABC123`（UI 顶栏 / 设置页展示）。
+const String kAppVersionFull = '0.2.20-RWY54R';
 
 /// 语义版本（与 VERSION 文件一致）。
 const String kAppVersion = '0.2.20';
