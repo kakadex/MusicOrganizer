@@ -188,6 +188,10 @@ abstract final class Flac {
       entries.add('$key=$value');
     }
     final Uint8List newBlock = _buildVorbisComment(vendor, entries);
+    if (newBlock.length > 0xFFFFFF) {
+      // FLAC 元数据块长度只有 3 字节；超限时写出去会被截断成错误长度，直接拒绝
+      throw const FormatException('FLAC 标签块超过 16MB 限制');
+    }
 
     if (cover != null) {
       for (int i = pictureIndexes.length - 1; i >= 0; i--) {
@@ -197,8 +201,12 @@ abstract final class Flac {
         if (idx < vcIndex) vcIndex--;
       }
       if (cover.isNotEmpty) {
+        final Uint8List pic = _buildPicture(cover);
+        if (pic.length > 0xFFFFFF) {
+          throw const FormatException('FLAC 封面块超过 16MB 限制');
+        }
         types.add(typePicture);
-        blocks.add(_buildPicture(cover));
+        blocks.add(pic);
       }
     }
 

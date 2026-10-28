@@ -55,6 +55,8 @@ abstract final class Mp4 {
       int size = (b[pos] << 24) | (b[pos + 1] << 16) | (b[pos + 2] << 8) | b[pos + 3];
       final String type = _type(b, pos);
       if (size == 1) {
+        // 64 位 largesize：先确认后面的 8 字节真的在范围内，再读
+        if (pos + 16 > end) break;
         size = _be64(b, pos + 8);
         pos += 8;
       } else if (size == 0) {
@@ -64,13 +66,33 @@ abstract final class Mp4 {
       if (type == 'moov' || type == 'udta') {
         _walk(b, pos + 8, pos + size, tags, depth + 1);
       } else if (type == 'meta') {
-        _walk(b, pos + 12, pos + size, tags, depth + 1);
+        // meta 通常是 full atom（4 字节 version/flags），子原子从 +12 开始；
+        // QuickTime / 部分老写入器不是 full atom，子原子从 +8 开始。先探测。
+        final int child =
+            _looksLikeMetaChild(b, pos + 12, pos + size) ? pos + 12 : pos + 8;
+        _walk(b, child, pos + size, tags, depth + 1);
       } else if (type == 'ilst') {
         _parseIlst(b, pos + 8, pos + size, tags);
         return;
       }
       pos += size;
     }
+  }
+
+  /// meta 的下一层原子头是否合法（hdlr / ilst / keys / free 等）。
+  static bool _looksLikeMetaChild(Uint8List b, int start, int end) {
+    if (start + 8 > end) return false;
+    final int size = (b[start] << 24) |
+        (b[start + 1] << 16) |
+        (b[start + 2] << 8) |
+        b[start + 3];
+    if (size < 8 || start + size > end) return false;
+    final String type = _type(b, start);
+    return type == 'hdlr' ||
+        type == 'ilst' ||
+        type == 'keys' ||
+        type == 'free' ||
+        type == 'mdat';
   }
 
   static void _parseIlst(Uint8List b, int start, int end, Tags tags) {

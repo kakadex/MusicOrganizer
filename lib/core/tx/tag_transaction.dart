@@ -11,6 +11,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import '../fs/file_store.dart';
+import '../log/log.dart';
 import '../model/journal_entry.dart';
 import '../model/tags.dart';
 import '../model/vfile.dart';
@@ -133,7 +134,12 @@ class TagTransaction {
           entry.after[k] = after.get(k);
         }
         entry.status = 'applied';
-        await journal.append(entry);
+        final bool logged = await journal.append(entry);
+        if (!logged) {
+          // 标签已经写入原文件，不能因为日志失败就回滚；但要留下痕迹，
+          // 否则用户以为「还能撤销」，实际撤销记录已经丢了。
+          Log.warn('撤销日志写入失败：${f.name}（本次写入不可撤销）');
+        }
       }
 
       f.clearMeta();

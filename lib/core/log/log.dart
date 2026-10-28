@@ -145,14 +145,24 @@ abstract final class Log {
   static String sanitize(String? raw) {
     if (raw == null || raw.isEmpty) return '';
     String s = raw;
+    // URI 先换成占位符：否则 content:// 里的 `t:/`、file:// 里的 `e:/`
+    // 会被下面的 Windows 盘符正则当成路径再削一次。
+    const String contentMark = '\u0001MO_CONTENT\u0001';
+    const String fileMark = '\u0001MO_FILE\u0001';
+    s = s.replaceAll(RegExp(r'content://[^\s"<>|]+'), contentMark);
+    s = s.replaceAll(RegExp(r'file://[^\s"<>|]+'), fileMark);
+    // UNC：\\server\share\... → 只留最后一段
+    s = s.replaceAllMapped(RegExp(r'\\\\[^\s"<>|]+'), _keepTail);
     // 形如 C:\Users\xxx\... 或 /home/xxx/... 的绝对路径 → 只留最后一段
     s = s.replaceAllMapped(RegExp(r'''[A-Za-z]:[\\/][^\s"'<>|]*'''), _keepTail);
     s = s.replaceAllMapped(RegExp(r'''/(?:[^\s"'<>|/]+/)+'''), _keepTail);
-    // 凭据：token / password / secret / key = 值
-    s = s.replaceAll(
+    // 凭据：token / password / secret / key = 值（replaceAll 不支持 $1，必须用 Mapped）
+    s = s.replaceAllMapped(
         RegExp(r'\b(token|password|passwd|secret|api[_-]?key|access[_-]?key)\s*[=:]\s*\S+',
             caseSensitive: false),
-        r'$1=***');
+        (Match m) => '${m.group(1)}=***');
+    s = s.replaceAll(contentMark, 'content://***');
+    s = s.replaceAll(fileMark, 'file://***');
     return s;
   }
 

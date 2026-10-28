@@ -50,6 +50,7 @@ void main() {
   setUp(() async {
     dir = await Directory.systemTemp.createTemp('mo_tx_');
     store = DesktopFileStore();
+    store.addRoot(dir.path);
     journal = Journal(File('${dir.path}/journal.jsonl'));
     tx = TagTransaction(store: store, journal: journal);
   });
@@ -91,6 +92,7 @@ void main() {
 
   test('回读失败 → 从备份恢复，原文件不动', () async {
     final _CorruptingStore corrupt = _CorruptingStore();
+    corrupt.addRoot(dir.path);
     final Journal j = Journal(File('${dir.path}/j2.jsonl'));
     final TagTransaction t = TagTransaction(store: corrupt, journal: j);
 

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:musicorganizer/core/fs/desktop_file_store.dart';
+import 'package:musicorganizer/core/fs/file_store.dart';
 import 'package:musicorganizer/core/fs/tree_lookup.dart';
 import 'package:musicorganizer/core/fs/tree_ref.dart';
 import 'package:musicorganizer/core/model/vfile.dart';
@@ -28,6 +29,8 @@ void main() {
     setUp(() async {
       dir = await Directory.systemTemp.createTemp('mo_fs_');
       store = DesktopFileStore();
+      // 白名单测试：先登记根目录，后续操作才允许
+      store.addRoot(dir.path);
     });
 
     tearDown(() => dir.delete(recursive: true));
@@ -97,6 +100,35 @@ void main() {
 
     test('stat 不存在 → null', () async {
       expect(await store.stat('${dir.path}/nope.mp3'), isNull);
+    });
+
+    group('路径白名单', () {
+      test('拒绝 .. 越界与根目录外的绝对路径', () async {
+        final VFile outside = VFile(
+            docId: '${dir.path}/../evil.mp3',
+            name: 'evil.mp3',
+            size: 1,
+            lastModified: 1);
+        await expectLater(
+            store.stat(outside.docId), throwsA(isA<FileStoreException>()));
+        await expectLater(
+            store.headBytes(outside, 4), throwsA(isA<FileStoreException>()));
+        await expectLater(
+            store.delete(outside), throwsA(isA<FileStoreException>()));
+      });
+
+      test('前缀碰撞不被误判为子路径', () async {
+        await expectLater(store.stat('${dir.path}2/a.mp3'),
+            throwsA(isA<FileStoreException>()));
+      });
+
+      test('创建 / 改名拒绝带分隔符或 .. 的名字', () async {
+        final VFile root = VFile(docId: dir.path, name: 'x', dir: true);
+        await expectLater(store.createFile(root, '../evil.mp3', 'audio/mpeg'),
+            throwsA(isA<FileStoreException>()));
+        await expectLater(store.createDir(root, 'a/b'),
+            throwsA(isA<FileStoreException>()));
+      });
     });
   });
 }

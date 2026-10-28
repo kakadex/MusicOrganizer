@@ -14,20 +14,28 @@ const String kSafChannelName = 'com.dsh.musicorganizer/saf';
 final MethodChannel safChannel = MethodChannel(kSafChannelName);
 
 /// 把平台异常映射为 [FileStoreException]（失败必须带原因）。
+///
+/// 保留平台原始 code（[FileStoreException.originalCode]）与异常对象，
+/// 未知 code 才归到 E_IO；用户取消 / 超时 / 配额 / 锁定必须能被上层区分。
+const Set<String> _knownCodes = <String>{
+  'E_NO_PERMISSION',
+  'E_NOT_FOUND',
+  'E_SECURITY',
+  'E_IO',
+  'E_CANCELLED',
+  'E_TIMEOUT',
+  'E_QUOTA_EXCEEDED',
+  'E_LOCKED',
+  'E_NOT_READY',
+};
+
 FileStoreException _mapError(Object e) {
   if (e is PlatformException) {
-    switch (e.code) {
-      case 'E_NO_PERMISSION':
-        return FileStoreException('E_NO_PERMISSION', e.message ?? '');
-      case 'E_NOT_FOUND':
-        return FileStoreException('E_NOT_FOUND', e.message ?? '');
-      case 'E_SECURITY':
-        return FileStoreException('E_SECURITY', e.message ?? '');
-      default:
-        return FileStoreException('E_IO', e.message ?? e.code);
-    }
+    final String code = _knownCodes.contains(e.code) ? e.code : 'E_IO';
+    return FileStoreException(code, e.message ?? e.code,
+        originalCode: e.code, cause: e);
   }
-  return FileStoreException('E_IO', '$e');
+  return FileStoreException('E_IO', '$e', cause: e);
 }
 
 /// SAF 通道封装。
@@ -65,9 +73,15 @@ class SafChannel {
 
   /// 单个目录树的授权状态：VALID / REVOKED / UNAVAILABLE / NOT_READY。
   Future<String> authState(String treeUri) async {
-    final Object? r = await safChannel.invokeMethod(
-        'authState', <String, Object?>{'treeUri': treeUri});
-    return r is String ? r : 'NOT_READY';
+    try {
+      final Object? r = await safChannel.invokeMethod(
+          'authState', <String, Object?>{'treeUri': treeUri});
+      return r is String ? r : 'NOT_READY';
+    } catch (_) {
+      // 通道暂时不可用 ≠ 授权被撤销：返回 NOT_READY 让上层保留记录、下次再试，
+      // 不能把启动早期的一次通道抖动误判成 REVOKED 而引导用户重选目录。
+      return 'NOT_READY';
+    }
   }
 
   /// 单个文档信息；不存在返回 null。

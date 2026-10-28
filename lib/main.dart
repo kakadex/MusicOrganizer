@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'app/mo_app.dart';
 import 'app/repo.dart';
@@ -29,38 +30,102 @@ Future<void> main(List<String> args) async {
     return true;
   };
   ErrorWidget.builder = (FlutterErrorDetails details) {
+    final String text = Log.sanitize(details.exceptionAsString());
     return Material(
       color: const Color(0xFF1B1B1F),
       child: Center(
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Text(
-            '这个界面画不出来：\n${Log.sanitize(details.exceptionAsString())}',
-            style: const TextStyle(color: Color(0xFFE6E1E5), fontSize: 13),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text(
+                '这个界面画不出来：\n$text',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Color(0xFFE6E1E5), fontSize: 13),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => Clipboard.setData(ClipboardData(text: text)),
+                child: const Text('复制错误信息'),
+              ),
+            ],
           ),
         ),
       ),
     );
   };
-  await Log.init();
-  final Repo repo = Repo.instance;
-  await repo.init();
-  // 桌面端：把系统目录选择器注入文件系统，否则「选择目录」会拿不到路径。
-  if (Repo.isDesktop) {
-    final FileStore? store = repo.store;
-    if (store is DesktopFileStore) {
-      store.directoryPicker = () => getDirectoryPath();
+
+  try {
+    await Log.init();
+    final Repo repo = Repo.instance;
+    await repo.init();
+    // 桌面端：把系统目录选择器注入文件系统，否则「选择目录」会拿不到路径。
+    if (Repo.isDesktop) {
+      final FileStore? store = repo.store;
+      if (store is DesktopFileStore) {
+        store.directoryPicker = () => getDirectoryPath();
+      }
     }
+
+    // 主题：上次选的方案与明暗（存在 SharedPreferences 里，repo 初始化时已读回）
+    final int themeId = repo.settings.get<int>('theme_id', fallback: 1) ?? 1;
+    final bool dark = repo.settings.get<bool>('theme_dark', fallback: false) ?? false;
+    final ThemeController controller = ThemeController(
+      themeId: MoThemeId.values[themeId.clamp(0, MoThemeId.values.length - 1)],
+      dark: dark,
+    );
+    repo.themeController = controller;
+
+    runApp(MoApp(themeController: controller));
+  } catch (e, st) {
+    // 初始化链上的异常不会被 FlutterError.onError 捕获：必须自己兜住并
+    // runApp 一个可读的失败页，否则用户看到的是纯白屏、日志也未必有。
+    Log.error('应用启动失败', e: e, stack: st);
+    runApp(_BootFailureApp(error: Log.sanitize('$e')));
   }
+}
 
-  // 主题：上次选的方案与明暗（存在 SharedPreferences 里，repo 初始化时已读回）
-  final int themeId = repo.settings.get<int>('theme_id', fallback: 1) ?? 1;
-  final bool dark = repo.settings.get<bool>('theme_dark', fallback: false) ?? false;
-  final ThemeController controller = ThemeController(
-    themeId: MoThemeId.values[themeId.clamp(0, MoThemeId.values.length - 1)],
-    dark: dark,
-  );
-  repo.themeController = controller;
+/// 启动失败页：初始化抛异常时至少让用户看到原因、能复制。
+class _BootFailureApp extends StatelessWidget {
+  const _BootFailureApp({required this.error});
 
-  runApp(MoApp(themeController: controller));
+  final String error;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  const Icon(Icons.error_outline, size: 40),
+                  const SizedBox(height: 12),
+                  const Text('应用启动失败',
+                      style:
+                          TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  SelectableText(error,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 12)),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: () =>
+                        Clipboard.setData(ClipboardData(text: error)),
+                    icon: const Icon(Icons.copy),
+                    label: const Text('复制错误信息'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

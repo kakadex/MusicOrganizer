@@ -242,23 +242,35 @@ class Repo extends ChangeNotifier {
       // 更新一次就丢一次曲库。已经删掉：升级不该动用户的数据，只有目录真的
       // 不存在了才忘掉（由下面的 existsSync 判断）。
       final List<String> kept = <String>[];
+      void keep(String raw) {
+        final String p = raw.replaceAll('\\', '/').trim();
+        if (p.isEmpty || !Directory(p).existsSync()) return;
+        if (!kept.contains(p)) kept.add(p);
+      }
       for (final String path in order) {
-        if (Directory(path).existsSync()) kept.add(path);
+        keep(path);
       }
       if (kept.isEmpty) {
         for (final TreeRef t in mirror) {
-          if (Directory(t.rootDocId).existsSync()) kept.add(t.rootDocId);
+          keep(t.rootDocId);
         }
       }
       final String? legacy = prefs.getString('root_doc_id');
-      if (kept.isEmpty && legacy != null && Directory(legacy).existsSync()) {
-        kept.add(legacy);
+      if (kept.isEmpty && legacy != null) {
+        keep(legacy);
       }
       if (kept.isEmpty) {
         // 记住的目录这次不可用（被删 / 改名 / 外接盘没插）：**只提示，不清记录**。
         // 清掉就意味着「移动硬盘拔一次，曲库目录就永久没了」。
         if (legacy != null || order.isNotEmpty) rootLost = true;
         return false;
+      }
+      // DesktopFileStore 自己也有一份 _roots（路径白名单），两套记录必须同步，
+      // 否则重启恢复出来的目录会被自己的越界校验挡住。
+      if (st is DesktopFileStore) {
+        for (final String p in kept) {
+          st.addRoot(p);
+        }
       }
       setRoots(kept.map((String p) => TreeRef(treeUri: 'file://$p', rootDocId: p)).toList());
       rootLost = false;
@@ -622,7 +634,7 @@ class Repo extends ChangeNotifier {
   ///
   /// 会持久化，下次启动自动恢复。
   Future<bool> useDirectory(String path) async {
-    final String p = path.trim();
+    final String p = path.trim().replaceAll('\\', '/');
     if (p.isEmpty) return false;
     if (!Directory(p).existsSync()) return false;
     // DesktopFileStore 自己也有一份 _roots：只改 Repo 会让两套记录不一致

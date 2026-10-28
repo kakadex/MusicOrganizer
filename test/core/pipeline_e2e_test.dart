@@ -24,6 +24,7 @@ void main() {
   setUp(() async {
     root = await Directory.systemTemp.createTemp('mo_e2e_');
     store = DesktopFileStore();
+    store.addRoot(root.path);
   });
 
   tearDown(() async {

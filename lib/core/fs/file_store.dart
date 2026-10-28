@@ -11,12 +11,19 @@ import 'tree_ref.dart';
 
 /// 文件系统访问异常。
 class FileStoreException implements Exception {
-  FileStoreException(this.code, this.message);
+  FileStoreException(this.code, this.message, {this.originalCode, this.cause});
 
-  /// E_NO_PERMISSION / E_NOT_FOUND / E_SECURITY / E_IO。
+  /// E_NO_PERMISSION / E_NOT_FOUND / E_SECURITY / E_IO /
+  /// E_CANCELLED / E_TIMEOUT / E_QUOTA_EXCEEDED / E_LOCKED / E_NOT_READY。
   final String code;
 
   final String message;
+
+  /// 平台原始 code（如 PlatformException.code），便于排查映射问题。
+  final String? originalCode;
+
+  /// 原始异常对象（可空）。
+  final Object? cause;
 
   @override
   String toString() => 'FileStoreException($code): $message';

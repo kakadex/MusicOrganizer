@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart' hide Tags;
@@ -73,6 +74,23 @@ void main() {
     expect(Mp4.read(f).get('album'), '叶惠美');
     expect(Mp4.chunkOffsets(f)[0], before);
     expect(Mp4.chunkOffsets(f)[0], mdatPayloadOffset(f));
+  });
+
+  test('meta 不是 full atom（子原子从 +8 开始）也能读到标签', () {
+    final Uint8List ftyp = atom('ftyp',
+        concat(<Uint8List>[ascii('M4A '), be32(0x200), ascii('M4A mp42')]));
+    final Uint8List mdat = atom('mdat', Uint8List(16));
+    final Uint8List data = atom('data', concat(<Uint8List>[
+      be32(1),
+      be32(0),
+      Uint8List.fromList(utf8.encode('非标准 meta')),
+    ]));
+    final Uint8List ilst = atom('ilst', atom('\u00a9nam', data));
+    // 故意不写 4 字节 version/flags：QuickTime / 部分老写入器就是这个结构
+    final Uint8List meta = atom('meta', ilst);
+    final Uint8List moov = atom('moov', atom('udta', meta));
+    final Uint8List f = concat(<Uint8List>[ftyp, mdat, moov]);
+    expect(Mp4.read(f).get('title'), '非标准 meta');
   });
 
   test('合并语义', () {
