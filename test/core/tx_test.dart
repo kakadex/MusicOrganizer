@@ -246,6 +246,39 @@ void main() {
     await clean.delete(recursive: true);
   });
 
+  test('回滚恢复失败的那首，备份不删（可重试）', () async {
+    final File f1 = mp3('r1.mp3');
+    final File f2 = mp3('r2.mp3');
+    final VFile v1 = (await store.stat(f1.path))!;
+    final VFile v2 = (await store.stat(f2.path))!;
+    final _ThrowingStore throwing = _ThrowingStore();
+    throwing.addRoot(dir.path);
+    final Directory clean = await Directory.systemTemp.createTemp('mo_clean_');
+    final TagTransaction t =
+        TagTransaction(store: throwing, journal: journal, tempDir: clean);
+
+    const String batch = 'BATCH-R';
+    t.beginBatch(batch);
+    expect(await t.apply(v1, <String, String>{'title': '新1'}, batchId: batch), '');
+    expect(await t.apply(v2, <String, String>{'title': '新2'}, batchId: batch), '');
+
+    // 恢复时抛异常（逆序先恢复第 2 首，会失败）
+    throwing.throwOnNextWrite = true;
+    final (int ok, int bad) = await t.rollbackBatch(batch);
+    expect(ok, 1);
+    expect(bad, 1);
+
+    // 失败那首的备份必须保留，才能重试
+    final List<String> leftover = clean
+        .listSync()
+        .whereType<File>()
+        .map((File e) => e.path.split(RegExp(r'[/\\]')).last)
+        .where((String n) => n.startsWith('mo_tx_'))
+        .toList();
+    expect(leftover, isNotEmpty, reason: '恢复失败的备份要保留，不能一起删');
+    await clean.delete(recursive: true);
+  });
+
   test('journal 2000 条回绕', () async {
     final Journal j = Journal(File('${dir.path}/j3.jsonl'));
     for (int i = 0; i < 2005; i++) {

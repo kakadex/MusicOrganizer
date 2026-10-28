@@ -59,8 +59,12 @@ class _Batch {
     return true;
   }
 
-  Future<void> dispose() async {
+  /// 收尾备份。[deleteAll] 为 true（commit 用）删掉所有备份；
+  /// 为 false（rollback 用）只清列表——成功恢复的已在回滚循环里就地删了，
+  /// 失败的要**保留**，否则用户没机会重试。
+  Future<void> dispose({bool deleteAll = true}) async {
     for (final _Backup b in items) {
+      if (!deleteAll) continue;
       try {
         await b.backup.delete();
       } catch (_) {}
@@ -165,11 +169,16 @@ class TagTransaction {
             ..targetId = item.entryId);
         }
         ok++;
+        // 这一首已经还原成功，备份用完了，就地删掉
+        try {
+          await item.backup.delete();
+        } catch (_) {}
       } catch (_) {
         failed++;
+        // 还原失败：备份**保留**，下次还能重试（不能像成功的那样删）
       }
     }
-    await b.dispose();
+    await b.dispose(deleteAll: false);
     return (ok, failed);
   }
 
