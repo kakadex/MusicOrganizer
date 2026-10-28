@@ -1,11 +1,11 @@
-version=0.2.22
-tag=v0.2.22
+version=0.2.23
+tag=v0.2.23
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.22/MusicOrganizer-0.2.22-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.23/MusicOrganizer-0.2.23-android-arm64-v8a.apk
 size=19805965
-sha256=63d70a102d836a27859e528249394850f57ce766957f4cb1f177e45d97cbe884
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.22/MusicOrganizer-0.2.22-windows-x64.zip
-zip_size=12559506
-zip_sha256=5de643bb0f0434687a771764a2c9a978d1d46326cf5ee13ccc93d6d8d5210a1f
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.22
-summary=封面/歌词断点续传、批次级事务回滚、专辑艺术家与 OGG 多值标签、桌面自动更新，以及一批细节修正。
+sha256=7aa61474499549a0b60bbdbeb9ca0663cd0d0a643b12bbbdbb43637056d0e7cd
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.23/MusicOrganizer-0.2.23-windows-x64.zip
+zip_size=12559948
+zip_sha256=35cbaba7c54a81de578dcb1af39adf4e398634f46ca8133e582581a9f9703d55
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.23
+summary=修复写标签失败时误删备份并谎报「原文件未修改」。
