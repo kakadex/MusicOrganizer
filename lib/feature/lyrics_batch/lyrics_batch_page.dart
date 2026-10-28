@@ -70,6 +70,7 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
       _resumed = 0;
       _fetched = false;
       for (final LyricRow row in _rows) {
+        row.forgetResume();
         row.reset();
       }
     });
@@ -281,11 +282,15 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
       moSnack(context, '已有任务在跑，先等它结束');
       return;
     }
+    // 「重新获取」（_fetched 已为 true）要清掉续跑重新联网；
+    // 首次「获取歌词」保留续跑，接着上次跳过已查到的。
+    final bool rerun = _fetched;
     setState(() {
       _fetching = true;
       _fetched = false;
       for (final LyricRow row in _rows) {
         row.reset();
+        if (rerun) row.forgetResume();
       }
     });
 

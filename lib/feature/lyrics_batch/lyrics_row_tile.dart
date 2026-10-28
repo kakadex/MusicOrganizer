@@ -29,6 +29,12 @@ class LyricRow {
     candidates = <LyricChoice>[];
     selected = false;
     status = '等待';
+    // 续跑标记**保留**：reset 是「获取歌词」用的，要接着用续跑结果跳过联网；
+    // 真正想重新联网查，先 forgetResume() 再 reset()。
+  }
+
+  /// 清掉续跑标记（「重新开始」/「重新获取」用）。
+  void forgetResume() {
     resumed = false;
   }
 
