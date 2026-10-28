@@ -194,8 +194,8 @@ class _OrganizePageState extends State<OrganizePage> {
           onTap: all.isEmpty ? null : () => _renameFiles(all),
         ),
         MoTile(
-          title: '文件名查重',
-          subtitle: '相似度分组，标出「疑似」，默认不勾选',
+          title: '重复文件筛选',
+          subtitle: '内容一致的重复份，按时长 / 码率 / 体积挑出最该删的那份',
           icon: Icons.copy_all_outlined,
           onTap: all.isEmpty ? null : () => _dedupe(all),
         ),
@@ -427,14 +427,15 @@ class _OrganizePageState extends State<OrganizePage> {
     }
     // 默认勾选：确证重复里「不是建议保留那份」的；疑似与「内容不同」的一律不勾
     // （查重是提示，误删不可逆）。
+    // 默认勾选：每组只勾「最该删的那一份」—— 时长最短、码率最低、体积最小
+    // 的那个（[DuplicateGroup.recommendRemove]）；其余默认保留。
+    // 疑似组与「内容不同」组一律不勾（查重是提示，误删不可逆）。
     final Map<String, bool> picked = <String, bool>{};
     for (final DuplicateGroup g in dups) {
-      final int keep = DuplicateGroup.recommendKeep(g);
+      final int drop = g.suspect ? -1 : DuplicateGroup.recommendRemove(g);
       for (int i = 0; i < g.files.length; i++) {
         final DuplicateItem it = g.files[i];
-        picked[it.file.docId] = i != keep &&
-            !g.suspect &&
-            g.content != DuplicateGroup.contentDiff;
+        picked[it.file.docId] = i == drop && drop >= 0;
       }
     }
     for (final DuplicateGroup g in lookalikes) {
@@ -458,7 +459,7 @@ class _OrganizePageState extends State<OrganizePage> {
           builder: (BuildContext _, int n, Widget? _) => Row(
             children: <Widget>[
               Expanded(
-                child: Text('已勾选 $n 个（每组至少留一个）',
+                child: Text('已勾选 $n 个（每组默认只删最差的那份）',
                     style: TextStyle(
                         fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
               ),
@@ -541,7 +542,8 @@ class _OrganizePageState extends State<OrganizePage> {
   Widget _dupGroup(DuplicateGroup g, bool lookalike, Map<String, bool> picked,
       StateSetter setSheet) {
     final Color tag = lookalike ? MoKit.sub(context) : MoKit.ok(context);
-    final int keep = DuplicateGroup.recommendKeep(g);
+    // 「建议保留」= 组里最好的一份（时长最长 / 码率最高 / 体积最大）
+    final int keep = DuplicateGroup.recommendKeepBest(g);
     return Padding(
       padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 6, MoKit.pagePad, 6),
       child: Column(
@@ -594,27 +596,68 @@ class _OrganizePageState extends State<OrganizePage> {
     final DuplicateItem it = g.files[index];
     final bool isKeep = index == keep;
     final bool on = picked[it.file.docId] == true;
-    return Row(
-      children: <Widget>[
-        SizedBox(
-          width: 28,
-          height: 28,
-          child: Checkbox(
-            value: on,
-            onChanged: (bool? v) =>
-                setSheet(() => picked[it.file.docId] = v == true),
-            visualDensity: VisualDensity.compact,
+    // 目录与文件名分开显示：文件名要完整（不截断），目录单独一行小字
+    final String rel = it.relative;
+    final String dir = rel.endsWith(it.file.name)
+        ? rel.substring(0, rel.length - it.file.name.length)
+        : '';
+    final int durMs = it.file.cachedDurationMs;
+    final int brKbps = it.file.cachedBitrateKbps;
+    final List<String> meta = <String>[
+      if (it.size > 0) TextUtil.formatSize(it.size),
+      if (durMs > 0) TextUtil.formatDuration(durMs / 1000.0),
+      if (brKbps > 0) '$brKbps kbps',
+    ];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          SizedBox(
+            width: 28,
+            height: 28,
+            child: Checkbox(
+              value: on,
+              onChanged: (bool? v) =>
+                  setSheet(() => picked[it.file.docId] = v == true),
+              visualDensity: VisualDensity.compact,
+            ),
           ),
-        ),
-        Expanded(
-          child: Text('${it.relative}'
-              '${it.size > 0 ? '（${TextUtil.formatSize(it.size)}）' : ''}'
-              '${isKeep ? '  · 建议保留' : ''}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: MoKit.fsBody, color: MoKit.text(context))),
-        ),
-      ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                // 完整文件名：换行显示，不截断
+                Text(it.file.name,
+                    style: TextStyle(
+                        fontSize: MoKit.fsBody, color: MoKit.text(context))),
+                if (dir.trim().isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 1),
+                    child: Text(dir.trim(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: MoKit.fsCaption, color: MoKit.faint(context))),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    <String>[
+                      if (meta.isNotEmpty) meta.join('  ·  '),
+                      if (isKeep) '建议保留',
+                      if (on) '将删除',
+                    ].join('  ·  '),
+                    style: TextStyle(
+                        fontSize: MoKit.fsCaption,
+                        color: on ? MoKit.err(context) : MoKit.sub(context)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 

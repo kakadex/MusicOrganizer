@@ -9,6 +9,7 @@ library;
 
 import '../model/candidate.dart';
 import '../model/query.dart';
+import '../match/artist_rules.dart';
 import '../match/name_weight.dart';
 import '../match/text_util.dart';
 import '../lyrics/zh.dart';
@@ -56,7 +57,16 @@ abstract final class TagQuery {
 
   static String artist(Query ctx) {
     final List<String> p = _firstPair(ctx);
-    return NameWeight.pick(p[0].trim(), ctx.embeddedTags['artist'], ctx.filenameWeight);
+    final String fromName = p[0].trim();
+    final String fromTag = (ctx.embeddedTags['artist'] ?? '').trim();
+    // 标签里是 `yyyyyy` 这种噪声时不能拿它去搜：搜到的只会是同一批垃圾条目，
+    // 越搜越错。这种情况退回文件名解析出的歌手。
+    if (ArtistRules.looksLikeNoise(fromTag) &&
+        !ArtistRules.looksLikeNoise(fromName) &&
+        fromName.isNotEmpty) {
+      return fromName;
+    }
+    return NameWeight.pick(fromName, fromTag, ctx.filenameWeight);
   }
 
   /// 检索串：艺人 + 标题（海外站都吃这种组合）。

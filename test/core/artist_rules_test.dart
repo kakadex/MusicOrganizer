@@ -35,4 +35,23 @@ void main() {
     expect(ArtistRules.isReasonableArtistReturn('周杰伦', '晴天', '周杰伦 - 晴天', null),
         isTrue);
   });
+
+  test('噪声歌手（用户上传垃圾条目那种）能被识别', () {
+    // 同一字符重复：ymm / 啊啊啊 / 数字串
+    expect(ArtistRules.looksLikeNoise('yyyyyy'), isTrue);
+    expect(ArtistRules.looksLikeNoise('嘤嘤嘤嘤嘤嘤'), isTrue);
+    expect(ArtistRules.looksLikeNoise('啊啊啊'), isTrue);
+    expect(ArtistRules.looksLikeNoise('111111'), isTrue);
+    // 纯符号 / 纯数字 / 网址
+    expect(ArtistRules.looksLikeNoise('***'), isTrue);
+    expect(ArtistRules.looksLikeNoise('123456'), isTrue);
+    expect(ArtistRules.looksLikeNoise('http://spam.example'), isTrue);
+    // 真名不能误伤
+    expect(ArtistRules.looksLikeNoise('李玉刚'), isFalse);
+    expect(ArtistRules.looksLikeNoise('Li Yugang'), isFalse);
+    expect(ArtistRules.looksLikeNoise('DJ冷冰冰'), isFalse);
+    expect(ArtistRules.looksLikeNoise('Y'), isFalse, reason: '单字母真名不判噪声');
+    expect(ArtistRules.looksLikeNoise(''), isFalse);
+    expect(ArtistRules.looksLikeNoise(null), isFalse);
+  });
 }

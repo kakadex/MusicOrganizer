@@ -14,6 +14,7 @@ import '../model/candidate.dart';
 import '../model/tags.dart';
 import '../model/vfile.dart';
 import '../source/source_rank.dart';
+import 'artist_rules.dart';
 import 'tag_fill.dart';
 
 /// 单个字段的变更计划（界面对应一行「旧值 → 新值」）。
@@ -189,7 +190,9 @@ abstract final class TagPlan {
   /// 候选字段 → Map（[TagFill.diff] 的入参形状）。
   static Map<String, String> _values(Candidate c) => <String, String>{
         'title': c.title,
-        'artist': c.artist,
+        // 兜底：聚合阶段已按「噪声歌手」淘汰过，这里再挡一次 —— 宁可少写一个
+        // 字段，也不把 `yyyyyy` 这种名字写进用户的曲库
+        'artist': ArtistRules.looksLikeNoise(c.artist) ? '' : c.artist,
         'album': c.album,
         'year': c.year,
         'track': c.track,

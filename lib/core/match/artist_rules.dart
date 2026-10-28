@@ -36,6 +36,25 @@ abstract final class ArtistRules {
     return _trimEdge(v);
   }
 
+  /// 明显是噪声的「歌手名」：用户上传的垃圾条目常用这种名字。
+  ///
+  /// 判据刻意保守（宁可漏判也不误伤真名）：
+  /// - 同一字符重复 ≥3 次：`yyyyyy` / `啊啊啊` / `111`；
+  /// - 一个字母 / 汉字都没有（纯符号或纯数字）：`***` / `123456`；
+  /// - 网址。
+  ///
+  /// 为什么需要：`李玉刚-新贵妃醉酒` 曾被匹配成某源上同名条目的歌手
+  /// `yyyyyy` —— 那是一条用户上传的垃圾记录，标题与正版一模一样。
+  static bool looksLikeNoise(String? raw) {
+    final String v = (raw ?? '').trim();
+    if (v.isEmpty) return false;
+    final List<int> cps = v.runes.toList();
+    if (cps.length >= 3 && cps.toSet().length == 1) return true;
+    if (!_hasTextRe.hasMatch(v)) return true;
+    if (_urlRe.hasMatch(v)) return true;
+    return false;
+  }
+
   /// 期望歌手与返回歌手是否相容（相等 / 包含 / 分词交集 / 主体匹配 / 相似度）。
   static bool artistsCompatible(String expected, String returned) {
     final String exp = TextUtil.normCompare(TextUtil.toSimplified(expected));

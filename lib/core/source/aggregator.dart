@@ -12,6 +12,7 @@ import 'dart:async';
 import '../model/candidate.dart';
 import '../model/lyric_hit.dart';
 import '../model/query.dart';
+import '../match/artist_rules.dart';
 import '../match/text_util.dart';
 import 'endpoints.dart';
 import 'mb_client.dart';
@@ -72,12 +73,17 @@ abstract final class Aggregator {
   static const double mergeArtistSimilarity = 0.82;
 
   /// 取标签候选：按 [SourceRank] 顺序并发问各家，再交叉验证 / 去重 / 截断。
+  /// [verify] 为 true（默认）时按 [offerScore] 严格验证：标题 / 艺人 / 时长
+  /// 任一不过就淘汰。批量写入必须用严格模式；「在线匹配」这类由用户逐条挑选的
+  /// 场景可以传 false —— 只把不合格的排到后面，仍让人能选（修错标签时，本地
+  /// 标签本身就是错的，严格模式会把正确答案一起筛掉）。
   static Future<AggregateResult> tagCandidates(
     Query q, {
     bool? chinese,
     MbClient? mbClient,
     JsonFetcher? fetch,
     Iterable<String>? only,
+    bool verify = true,
   }) async {
     final bool isCn = chinese ?? TagQuery.isChineseTrack(q);
     final List<TagSource> sources = <TagSource>[];
@@ -97,6 +103,11 @@ abstract final class Aggregator {
     final List<SourceResult> results = await Future.wait(tasks);
 
     final String localTitle = TagQuery.title(q);
+    final String rawArtist = TagQuery.artist(q);
+    // 群星 / 未知歌手这类占位艺人没有区分度：当作「本地没有艺人」，
+    // 交给标题与时长判断，否则合辑里的歌一首也匹配不上。
+    final String localArtist =
+        ArtistRules.isGenericArtist(rawArtist) ? '' : rawArtist;
     final Map<String, String> errors = <String, String>{};
     final List<Candidate> all = <Candidate>[];
     for (final SourceResult r in results) {
@@ -106,7 +117,24 @@ abstract final class Aggregator {
         // 变体词过滤：候选是「伴奏 / Remix / Live / 翻唱」而本地不是 → 不是同一版本。
         // 不做这一步会把「记事本 (Remix)」写进普通曲目（真实数据实测踩到）。
         if (isVariant(c.title, localTitle)) continue;
-        // 与本地标题 / 艺人的相似度，用于同分时排序（源置信度全是 0.60，光靠它分不出好坏）
+        // 歌手是 `yyyyyy` / `嘤嘤嘤` 这种用户上传的垃圾条目：标题与正版一模一样，
+        // 只按标题排就会把它写进标签（真实踩到过）。这类候选一律不要。
+        if (ArtistRules.looksLikeNoise(c.artist)) continue;
+        // 与本地曲目的综合分：标题 / 艺人 / 时长 / 源加成走同一套口径。
+        // 之前标签候选只看各源自报的 confidence，等于「没验证过就信」。
+        final OfferScore scored = scoreDetail(
+          localTitle: localTitle,
+          localArtist: localArtist,
+          localDuration: q.localDuration,
+          candidateTitle: c.title,
+          candidateArtist: c.artist,
+          candidateDuration: c.duration,
+          source: r.source,
+          chinese: isCn,
+        );
+        if (verify && scored.rejected) continue;
+        c.matchScore = scored.score;
+        // 标题相似度仍留着：同分时「标题更像」优先
         c.filenameScore = localTitle.isEmpty
             ? 0
             : TextUtil.textSimilarity(localTitle, c.title);
@@ -118,10 +146,12 @@ abstract final class Aggregator {
     final int before = all.length;
     final List<Candidate> merged = _merge(all);
     merged.sort((Candidate a, Candidate b) {
-      // 先看「像不像这首歌」：标题相似度差 0.02 以上就按相似度排，
-      // 差不多再用源优先级（中文曲目国内源优先）决定。
-      final double d = a.filenameScore - b.filenameScore;
+      // 先按综合分（标题 + 艺人 + 时长）：差 0.02 以上就按分数排；
+      // 分数接近再看标题谁更像，最后才用源优先级（中文曲目国内源优先）。
+      final double d = a.matchScore - b.matchScore;
       if (d.abs() > 0.02) return d > 0 ? -1 : 1;
+      final double t = a.filenameScore - b.filenameScore;
+      if (t.abs() > 0.02) return t > 0 ? -1 : 1;
       return SourceRank.compare(
           a.source, a.confidence, b.source, b.confidence,
           chinese: isCn);

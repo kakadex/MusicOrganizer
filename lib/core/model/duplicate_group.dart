@@ -112,6 +112,54 @@ class DuplicateGroup {
     return best;
   }
 
+  /// 组内「最该删的那一份」：时长最短 → 码率最低 → 体积最小。
+  ///
+  /// 为什么要按这个顺序：同一首歌的重复份里，被剪短过的、转码成低码率的、
+  /// 存得最小的那份质量最差，留着最没意义 —— 默认就删它，其余留下。
+  /// 某项数据读不到（没扫标签 / 格式不支持）就跳过这一项，接着比下一项。
+  /// 返回 -1 表示组里不足两份，没有「多出来的那份」。
+  static int recommendRemove(DuplicateGroup? group) {
+    if (group == null || group.files.length < 2) return -1;
+    int best = 0;
+    for (int i = 1; i < group.files.length; i++) {
+      if (_isWorse(group.files[i], group.files[best])) best = i;
+    }
+    return best;
+  }
+
+  /// 组内「最好的一份」（与 [recommendRemove] 相反）：时长最长 → 码率最高 →
+  /// 体积最大。界面上标「建议保留」用。
+  static int recommendKeepBest(DuplicateGroup? group) {
+    if (group == null || group.files.length < 2) return -1;
+    int best = 0;
+    for (int i = 1; i < group.files.length; i++) {
+      if (_isBetter(group.files[i], group.files[best])) best = i;
+    }
+    return best;
+  }
+
+  /// a 是否比 b 更好（更值得留下）。
+  static bool _isBetter(DuplicateItem a, DuplicateItem b) {
+    final int ad = a.file.cachedDurationMs;
+    final int bd = b.file.cachedDurationMs;
+    if (ad > 0 && bd > 0 && ad != bd) return ad > bd;
+    final int ab = a.file.cachedBitrateKbps;
+    final int bb = b.file.cachedBitrateKbps;
+    if (ab > 0 && bb > 0 && ab != bb) return ab > bb;
+    return a.size > b.size;
+  }
+
+  /// a 是否比 b 更差（更该删）。
+  static bool _isWorse(DuplicateItem a, DuplicateItem b) {
+    final int ad = a.file.cachedDurationMs;
+    final int bd = b.file.cachedDurationMs;
+    if (ad > 0 && bd > 0 && ad != bd) return ad < bd;
+    final int ab = a.file.cachedBitrateKbps;
+    final int bb = b.file.cachedBitrateKbps;
+    if (ab > 0 && bb > 0 && ab != bb) return ab < bb;
+    return a.size < b.size;
+  }
+
   /// 内容核验结果的一句话说明；未核验返回空串。
   static String contentLabel(DuplicateGroup? group) {
     if (group == null) return '';

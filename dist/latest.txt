@@ -1,8 +1,8 @@
-version=0.2.19
-tag=v0.2.19
+version=0.2.20
+tag=v0.2.20
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.19/musicorganizer-arm64-v8a.apk
-size=19609245
-sha256=100547b1013cf77445d0faaf131b1012a6855d2ffbfd92881f6a6bc909425e49
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.19
-summary=新增「清理空文件夹」（预览后删除、删后复查）；修复安卓扁平化后空目录仍在；更新检查收进「关于」。
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.20/musicorganizer-arm64-v8a.apk
+size=19609241
+sha256=7275786f40036dbccf60d92a7abfe4a827c44e5d8851571f5c616523c4774383
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.20
+summary=匹配候选改为统一打分验证，垃圾歌手条目不再写入；「文件名查重」改名「重复文件筛选」，默认只勾最差的一份并显示时长码率。

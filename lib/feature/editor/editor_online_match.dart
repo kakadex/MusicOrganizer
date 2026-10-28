@@ -28,8 +28,10 @@ Future<Map<String, String>?> showOnlineMatch(
       ),
     ],
   );
+  // 手动匹配：这里正是「本地标签可能错了」的场景，不能按本地艺人严格筛
+  // （否则想修错标签时，正确答案会被一起筛掉），只把不像的排到后面。
   final AggregateResult agg = await Aggregator.tagCandidates(
-      q, chinese: LocalQuery.chinese(q));
+      q, chinese: LocalQuery.chinese(q), verify: false);
   if (!context.mounted) return null;
   Navigator.of(context).pop();
   if (agg.candidates.isEmpty) {

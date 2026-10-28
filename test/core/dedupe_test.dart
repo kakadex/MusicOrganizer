@@ -193,4 +193,57 @@ void main() {
     expect(diff.single.content, DuplicateGroup.contentDiff);
     expect(diff.single.suspect, isTrue);
   });
+
+  group('默认勾选：每组挑出最该删的那一份', () {
+    DuplicateItem item(String id,
+        {int size = 1000, int durationMs = 0, int bitrateKbps = 0}) {
+      final VFile f = song(id, size: size);
+      f.cacheMeta(null, durationMs: durationMs, bitrateKbps: bitrateKbps);
+      return DuplicateItem(f, f.docId, size, null);
+    }
+
+    test('时长最短的那份优先被挑中', () {
+      final DuplicateGroup g = DuplicateGroup('k')
+        ..files.addAll(<DuplicateItem>[
+          item('r/a.mp3', size: 10000000, durationMs: 200000, bitrateKbps: 320),
+          item('r/b.mp3', size: 8000000, durationMs: 190000, bitrateKbps: 256),
+          item('r/c.mp3', size: 9000000, durationMs: 195000, bitrateKbps: 320),
+        ]);
+      expect(DuplicateGroup.recommendRemove(g), 1);
+      expect(DuplicateGroup.recommendKeepBest(g), 0);
+    });
+
+    test('时长一样时看码率，码率一样时看体积', () {
+      final DuplicateGroup sameDur = DuplicateGroup('k')
+        ..files.addAll(<DuplicateItem>[
+          item('r/a.mp3', size: 10000000, durationMs: 200000, bitrateKbps: 320),
+          item('r/b.mp3', size: 9000000, durationMs: 200000, bitrateKbps: 128),
+        ]);
+      expect(DuplicateGroup.recommendRemove(sameDur), 1);
+
+      final DuplicateGroup sameBr = DuplicateGroup('k')
+        ..files.addAll(<DuplicateItem>[
+          item('r/a.mp3', size: 10000000, durationMs: 200000, bitrateKbps: 320),
+          item('r/b.mp3', size: 9000000, durationMs: 200000, bitrateKbps: 320),
+        ]);
+      expect(DuplicateGroup.recommendRemove(sameBr), 1);
+    });
+
+    test('读不到时长 / 码率时退回按体积挑', () {
+      final DuplicateGroup g = DuplicateGroup('k')
+        ..files.addAll(<DuplicateItem>[
+          item('r/a.mp3', size: 10000000),
+          item('r/b.mp3', size: 9000000),
+        ]);
+      expect(DuplicateGroup.recommendRemove(g), 1);
+      expect(DuplicateGroup.recommendKeepBest(g), 0);
+    });
+
+    test('只有一份时没有「多出来的那份」', () {
+      final DuplicateGroup g = DuplicateGroup('k')
+        ..files.add(item('r/a.mp3', size: 1000));
+      expect(DuplicateGroup.recommendRemove(g), -1);
+      expect(DuplicateGroup.recommendKeepBest(g), -1);
+    });
+  });
 }

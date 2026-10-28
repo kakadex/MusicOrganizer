@@ -146,7 +146,7 @@ void main() {
         q(duration: 258),
         only: <String>['netease', 'deezer'],
         fetch: (String url, Map<String, String>? params) async {
-          // 给出不同标题，避免被判成同一首歌合并掉
+          // 标题相同、时长差 3 秒：既不合并（>2 秒），又都合格（≤3 秒）
           if (url.contains('music.163.com')) {
             return <String, Object>{
               'result': <String, Object>{
@@ -163,16 +163,16 @@ void main() {
           return <String, Object>{
             'data': <Object>[
               <String, Object>{
-                'title': '另一首外文曲目',
+                'title': '示例歌名',
                 'artist': <String, Object>{'name': '示例歌手'},
-                'duration': 258,
+                'duration': 261,
               }
             ]
           };
         },
       );
       expect(r.candidates.length, 2);
-      // 网易 0.60 vs Deezer 0.75 → 差 0.15 在 0.30 宽容带内 → 国内源排前
+      // 两条都过 offerScore；网易时长对得上且带国内源加成 → 综合分更高，排前
       expect(r.candidates.first.source, 'netease');
       expect(SourceRank.label(r.candidates.first.source), '网易云');
     });
@@ -367,6 +367,66 @@ void main() {
           fetch: (String url, Map<String, String>? params) async =>
               <String, Object>{'recordings': <Object>[]});
       expect(client.isOffline(), isFalse);
+    });
+  });
+
+  group('标签候选同样要过 offerScore', () {
+    /// 网易云返回两条同标题条目：一条是垃圾（歌手 yyyyyy），一条是正版。
+    JsonFetcher songs(List<String> artists) =>
+        (String url, Map<String, String>? params) async => <String, Object>{
+              'result': <String, Object>{
+                'songs': <Object>[
+                  for (final String a in artists)
+                    <String, Object>{
+                      'name': '新贵妃醉酒',
+                      'artists': <Object>[<String, Object>{'name': a}],
+                      'album': <String, Object>{'name': '新贵妃醉酒'},
+                      'duration': 275000,
+                    }
+                ]
+              }
+            };
+
+    test('歌手是 yyyyyy 的同名条目被淘汰，只留正版', () async {
+      final AggregateResult r = await Aggregator.tagCandidates(
+        q(artist: '李玉刚', title: '新贵妃醉酒', duration: 275),
+        only: <String>['netease'],
+        fetch: songs(<String>['yyyyyy', '李玉刚']),
+      );
+      expect(r.candidates.length, 1);
+      expect(r.candidates.first.artist, '李玉刚');
+      // 综合分要能被界面用上
+      expect(r.candidates.first.matchScore, greaterThan(0.6));
+    });
+
+    test('本地没有歌手信息时，也不会挑走垃圾条目', () async {
+      final AggregateResult r = await Aggregator.tagCandidates(
+        q(artist: '', title: '新贵妃醉酒', duration: 275),
+        only: <String>['netease'],
+        fetch: songs(<String>['yyyyyy', '李玉刚']),
+      );
+      expect(r.candidates.length, 1);
+      expect(r.candidates.first.artist, '李玉刚');
+    });
+
+    test('歌手完全对不上（不是噪声）也要淘汰，宁可不写', () async {
+      final AggregateResult r = await Aggregator.tagCandidates(
+        q(artist: '李玉刚', title: '新贵妃醉酒', duration: 275),
+        only: <String>['netease'],
+        fetch: songs(<String>['别人的名字']),
+      );
+      expect(r.candidates, isEmpty);
+    });
+
+    test('手动匹配（verify: false）不淘汰，只把不像的排后面', () async {
+      final AggregateResult r = await Aggregator.tagCandidates(
+        q(artist: '李玉刚', title: '新贵妃醉酒', duration: 275),
+        only: <String>['netease'],
+        fetch: songs(<String>['别人的名字', '李玉刚']),
+        verify: false,
+      );
+      expect(r.candidates.length, 2, reason: '手动挑选要能看到全部候选');
+      expect(r.candidates.first.artist, '李玉刚', reason: '像的那条排前面');
     });
   });
 }
