@@ -1,11 +1,11 @@
-version=0.2.27
-tag=v0.2.27
+version=0.2.28
+tag=v0.2.28
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.27/MusicOrganizer-0.2.27-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.28/MusicOrganizer-0.2.28-android-arm64-v8a.apk
 size=19805965
-sha256=87a2820e6ea3f41f35410f2b9b434818effe5e747c6bd288299a4510da79f644
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.27/MusicOrganizer-0.2.27-windows-x64.zip
-zip_size=12564596
-zip_sha256=96974150c8e43cacc05985b682eb9f3089e3388694afde0227528ecf829cb1f0
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.27
-summary=修复清空 MP3 歌手被「专辑艺术家」顶回来的问题。
+sha256=e7fb14df895fcaa591df4ae09616f2ab48c40832388dd30685602b8e73aab4b9
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.28/MusicOrganizer-0.2.28-windows-x64.zip
+zip_size=12564508
+zip_sha256=e1f3561b92cb5380dd207249a327f1a86d7bacbedc08661a8048169374d4f76a
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.28
+summary=修复封面批量点「停止」后仍在继续写的问题。
