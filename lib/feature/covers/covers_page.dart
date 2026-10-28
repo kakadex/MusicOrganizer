@@ -368,6 +368,8 @@ class _CoversPageState extends State<CoversPage> {
       for (final WriteTarget t in picked) {
         final CoverJob? j = t.data as CoverJob?;
         if (j == null) continue;
+        // 点「停止」就停下，别再往下写（歌词页有同样的检查，封面页漏了）
+        if (wc?.isCancelled() ?? false) break;
         wc?.report(wi, wt, j.file.name);
         final String err = await tx.apply(
           j.file,
