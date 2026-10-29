@@ -19,8 +19,6 @@ import '../../core/organize/folder_template.dart';
 import '../../core/organize/organizer.dart';
 import '../../core/scan/scanner.dart';
 import '../../core/task/task_center.dart';
-import '../covers/covers_page.dart';
-import '../lyrics_batch/lyrics_batch_page.dart';
 import '../../core/tx/write_preview.dart';
 import '../common/write_confirm_sheet.dart';
 import 'rename_flow.dart';
@@ -113,7 +111,6 @@ class _OrganizePageState extends State<OrganizePage> {
             padding: const EdgeInsets.only(bottom: 16),
             children: <Widget>[
               _scanCard(audio),
-              _tagCard(),
               _cleanCard(),
             ],
           ),
@@ -161,32 +158,6 @@ class _OrganizePageState extends State<OrganizePage> {
     );
   }
 
-  Widget _tagCard() {
-    final List<VFile> files = _repo.audioFiles();
-    return SectionCard(
-      title: '批量处理',
-      subtitle: '对当前曲库的全部曲目执行（可在曲库页只选几首）',
-      children: <Widget>[
-        MoTile(
-          title: '批量补封面',
-          subtitle: '多源取图，逐首写入内嵌封面',
-          icon: Icons.image_outlined,
-          onTap: files.isEmpty
-              ? null
-              : () => _push(CoversPage(files: files)),
-        ),
-        MoTile(
-          title: '批量补歌词',
-          subtitle: '五源并发，按打分取最优；低置信默认不勾选',
-          icon: Icons.lyrics_outlined,
-          onTap: files.isEmpty
-              ? null
-              : () => _push(LyricsBatchPage(files: files)),
-        ),
-      ],
-    );
-  }
-
   Widget _cleanCard() {
     final List<VFile> all = _repo.files;
     final int junk = _junkFiles.length;
@@ -227,12 +198,6 @@ class _OrganizePageState extends State<OrganizePage> {
           onTap: junk == 0 ? null : () => _junk(),
         ),
       ],
-    );
-  }
-
-  void _push(Widget page) {
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(builder: (BuildContext _) => page),
     );
   }
 
