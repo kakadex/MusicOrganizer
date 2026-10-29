@@ -30,7 +30,8 @@ class KugouSource implements TagSource {
   static const double baseConfidence = 0.60;
 
   /// 每页条数。
-  static const int pageSize = 5;
+  /// 每页条数（10 条：翻唱挤占前几条时仍有机会拿到原唱）。
+  static const int pageSize = 10;
 
   @override
   Future<List<Candidate>> search(Query q, {JsonFetcher? fetch}) async {

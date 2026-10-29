@@ -40,7 +40,7 @@ class DeezerSource implements TagSource {
         (String url, Map<String, String>? params) =>
             Http.getJson(url, params, null, Http.readTimeoutOverseasMs);
     final Object? payload = await get(
-        Endpoints.urlOf(key, 0), <String, String>{'q': query, 'limit': '5'});
+        Endpoints.urlOf(key, 0), <String, String>{'q': query, 'limit': '10'});
     final List<dynamic> data = JsonPick.list(payload, 'data');
     for (final dynamic item in data) {
       if (item is! Map) continue;

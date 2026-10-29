@@ -67,6 +67,7 @@ OfferScore scoreDetail({
   required String source,
   required bool chinese,
   bool hasTiming = false,
+  bool strictDuration = true,
 }) {
   if (isVariant(candidateTitle, localTitle)) {
     return OfferScore(-1, reason: '候选是另一个版本（伴奏 / 现场 / remix …）');
@@ -91,8 +92,19 @@ OfferScore scoreDetail({
     ds = 0.4;
   } else {
     final double diff = (localDuration - candidateDuration).abs();
-    if (diff > 6) return OfferScore(-1, reason: '时长差超过 6 秒');
-    ds = diff <= 2 ? 1.0 : 1.0 - (diff - 2) / 8.0;
+    if (diff > 6) {
+      // 严格模式：时长是「同一录音」的硬约束，差太多一律不算同一首。
+      // 宽松模式（在线匹配 / 批量兜底）：标题与艺人都高度一致时放行 ——
+      // 同一首歌的现场版、合辑剪辑版、转码被截断的版本能差几十秒，卡死
+      // 时长会让这类文件一首也匹配不到（实测：4:17 的《一无所有》对 5:43
+      // 的专辑版差 86 秒）。此时把时长分压到最低，只靠标题 / 艺人认歌。
+      if (strictDuration || ts < 0.90 || as < 0.85) {
+        return OfferScore(-1, reason: '时长差超过 6 秒');
+      }
+      ds = 0.05;
+    } else {
+      ds = diff <= 2 ? 1.0 : 1.0 - (diff - 2) / 8.0;
+    }
   }
   double score = 0.45 * ts + 0.25 * as + 0.25 * ds + sourceBonus(source, chinese);
   if (hasTiming) score += 0.05;

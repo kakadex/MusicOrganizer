@@ -32,7 +32,7 @@ void main() {
         fetch: (String url, Map<String, String>? params) async {
           expect(params!['s'], '$artist $title');
           expect(params['type'], '1');
-          expect(params['limit'], '5');
+          expect(params['limit'], '10');
           return <String, Object>{
             'result': <String, Object>{
               'songs': <Object>[
@@ -65,9 +65,9 @@ void main() {
       expect(got.first.confidence, NeteaseSource.baseConfidence);
     });
 
-    test('最多返回 5 条', () async {
+    test('最多返回 10 条', () async {
       final List<Object> songs = <Object>[];
-      for (int i = 0; i < 8; i++) {
+      for (int i = 0; i < 14; i++) {
         songs.add(<String, Object>{'name': '$title$i'});
       }
       final List<Candidate> got = await NeteaseSource().search(
@@ -75,7 +75,7 @@ void main() {
         fetch: (String url, Map<String, String>? params) async =>
             <String, Object>{'result': <String, Object>{'songs': songs}},
       );
-      expect(got.length, 5);
+      expect(got.length, 10);
     });
 
     test('没有检索串时直接返回空（不发请求）', () async {
@@ -201,7 +201,7 @@ void main() {
         q(artist: artist, title: title),
         fetch: (String url, Map<String, String>? params) async {
           expect(params!['keyword'], '$artist $title');
-          expect(params['pagesize'], '5');
+          expect(params['pagesize'], '10');
           expect(params['format'], 'json');
           return <String, Object>{
             'data': <String, Object>{

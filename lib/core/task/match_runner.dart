@@ -155,7 +155,26 @@ class MatchRunner {
     final AggregateResult agg =
         await Aggregator.tagCandidates(q, chinese: chinese, fetch: fetch);
     if (agg.errors.isNotEmpty) errors.addAll(agg.errors);
-    if (agg.candidates.isEmpty) {
+
+    Candidate? best = agg.candidates.isEmpty ? null : agg.candidates.first;
+    String looseNote = '';
+    bool loose = false;
+    if (best == null) {
+      // 严格匹配一首都没有时，再放宽一次：允许「同一首歌的另一个录音版本」
+      // （现场 / 合辑剪辑 / 转码被截断，时长能差几十秒）。这类结果不当自动命中，
+      // 标成低置信 + 说明，交给预览页的人确认。不这么做的话，4:17 的《一无所有》
+      // 永远匹配不到 5:43 的专辑版（差 86 秒），批量里只能一直显示「没有命中」。
+      final AggregateResult alt =
+          await Aggregator.tagCandidates(q, chinese: chinese, fetch: fetch, verify: false);
+      if (alt.errors.isNotEmpty) errors.addAll(alt.errors);
+      best = _looseBest(alt.candidates);
+      if (best != null) {
+        loose = true;
+        looseNote = _looseNote(q.localDuration, best);
+      }
+    }
+
+    if (best == null) {
       if (memory != null) {
         memory!.record(f.docId, f.size, f.lastModified, BatchMemory.noHit);
       }
@@ -163,7 +182,6 @@ class MatchRunner {
         ..note = '没有命中';
     }
 
-    final Candidate best = agg.candidates.first;
     if (queue != null) {
       queue!.put(f.docId, f.size, f.lastModified, <String, String>{
         'title': best.title,
@@ -181,8 +199,42 @@ class MatchRunner {
         memory!.record(f.docId, f.size, f.lastModified, BatchMemory.matched);
       }
     }
-    return TagPlan.buildFor(
-        file: f, before: before, candidate: best, modes: modes, overwrite: overwrite);
+    final FilePlan plan = TagPlan.buildFor(
+      file: f,
+      before: before,
+      candidate: best,
+      modes: modes,
+      overwrite: overwrite,
+      note: loose ? looseNote : null,
+      lowConfidence: loose ? true : null,
+    );
+    // 兜底命中的「另一个录音版本」不默认勾选：让人看一眼「时长差多少秒」
+    // 再决定写不写，避免批量一路回车把不同版本的专辑信息盖到正确标签上。
+    if (loose) plan.selected = false;
+    return plan;
+  }
+
+  /// 宽松候选里挑一个「够像」的：标题 / 艺人已由 [scoreDetail] 验证过，
+  /// 这里只挡住分数接近淘汰线的噪声，避免把不相干的歌塞进预览。
+  static Candidate? _looseBest(List<Candidate> candidates) {
+    for (final Candidate c in candidates) {
+      if (c.matchScore >= looseMinScore) return c;
+    }
+    return null;
+  }
+
+  /// 兜底候选的最低分。标题完全一致 + 艺人完全一致、只丢时长分时约 0.71，
+  /// 取 0.55 能容下「缺艺人」这类信息不全的情况，又挡住靠时长凑分的噪声。
+  static const double looseMinScore = 0.55;
+
+  /// 兜底命中时写在预览行上的说明。
+  static String _looseNote(double? local, Candidate c) {
+    final double? d = c.duration;
+    if (local != null && local > 0 && d != null && d > 0) {
+      final int diff = (local - d).abs().round();
+      return '时长差 $diff 秒（可能是现场 / 剪辑 / 转码版本），建议确认';
+    }
+    return '时长对不上（可能是另一个录音版本），建议确认';
   }
 
   /// 串行写盘（写盘一律不许并发：同一批里两首可能落在同一目录，并发写会把事务的备份搅乱）。

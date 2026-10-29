@@ -59,7 +59,7 @@ void main() {
         q(artist: '示例歌手', title: '示例歌名'),
         fetch: (String url, Map<String, String>? params) async {
           expect(params!['q'], '示例歌手 示例歌名');
-          expect(params['limit'], '5');
+          expect(params['limit'], '10');
           return <String, Object>{
             'data': <Object>[
               <String, Object>{

@@ -4,6 +4,7 @@
 /// trackTimeMillis / artworkUrl100。外文曲目的主力（中文曲目召回弱，靠 [SourceRank] 压后）。
 library;
 
+import '../lyrics/zh.dart';
 import '../model/candidate.dart';
 import '../model/query.dart';
 import '../net/http_client.dart';
@@ -39,14 +40,30 @@ class ItunesSource implements TagSource {
     final JsonFetcher get = fetch ??
         (String url, Map<String, String>? params) =>
             Http.getJson(url, params, null, Http.readTimeoutOverseasMs);
+    // 中文歌走台湾区：那里中文歌手的名字是「崔健」而不是拼音
+    // 「Cui Jian」，否则艺人相似度趋零，原唱会被当成「艺人对不上」淘汰。
+    // 外文歌仍走美国区，曲库更全。
+    final bool cn = TagQuery.isChineseTrack(q);
     final Object? payload = await get(Endpoints.urlOf(key, 0),
-        <String, String>{'term': term, 'media': 'music', 'limit': '5'});
+        <String, String>{
+          'term': term,
+          'media': 'music',
+          'limit': '10',
+          'country': cn ? 'TW' : 'US',
+        });
     for (final dynamic item in JsonPick.list(payload, 'results')) {
       if (item is! Map) continue;
+      // 台湾区返回的是繁体（一無所有 / 新長征路上的搖滾）：写入标签前统一转简，
+      // 否则用户曲库里会混进繁体标题，和本地文件名对不上。
+      String pick(String field) {
+        final String raw = JsonPick.str(item, field);
+        return cn ? Zh.toSimplified(raw) : raw;
+      }
+
       final Candidate c = Candidate()
-        ..title = JsonPick.str(item, 'trackName')
-        ..artist = JsonPick.str(item, 'artistName')
-        ..album = JsonPick.str(item, 'collectionName')
+        ..title = pick('trackName')
+        ..artist = pick('artistName')
+        ..album = pick('collectionName')
         ..year = JsonPick.yearOf(JsonPick.str(item, 'releaseDate'))
         ..source = key
         ..confidence = baseConfidence

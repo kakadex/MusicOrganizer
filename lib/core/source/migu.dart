@@ -32,7 +32,8 @@ class MiguSource implements TagSource {
   static const double baseConfidence = 0.60;
 
   /// 咪咕会忽略 pageSize 直接回 20 条，这里自己截断，减少后面的打分开销。
-  static const int maxCandidates = 6;
+  /// 每页条数（10 条：与其它源保持一致）。
+  static const int maxCandidates = 10;
 
   /// 只认明确的流派词；地区 / 场景标签一概不要。
   static const List<String> genreWords = <String>[

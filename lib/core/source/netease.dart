@@ -32,7 +32,9 @@ class NeteaseSource implements TagSource {
   static const double baseConfidence = 0.60;
 
   /// 一次最多返回几条。
-  static const int maxCandidates = 5;
+  /// 每页条数。取 10 而不是 5：热门歌的翻唱会把原唱挤出前几条，
+  /// 候选池太小就直接搜不到正主了。
+  static const int maxCandidates = 10;
 
   /// 匿名调用要带的两个头：Referer 是站点要求的来源页（与接口地址是两回事，
   /// 换镜像地址时它仍要写原站），Cookie 里的 appver 用来避开匿名频率限制。

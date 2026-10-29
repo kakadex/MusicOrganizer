@@ -103,12 +103,17 @@ abstract final class TagPlan {
   static double lowConfidenceThreshold = 0.5;
 
   /// 单文件计划：用 [TagFill.diff] 算变更，命中为空或没有变更时给空计划。
+  ///
+  /// [note] / [lowConfidence] 用于覆盖默认说明与低置信标记 —— 批量兜底命中的
+  /// 「另一个录音版本」需要写清「时长差多少秒」，不能只显示来源。
   static FilePlan buildFor({
     required VFile file,
     Tags? before,
     Candidate? candidate,
     Map<String, int>? modes,
     bool overwrite = false,
+    String? note,
+    bool? lowConfidence,
   }) {
     final Map<String, int> m = modes ?? TagFill.defaultModes(overwrite);
     final Map<String, String> diff = TagFill.diff(
@@ -137,8 +142,8 @@ abstract final class TagPlan {
       file: file,
       candidate: candidate,
       fields: fields,
-      note: _note(candidate),
-      lowConfidence: _isLow(candidate),
+      note: note ?? _note(candidate),
+      lowConfidence: lowConfidence ?? _isLow(candidate),
     );
   }
 

@@ -34,7 +34,8 @@ class QqMusicSource implements TagSource {
   static const double baseConfidence = 0.60;
 
   /// 每页条数。
-  static const int pageSize = 5;
+  /// 每页条数（10 条：翻唱挤占前几条时仍有机会拿到原唱）。
+  static const int pageSize = 10;
 
   /// 匿名调用要带的来源页（与接口地址是两回事，换地址时它仍要写原站）。
   static Map<String, String> get headers => <String, String>{

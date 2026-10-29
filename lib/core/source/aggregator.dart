@@ -111,7 +111,10 @@ abstract final class Aggregator {
     for (final SourceResult r in results) {
       if (r.error.isNotEmpty) errors[r.source] = r.error;
       for (final Candidate c in r.items) {
-        if (!_durationOk(c, q.localDuration)) continue;
+        // 严格模式（批量写入）才按时长交叉验证；手动挑选场景（在线匹配）不砍，
+        // 否则「同一首歌的另一个录音版本」连显示的机会都没有 —— 后面的
+        // scoreDetail 会把时长差压成低分排到后面，让人仍能选到。
+        if (verify && !_durationOk(c, q.localDuration)) continue;
         // 歌手是 `yyyyyy` / `嘤嘤嘤` 这种用户上传的垃圾条目：标题与正版一模一样，
         // 只按标题排就会把它写进标签（真实踩到过）。这类候选一律不要。
         if (ArtistRules.looksLikeNoise(c.artist)) continue;
@@ -133,6 +136,7 @@ abstract final class Aggregator {
             candidateDuration: c.duration,
             source: r.source,
             chinese: isCn,
+            strictDuration: verify,
           );
           if (best == null || s.score > best.score) {
             best = s;
