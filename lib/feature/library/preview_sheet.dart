@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../app/repo.dart';
@@ -239,6 +241,12 @@ class _PreviewBodyState extends State<_PreviewBody> {
       report = await runner.write(_plans, control: control, batchId: batchId);
     } finally {
       TaskCenter.finish();
+    }
+    // 写成功的这些文件：缓存已清，但列表条目还是旧值。补读一次，回到列表
+    // 就能看到刚写进去的标签（不补读的话仍显示「无标签」，要重扫才更新）。
+    // 放到后台跑：几百首逐个读盘要几秒，不该卡着面板不放。
+    if (report.files.isNotEmpty) {
+      unawaited(Repo.instance.loadMeta(only: report.files));
     }
     if (!mounted) return;
     setState(() {

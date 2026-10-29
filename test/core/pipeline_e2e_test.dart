@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart' hide Tags;
 import 'package:musicorganizer/core/fs/desktop_file_store.dart';
 import 'package:musicorganizer/core/match/tag_fill.dart';
 import 'package:musicorganizer/core/match/tag_plan.dart';
+import 'package:musicorganizer/core/task/match_runner.dart';
 import 'package:musicorganizer/core/model/candidate.dart';
 import 'package:musicorganizer/core/model/journal_entry.dart';
 import 'package:musicorganizer/core/model/tags.dart';
@@ -101,6 +102,23 @@ void main() {
     final Uint8List undone = await File('${root.path}/a.mp3').readAsBytes();
     expect(Id3.read(undone).get('album'), '');
     expect(Id3.read(undone).get('title'), '示例歌名');
+
+    // ⑦ 批量匹配写入：写成功的文件必须带回来，调用方据此补读一次。
+    //    不带回来的话，刚写完的标签在列表里仍显示旧值，要重扫才更新。
+    final MatchRunner runner = MatchRunner(store: store, tx: tx);
+    final FilePlan again = TagPlan.buildFor(
+        file: a,
+        before: before,
+        candidate: c,
+        modes: <String, int>{
+          for (final String f in TagFill.candidateFields) f: TagFill.supplement,
+        });
+    final WriteReport rep = await runner.write(<FilePlan>[again]);
+    expect(rep.written, 1);
+    expect(rep.files.length, 1, reason: '写成功的文件必须带回来');
+    expect(rep.files.single.docId, a.docId);
+    expect(Id3.read(await File('${root.path}/a.mp3').readAsBytes()).get('album'),
+        '示例专辑');
   });
 
   test('增量扫描：文件没变就沿用上次标签', () async {

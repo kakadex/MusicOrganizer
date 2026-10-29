@@ -28,10 +28,17 @@ import '../tx/tag_transaction.dart';
 
 /// 一次写盘的结果。
 class WriteReport {
-  WriteReport(this.written, this.failed, this.errors);
+  WriteReport(this.written, this.failed, this.errors,
+      {this.files = const <VFile>[]});
 
   final int written;
   final int failed;
+
+  /// 写成功的文件：调用方拿它补读一次标签。
+  ///
+  /// 写盘后这些文件的缓存已被清空，但列表里的条目还是旧值——不重读的话，
+  /// 刚补好标签的歌在列表里仍显示「无标签」，得手动重扫才更新。
+  final List<VFile> files;
 
   /// 「文件名：原因」列表（最多留 50 条，避免几千首全失败时内存爆掉）。
   final List<String> errors;
@@ -189,6 +196,7 @@ class MatchRunner {
     int written = 0;
     int failed = 0;
     final List<String> errors = <String>[];
+    final List<VFile> okFiles = <VFile>[];
     int done = 0;
 
     for (final FilePlan p in todo) {
@@ -201,6 +209,7 @@ class MatchRunner {
       if (err.isEmpty) {
         written++;
         Scanner.invalidate(p.file);
+        okFiles.add(p.file);
         queue?.mark(p.file.docId, MatchQueue.written);
       } else {
         failed++;
@@ -211,7 +220,7 @@ class MatchRunner {
       control?.report(done, todo.length, p.file.name);
     }
     queue?.clearFinished();
-    return WriteReport(written, failed, errors);
+    return WriteReport(written, failed, errors, files: okFiles);
   }
 
   /// 暂停时等在这里（每 120ms 看一次），取消则立刻返回。
