@@ -1,11 +1,11 @@
-version=0.2.40
-tag=v0.2.40
+version=0.2.41
+tag=v0.2.41
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.40/MusicOrganizer-0.2.40-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.41/MusicOrganizer-0.2.41-android-arm64-v8a.apk
 size=19805849
-sha256=f614e970f9522e1c611980c7085e745fcb4485c4d1d3acefea8703c5fbfd37c6
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.40/MusicOrganizer-0.2.40-windows-x64.zip
-zip_size=12566002
-zip_sha256=5ffe315cdc0aab215274ed3cd1fdcc8361ca5a4d21af2ada311ebe4770db2946
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.40
-summary=扫描完成后不再弹统计提示。
+sha256=d59087aeac2f2163efead915fc2d9d13e70f159b92433001e7252f34c58ba264
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.41/MusicOrganizer-0.2.41-windows-x64.zip
+zip_size=12566391
+zip_sha256=b1aa1d0d341257482555bb45aa0536c28ce1fcef8b2c5c3237691b143058241f
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.41
+summary=恢复默认设置现在会一并重置字段写入策略。
