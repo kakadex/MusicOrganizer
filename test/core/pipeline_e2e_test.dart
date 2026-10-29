@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart' hide Tags;
 import 'package:musicorganizer/core/fs/desktop_file_store.dart';
+import 'package:musicorganizer/core/match/tag_fill.dart';
 import 'package:musicorganizer/core/match/tag_plan.dart';
 import 'package:musicorganizer/core/model/candidate.dart';
 import 'package:musicorganizer/core/model/journal_entry.dart';
@@ -66,8 +67,15 @@ void main() {
       ..album = '示例专辑'
       ..track = '1'
       ..confidence = 0.8;
-    final FilePlan plan =
-        TagPlan.buildFor(file: a, before: before, candidate: c);
+    // 这里验证的是「链路能把字段写进去」，显式开全字段；
+    // 界面默认只补标题与艺术家（见 TagFill.defaultModeFor）。
+    final FilePlan plan = TagPlan.buildFor(
+        file: a,
+        before: before,
+        candidate: c,
+        modes: <String, int>{
+          for (final String f in TagFill.candidateFields) f: TagFill.supplement,
+        });
     expect(plan.hasChange, isTrue);
     expect(plan.toUpdates()['album'], '示例专辑');
     expect(plan.lowConfidence, isFalse);

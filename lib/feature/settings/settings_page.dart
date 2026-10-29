@@ -205,10 +205,12 @@ class _SettingsPageState extends State<SettingsPage> {
         Text('字段写入策略',
             style: TextStyle(fontSize: MoKit.fsBody, color: MoKit.text(context))),
         const SizedBox(height: 2),
-        Text('不写=这个字段永远不动；只补空=已有值保留；覆盖=与候选不同就改',
+        Text('不写=这个字段永远不动；只补空=已有值保留；覆盖=与候选不同就改。'
+            '默认只补标题与艺术家，其余字段不写。',
             style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
         const SizedBox(height: 6),
-        for (final String f in TagFill.candidateFields) _modeRow(f, modes[f] ?? TagFill.supplement),
+        for (final String f in TagFill.candidateFields)
+          _modeRow(f, TagFill.modeOf(modes, f)),
       ],
     );
   }

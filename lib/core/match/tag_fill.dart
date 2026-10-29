@@ -16,6 +16,18 @@ abstract final class TagFill {
   static const int supplement = 1;
   static const int overwrite = 2;
 
+  /// 默认「只补空」的字段：只有标题与艺术家。
+  ///
+  /// 其余字段默认不写——批量匹配最容易把用户整理好的专辑 / 年份 / 流派
+  /// 写成源站的错值；需要时到设置里单独打开该字段。
+  static const Set<String> defaultSupplement = <String>{'title', 'artist'};
+
+  /// 某字段的默认策略（用户没存过 `fp:<字段>` 时用它）。
+  static int defaultModeFor(String field, {bool overwrite = false}) =>
+      defaultSupplement.contains(field)
+          ? (overwrite ? TagFill.overwrite : supplement)
+          : disabled;
+
   /// 在线候选能提供的字段（comment 永远不自动写，容易盖掉用户备注）。
   static const List<String> candidateFields = <String>[
     'title', 'artist', 'albumArtist', 'album', 'year', 'track', 'genre',
@@ -49,19 +61,19 @@ abstract final class TagFill {
     }
   }
 
-  /// 默认策略：overwrite ? 全覆盖 : 全只补空。
+  /// 默认策略表：标题 / 艺术家按 [defaultSupplement]，其余不写。
   static Map<String, int> defaultModes(bool overwrite) {
     final Map<String, int> m = <String, int>{};
     for (final String f in candidateFields) {
-      m[f] = overwrite ? TagFill.overwrite : TagFill.supplement;
+      m[f] = defaultModeFor(f, overwrite: overwrite);
     }
     return m;
   }
 
-  /// 取某字段策略；缺省按「只补空」。
+  /// 取某字段策略；缺省用 [defaultModeFor]（标题 / 艺术家只补空，其余不写）。
   static int modeOf(Map<String, int>? modes, String key) {
-    if (modes == null) return supplement;
-    return modes[key] ?? supplement;
+    if (modes == null) return defaultModeFor(key);
+    return modes[key] ?? defaultModeFor(key);
   }
 
   /// 三态差异：disabled 不写、supplement 只补空、overwrite 不同就写。

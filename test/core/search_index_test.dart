@@ -26,7 +26,7 @@ void main() {
       expect(e.displaySub(), '');
       e.applyTags(Tags()..put('artist', '示例歌手'), false);
       expect(e.displaySub(), '示例歌手');
-      // 专辑还缺 → 不算齐
+      // 只有艺术家、没有标题 → 不算齐
       expect(e.tagComplete(), isFalse);
       e.applyTags(
           Tags()
@@ -36,7 +36,27 @@ void main() {
       expect(e.displaySub(), '示例歌手 · 示例专辑');
     });
 
-    test('歌词只留前若干字符并标有歌词', () {
+    test('标签完整只看标题与艺术家：缺专辑也算齐', () {
+    final Entry e = audio('a', '01.mp3');
+    e.applyTags(
+        Tags()
+          ..put('title', '测试标题')
+          ..put('artist', '示例歌手'),
+        false);
+    expect(e.tagComplete(), isTrue, reason: '缺专辑不算无标签');
+
+    // 缺艺术家
+    e.applyTags(Tags()..put('title', '测试标题'), false);
+    expect(e.tagComplete(), isFalse);
+
+    // 只有文件名、没有标签标题：文件名不算标题
+    final Entry bare = audio('b', '02.mp3');
+    expect(bare.displayTitle(), '02');
+    bare.applyTags(Tags(), false);
+    expect(bare.tagComplete(), isFalse, reason: '文件名不能顶替标签标题');
+  });
+
+  test('歌词只留前若干字符并标有歌词', () {
       final Entry e = audio('a', '01.mp3');
       final String long = '啊' * (SearchIndex.lyricsHead + 500);
       e.applyLyrics(long);

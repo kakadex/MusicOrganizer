@@ -97,9 +97,14 @@ class Entry {
     return sb.toString();
   }
 
-  /// 标签是否齐（标题 + 艺人 + 专辑都有）。
-  bool tagComplete() =>
-      displayTitle().isNotEmpty && artist.trim().isNotEmpty && album.trim().isNotEmpty;
+  /// 标签是否齐（**标题 + 艺术家**都有）。
+  ///
+  /// 只看这两个字段：它们是「能不能被搜到 / 值不值得补」的关键。专辑、年份、
+  /// 流派缺了不算「无标签」——否则一张合辑里缺专辑的行会永远挂在无标签筛选下，
+  /// 而它其实什么都不缺。
+  ///
+  /// 标题取标签里的值，不拿文件名顶替：文件名不是标签。
+  bool tagComplete() => title.trim().isNotEmpty && artist.trim().isNotEmpty;
 
   void applyTags(Tags? tags, bool cover) {
     if (tags != null) {

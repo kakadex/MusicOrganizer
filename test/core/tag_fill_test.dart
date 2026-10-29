@@ -22,6 +22,12 @@ String render(Map<String, String> m) {
   return sb.toString();
 }
 
+/// 全字段统一策略：这几条用例测的是 diff / describe 本身，
+/// 与「默认只补标题与艺术家」无关，显式传全字段避免被默认值变化牵连。
+Map<String, int> allModes(int mode) => <String, int>{
+      for (final String f in TagFill.candidateFields) f: mode,
+    };
+
 void main() {
   test('只补空缺：已有值一律不动', () {
     final Map<String, String> before = <String, String>{
@@ -29,7 +35,7 @@ void main() {
       'artist': '周杰伦',
     };
     final Map<String, String> d1 =
-        TagFill.diff(before, candidate(), overwrite: false);
+        TagFill.diff(before, candidate(), modes: allModes(TagFill.supplement));
     expect(render(d1), '{album=叶惠美, year=2003}');
   });
 
@@ -39,7 +45,7 @@ void main() {
       'artist': '周杰伦',
     };
     final Map<String, String> d2 =
-        TagFill.diff(before, candidate(), overwrite: true);
+        TagFill.diff(before, candidate(), modes: allModes(TagFill.overwrite));
     expect(render(d2), '{album=叶惠美, title=晴天, year=2003}');
   });
 
@@ -63,13 +69,30 @@ void main() {
         isFalse);
   });
 
+  test('默认策略：只补标题与艺术家，其余不写', () {
+    final Map<String, int> m = TagFill.defaultModes(false);
+    expect(m['title'], TagFill.supplement);
+    expect(m['artist'], TagFill.supplement);
+    for (final String f in <String>[
+      'albumArtist', 'album', 'year', 'track', 'genre',
+    ]) {
+      expect(m[f], TagFill.disabled, reason: '$f 默认不该写');
+    }
+    // 老的「整体覆盖」开关只影响这两个默认字段，别的一律不写
+    expect(TagFill.defaultModes(true)['title'], TagFill.overwrite);
+    expect(TagFill.defaultModes(true)['album'], TagFill.disabled);
+    // 取不到时也按同一默认
+    expect(TagFill.modeOf(null, 'title'), TagFill.supplement);
+    expect(TagFill.modeOf(null, 'album'), TagFill.disabled);
+  });
+
   test('摘要文案', () {
     final Map<String, String> before = <String, String>{
       'title': '晴天（旧）',
       'artist': '周杰伦',
     };
     final Map<String, String> d1 =
-        TagFill.diff(before, candidate(), overwrite: false);
+        TagFill.diff(before, candidate(), modes: allModes(TagFill.supplement));
     expect(TagFill.describe(d1), '专辑、年份');
     expect(TagFill.describe(<String, String>{}), '');
   });
@@ -79,10 +102,9 @@ void main() {
       'title': '晴天（旧）',
       'artist': '周杰伦',
     };
-    final Map<String, int> modes = <String, int>{
-      'title': TagFill.disabled,
-      'artist': TagFill.overwrite,
-    };
+    final Map<String, int> modes = allModes(TagFill.supplement)
+      ..['title'] = TagFill.disabled
+      ..['artist'] = TagFill.overwrite;
     final Map<String, String> d3 =
         TagFill.diff(before2, candidate(), modes: modes);
     expect(render(d3), '{album=叶惠美, year=2003}');

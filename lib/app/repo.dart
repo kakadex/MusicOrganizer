@@ -773,10 +773,12 @@ class Repo extends ChangeNotifier {
   Map<String, int> tagModes() {
     final bool overwrite =
         settings.get<bool>('fill_overwrite', fallback: false) ?? false;
-    final int fallbackMode = overwrite ? TagFill.overwrite : TagFill.supplement;
     final Map<String, int> out = <String, int>{};
     for (final String f in TagFill.candidateFields) {
-      out[f] = settings.get<int>('fp:$f', fallback: fallbackMode) ?? fallbackMode;
+      // 默认只补「标题」「艺术家」，其余不写（见 TagFill.defaultModeFor）。
+      // 用户存过的逐字段策略优先，升级不会覆盖手动设置。
+      final int def = TagFill.defaultModeFor(f, overwrite: overwrite);
+      out[f] = settings.get<int>('fp:$f', fallback: def) ?? def;
     }
     return out;
   }

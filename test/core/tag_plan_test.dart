@@ -8,6 +8,12 @@ import 'package:musicorganizer/core/model/vfile.dart';
 
 VFile vf(String id) => VFile(docId: id, name: '$id.mp3');
 
+/// 全字段统一策略：这几条用例测的是计划本身，与「默认只补标题与艺术家」
+/// 无关，显式传全字段，避免被默认值变化牵连。
+Map<String, int> allModes(int mode) => <String, int>{
+      for (final String f in TagFill.candidateFields) f: mode,
+    };
+
 Candidate cand({
   String title = '示例歌名',
   String artist = '示例歌手',
@@ -56,19 +62,25 @@ void main() {
   test('三态：只补空不动已有值，覆盖才改写，禁用字段不进计划', () {
     final Tags b = before(title: '旧标题', artist: '示例歌手');
 
-    final FilePlan supplement =
-        TagPlan.buildFor(file: vf('a'), before: b, candidate: cand());
+    final FilePlan supplement = TagPlan.buildFor(
+        file: vf('a'),
+        before: b,
+        candidate: cand(),
+        modes: allModes(TagFill.supplement));
     expect(keysOf(supplement), <String>['album', 'year']);
     expect(supplement.fields.first.mode, TagFill.supplement);
     expect(supplement.hasChange, isTrue);
 
-    final FilePlan overwrite =
-        TagPlan.buildFor(file: vf('a'), before: b, candidate: cand(), overwrite: true);
+    final FilePlan overwrite = TagPlan.buildFor(
+        file: vf('a'),
+        before: b,
+        candidate: cand(),
+        modes: allModes(TagFill.overwrite));
     expect(overwrite.toUpdates(),
         <String, String>{'title': '示例歌名', 'album': '示例专辑', 'year': '2020'});
     expect(overwrite.fields.first.mode, TagFill.overwrite);
 
-    final Map<String, int> modes = TagFill.defaultModes(false)
+    final Map<String, int> modes = allModes(TagFill.supplement)
       ..['album'] = TagFill.disabled;
     final FilePlan disabled =
         TagPlan.buildFor(file: vf('a'), before: b, candidate: cand(), modes: modes);
@@ -88,8 +100,11 @@ void main() {
   });
 
   test('toUpdates 只导出勾选且真变了的字段', () {
-    final FilePlan p =
-        TagPlan.buildFor(file: vf('c'), before: before(), candidate: cand());
+    final FilePlan p = TagPlan.buildFor(
+        file: vf('c'),
+        before: before(),
+        candidate: cand(),
+        modes: allModes(TagFill.supplement));
     expect(p.fields.every((PlanField f) => f.changed), isTrue);
     expect(p.toUpdates().length, keysOf(p).length);
 
