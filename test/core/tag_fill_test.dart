@@ -73,11 +73,14 @@ void main() {
     final Map<String, int> m = TagFill.defaultModes(false);
     expect(m['title'], TagFill.supplement);
     expect(m['artist'], TagFill.supplement);
-    for (final String f in <String>[
-      'albumArtist', 'album', 'year', 'track', 'genre',
-    ]) {
+    for (final String f in <String>['album', 'year', 'genre']) {
       expect(m[f], TagFill.disabled, reason: '$f 默认不该写');
     }
+    // 策略只管这五个字段：专辑艺术家 / 音轨不在其中
+    expect(TagFill.candidateFields,
+        <String>['title', 'artist', 'album', 'year', 'genre']);
+    expect(m.containsKey('albumArtist'), isFalse);
+    expect(m.containsKey('track'), isFalse);
     // 老的「整体覆盖」开关只影响这两个默认字段，别的一律不写
     expect(TagFill.defaultModes(true)['title'], TagFill.overwrite);
     expect(TagFill.defaultModes(true)['album'], TagFill.disabled);

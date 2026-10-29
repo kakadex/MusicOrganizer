@@ -111,11 +111,12 @@ void main() {
     // 默认值必须和界面用的那套一致：标题 / 艺术家只补空，其余不写
     expect(d['fp:title'], TagFill.supplement);
     expect(d['fp:artist'], TagFill.supplement);
-    for (final String f in <String>[
-      'albumArtist', 'album', 'year', 'track', 'genre',
-    ]) {
+    for (final String f in <String>['album', 'year', 'genre']) {
       expect(d['fp:$f'], TagFill.disabled, reason: '$f 的默认值不在表里');
     }
+    // 已下线的字段（专辑艺术家 / 音轨）不再有默认值，也不参与策略
+    expect(d.containsKey('fp:albumArtist'), isFalse);
+    expect(d.containsKey('fp:track'), isFalse);
 
     // 用户手动改成「覆盖」：恢复默认时要能算进差异，否则点了恢复还是老样子
     final List<String> diff = SettingsBackup.diffFromDefaults(<String, Object?>{

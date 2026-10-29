@@ -28,9 +28,13 @@ abstract final class TagFill {
           ? (overwrite ? TagFill.overwrite : supplement)
           : disabled;
 
-  /// 在线候选能提供的字段（comment 永远不自动写，容易盖掉用户备注）。
+  /// 参与「字段写入策略」的字段（comment 永远不自动写，容易盖掉用户备注）。
+  ///
+  /// 只有这五个：标题、艺术家、专辑、年份、流派。专辑艺术家与音轨号不在这套
+  /// 策略里——前者是合辑层面的信息，后者由文件名/编排决定，都不该被联网结果
+  /// 改写。
   static const List<String> candidateFields = <String>[
-    'title', 'artist', 'albumArtist', 'album', 'year', 'track', 'genre',
+    'title', 'artist', 'album', 'year', 'genre',
   ];
 
   /// 字段中文标签（等价旧 Tags.LABELS； core/model/tags.dart 后改为引用）。
