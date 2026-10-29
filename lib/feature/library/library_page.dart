@@ -151,11 +151,8 @@ class _LibraryPageState extends State<LibraryPage> {
       _status = '';
     });
     _applyFilter();
-    // 手动下拉刷新不弹提示框：列表就在眼前，扫完自己会变；
-    // 后台补扫只在真的有增删改动时才出声一句（否则每次启动都弹很吵）。
-    if (!silent) return;
-    if (out.merge.fresh == 0 && out.merge.removed == 0) return;
-    moSnack(context, out.summary());
+    // 扫完不弹任何提示：列表与顶部副标题就在眼前，数字变了自然看得到，
+    // 每次都弹一条「多少首 / 待整理多少」只会挡视线。
   }
 
   Future<void> _pickRoot() async {
