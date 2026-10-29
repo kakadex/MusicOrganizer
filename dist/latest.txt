@@ -1,11 +1,11 @@
-version=0.2.42
-tag=v0.2.42
+version=0.2.43
+tag=v0.2.43
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.42/MusicOrganizer-0.2.42-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.43/MusicOrganizer-0.2.43-android-arm64-v8a.apk
 size=19805845
-sha256=bfb6a7a41bd4f6aa02c123d4e36a48015d00fef910a95bec0822dfb831d64bd8
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.42/MusicOrganizer-0.2.42-windows-x64.zip
-zip_size=12566465
-zip_sha256=965de2f7f4e54c62d017ad26c75b599eda05ae398b6db516982b24d9d6767cf2
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.42
-summary=字段写入策略收窄到五项。
+sha256=bd156e34554409f985c63a5da12da44bc4903693703a4bb5366620b80b8c968e
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.43/MusicOrganizer-0.2.43-windows-x64.zip
+zip_size=12567151
+zip_sha256=ec632ab1d25c8c1d1f60c6e8f20965c33dbc36dcd023320e33295d7db3ab6ca6
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.43
+summary=修复「歌名-歌手」命名匹配不到标签与歌词。
