@@ -171,6 +171,10 @@ abstract final class SettingsBackup {
       keyProxyPort: '',
       keyScanExclude: '',
       'scan_ignore_video': false,
+      // 逐字段写入策略也要有默认值：不在表里的话，「恢复默认设置」遍历不到它，
+      // 用户点完恢复会发现策略还是老样子（除了这里没人会去逐个清 fp: 键）。
+      for (final String field in TagFill.candidateFields)
+        '$prefixFieldMode$field': TagFill.defaultModeFor(field),
     };
   }
 

@@ -766,7 +766,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   /// 备份键的中文名（「恢复默认设置」的确认清单里显示）。
-  static const Map<String, String> _keyLabels = <String, String>{
+  static final Map<String, String> _keyLabels = <String, String>{
     'fn_weight': '文件名权重',
     'tag_overwrite': '覆盖已有标签',
     'update_auto': '启动时检查更新',
@@ -778,6 +778,8 @@ class _SettingsPageState extends State<SettingsPage> {
     'proxy_mode': '代理模式',
     'proxy_host': '代理主机',
     'proxy_port': '代理端口',
+    for (final String f in TagFill.candidateFields)
+      '${SettingsBackup.prefixFieldMode}$f': '写入策略 · ${TagFill.label(f)}',
   };
 
   /// 当前设置（已换成备份键名）。

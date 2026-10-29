@@ -105,4 +105,24 @@ void main() {
         '{"app":"MusicOrganizer","settings":[1,2]}');
     expect(wrong.ok, isFalse);
   });
+
+  test('恢复默认能覆盖逐字段写入策略', () {
+    final Map<String, Object> d = SettingsBackup.defaults();
+    // 默认值必须和界面用的那套一致：标题 / 艺术家只补空，其余不写
+    expect(d['fp:title'], TagFill.supplement);
+    expect(d['fp:artist'], TagFill.supplement);
+    for (final String f in <String>[
+      'albumArtist', 'album', 'year', 'track', 'genre',
+    ]) {
+      expect(d['fp:$f'], TagFill.disabled, reason: '$f 的默认值不在表里');
+    }
+
+    // 用户手动改成「覆盖」：恢复默认时要能算进差异，否则点了恢复还是老样子
+    final List<String> diff = SettingsBackup.diffFromDefaults(<String, Object?>{
+      'fp:album': TagFill.overwrite,
+    });
+    expect(diff, contains('fp:album'));
+    // 没存过的字段不算差异（新用户点恢复不该冒出一堆项）
+    expect(SettingsBackup.diffFromDefaults(<String, Object?>{}), isEmpty);
+  });
 }
