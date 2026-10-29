@@ -10,7 +10,6 @@ import '../../core/dedupe/content_reader.dart';
 import '../../core/dedupe/duplicates.dart';
 import '../../core/fs/file_store.dart';
 import '../../core/fs/tree_ref.dart';
-import '../../core/match/tag_fix.dart';
 import '../../core/match/text_util.dart';
 import '../../core/model/duplicate_group.dart';
 import '../../core/model/tags.dart';
@@ -20,12 +19,10 @@ import '../../core/organize/folder_template.dart';
 import '../../core/organize/organizer.dart';
 import '../../core/scan/scanner.dart';
 import '../../core/task/task_center.dart';
-import '../../core/tx/tag_transaction.dart';
 import '../covers/covers_page.dart';
 import '../lyrics_batch/lyrics_batch_page.dart';
 import '../../core/tx/write_preview.dart';
 import '../common/write_confirm_sheet.dart';
-import '../history/undo_flow.dart';
 import 'rename_flow.dart';
 
 /// 整理页：**三张任务卡**（扫描与整理 / 批量处理 / 清理），而不是一长串平铺按钮。
@@ -170,12 +167,6 @@ class _OrganizePageState extends State<OrganizePage> {
       title: '批量处理',
       subtitle: '对当前曲库的全部曲目执行（可在曲库页只选几首）',
       children: <Widget>[
-        MoTile(
-          title: '清理标签文本',
-          subtitle: '去多余空格 / 全角转半角 / 音轨号补零',
-          icon: Icons.cleaning_services_outlined,
-          onTap: files.isEmpty ? null : () => _tidy(files),
-        ),
         MoTile(
           title: '批量补封面',
           subtitle: '多源取图，逐首写入内嵌封面',
@@ -963,165 +954,4 @@ class _OrganizePageState extends State<OrganizePage> {
     if (!mounted) return;
     moSnack(context, '已删除 $ok 个');
   }
-
-  /// 批量清理标签文本（只改真需要改的字段）。
-  ///
-  /// **两步**：先逐首算出「哪些字段要改、改成什么」并出预览（旧值 → 新值），
-  /// 用户确认后才写盘（写盘走事务）。这是本项目的硬约束——
-  /// 任何写入 / 改动都必须先预览再写，清理标签也不例外。
-  Future<void> _tidy(List<VFile> files) async {
-    if (_busy) return;
-    if (TaskCenter.isBusy()) {
-      moSnack(context, '已有任务在跑，先等它结束');
-      return;
-    }
-    setState(() => _busyOn = _BusyOn.other);
-    final RunningTask? task = TaskCenter.start('清理标签文本');
-    if (task == null) {
-      if (mounted) setState(() => _busyOn = _BusyOn.none);
-      moSnack(context, '已有任务在跑，先等它结束');
-      return;
-    }
-    final TaskControl control = task.control;
-    final TagTransaction? tx = _repo.tx;
-    if (tx == null) {
-      TaskCenter.finish();
-      setState(() => _busyOn = _BusyOn.none);
-      return;
-    }
-    const int ops = TagFix.trim | TagFix.spaces | TagFix.width | TagFix.padTrack;
-    // 第一遍：只算计划，不写盘。
-    final List<_TidyItem> items = <_TidyItem>[];
-    int i = 0;
-    try {
-      for (final VFile f in files) {
-        if (control.isCancelled()) break;
-        i++;
-        control.report(i, files.length, f.name);
-        final Tags tags = await Scanner.readTags(_repo.store!, f);
-        final Map<String, String> plan = TagFix.plan(tags, ops);
-        if (plan.isEmpty) continue;
-        final List<_TidyChange> changes = <_TidyChange>[];
-        for (final MapEntry<String, String> e in plan.entries) {
-          changes.add(_TidyChange(e.key, tags.get(e.key), e.value));
-        }
-        items.add(_TidyItem(f, changes));
-      }
-    } finally {
-      TaskCenter.finish();
-    }
-    if (!mounted) return;
-    setState(() => _busyOn = _BusyOn.none);
-    if (items.isEmpty) {
-      moSnack(context, '没有需要清理的标签');
-      return;
-    }
-    // 预览确认：逐首、逐字段列出旧值 → 新值，用户勾选后才写。
-    final List<WriteTarget> targets = <WriteTarget>[
-      for (final _TidyItem it in items)
-        WriteTarget(
-          docId: it.file.docId,
-          name: it.file.name,
-          path: _repo.relPath(it.file),
-          kind: WriteKind.tag,
-          note: '文本整理 · ${it.changes.length} 个字段',
-          lines: <WriteLine>[
-            for (final _TidyChange c in it.changes)
-              WriteLine(
-                label: _tidyFieldName(c.field),
-                oldText: c.oldValue,
-                newText: c.newValue,
-                key: c.field,
-              ),
-          ],
-          file: it.file,
-          data: it,
-        ),
-    ];
-    final List<WriteTarget>? picked = await WriteConfirmSheet.show(
-      context,
-      title: '清理预览',
-      subtitle: '仅做本地文本整理：去首尾空白 / 折叠多余空格 / 全角转半角 / 音轨号补零',
-      targets: targets,
-      commitLabel: '执行清理',
-      unit: '首',
-      verb: '清理',
-    );
-    if (picked == null || picked.isEmpty || !mounted) return;
-
-    // 第二遍：确认后才写盘。
-    setState(() => _busyOn = _BusyOn.other);
-    final RunningTask? wTask = TaskCenter.start('写入清理');
-    final TaskControl? wControl = wTask?.control;
-    final String batchId = 'tidy-${DateTime.now().millisecondsSinceEpoch}';
-    int changed = 0;
-    int failed = 0;
-    int done = 0;
-    try {
-      for (final WriteTarget t in picked) {
-        if (wControl?.isCancelled() ?? false) break;
-        final Object? raw = t.file;
-        if (raw is! VFile) continue;
-        // 只写用户勾中的字段（逐字段取消勾选同样生效）
-        final Map<String, String> plan = t.toUpdates();
-        if (plan.isEmpty) continue;
-        final String err = await tx.apply(raw, plan, record: true, batchId: batchId);
-        if (err.isEmpty) {
-          changed++;
-          _repo.invalidate(raw);
-        } else {
-          failed++;
-        }
-        done++;
-        wControl?.report(done, picked.length, raw.name);
-      }
-    } finally {
-      TaskCenter.finish();
-    }
-    if (!mounted) return;
-    setState(() => _busyOn = _BusyOn.none);
-    moSnack(context, '改动 $changed 首，失败 $failed 首',
-        actionLabel: changed == 0 ? null : '撤销',
-        onAction: () async {
-          final int? n = await undoBatchWithPreview(context, batchId: batchId);
-          if (n != null && mounted) moSnack(context, '已撤销 $n 处');
-        });
-  }
-
-  /// 预览里一首歌的改动清单。
-  String _tidyFieldName(String key) {
-    switch (key) {
-      case 'title':
-        return '标题';
-      case 'artist':
-        return '歌手';
-      case 'album':
-        return '专辑';
-      case 'year':
-        return '年份';
-      case 'track':
-        return '音轨';
-      case 'genre':
-        return '流派';
-      default:
-        return key;
-    }
-  }
-}
-
-/// 清理预览：一首歌 + 它的字段改动。
-class _TidyItem {
-  const _TidyItem(this.file, this.changes);
-
-  final VFile file;
-  final List<_TidyChange> changes;
-}
-
-/// 单个字段的旧值 → 新值。
-class _TidyChange {
-  const _TidyChange(this.field, this.oldValue, this.newValue);
-
-  final String field;
-  final String oldValue;
-  final String newValue;
 }
