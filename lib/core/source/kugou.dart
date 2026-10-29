@@ -29,7 +29,6 @@ class KugouSource implements TagSource {
   /// 国内五家统一的基准置信度。
   static const double baseConfidence = 0.60;
 
-  /// 每页条数。
   /// 每页条数（10 条：翻唱挤占前几条时仍有机会拿到原唱）。
   static const int pageSize = 10;
 

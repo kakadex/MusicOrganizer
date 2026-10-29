@@ -31,8 +31,7 @@ class NeteaseSource implements TagSource {
   /// 国内五家统一的基准置信度。
   static const double baseConfidence = 0.60;
 
-  /// 一次最多返回几条。
-  /// 每页条数。取 10 而不是 5：热门歌的翻唱会把原唱挤出前几条，
+  /// 一次最多返回几条。取 10 而不是 5：热门歌的翻唱会把原唱挤出前几条，
   /// 候选池太小就直接搜不到正主了。
   static const int maxCandidates = 10;
 

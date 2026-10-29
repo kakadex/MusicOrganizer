@@ -1,11 +1,11 @@
-version=0.2.44
-tag=v0.2.44
+version=0.2.45
+tag=v0.2.45
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.44/MusicOrganizer-0.2.44-android-arm64-v8a.apk
-size=19805845
-sha256=42bc5e5c98949226fdb005d7a843e0d90e6b1606e2ae9ecfb270a28b444e7a51
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.44/MusicOrganizer-0.2.44-windows-x64.zip
-zip_size=12568805
-zip_sha256=624d709d68b35396ef221b086451a15aac564db8276504b85d31a14092632564
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.44
-summary=修复热门歌匹配不到标签（翻唱挤占、拼音歌手、时长误杀）。
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.45/MusicOrganizer-0.2.45-android-arm64-v8a.apk
+size=19805849
+sha256=8f6e54104b2537e39b73102b3456d49d0d12c41470a30ac2b50c63d9d60b7063
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.45/MusicOrganizer-0.2.45-windows-x64.zip
+zip_size=12639086
+zip_sha256=cc4503c5fab8418ab84a6006a5325c7b138c9ecf26f340a397164850cadd2d11
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.45
+summary=说明修正版：功能同 v0.2.44，补写批量兜底默认不勾选、繁体转简。
