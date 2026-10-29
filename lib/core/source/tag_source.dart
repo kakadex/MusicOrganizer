@@ -50,6 +50,33 @@ abstract final class TagQuery {
     ];
   }
 
+  /// 本地曲目的所有 (artist, title) 组合，供打分时逐个试。
+  ///
+  /// 文件名既可能是「歌手 - 歌名」，也可能是「歌名 - 歌手」——只看分隔符分不出来
+  /// （「水手-郑智化」就是后者）。只按第一个方向打分的话，标题会被当成「郑智化」，
+  /// 跟候选「水手」相似度趋零，整批结果都会被判成低分而丢掉。
+  static List<List<String>> localCombos(Query ctx) {
+    final List<List<String>> out = <List<String>>[];
+    void add(String artist, String title) {
+      final String a = artist.trim();
+      final String t = title.trim();
+      if (a.isEmpty && t.isEmpty) return;
+      for (final List<String> p in out) {
+        if (p[0] == a && p[1] == t) return;
+      }
+      out.add(<String>[a, t]);
+    }
+
+    for (final List<String> p in ctx.filenameCandidates) {
+      add(p.isNotEmpty ? p[0] : '', p.length > 1 ? p[1] : '');
+    }
+    final String tagTitle = (ctx.embeddedTags['title'] ?? '').trim();
+    final String tagArtist = (ctx.embeddedTags['artist'] ?? '').trim();
+    if (tagTitle.isNotEmpty || tagArtist.isNotEmpty) add(tagArtist, tagTitle);
+    if (out.isEmpty) add('', '');
+    return out;
+  }
+
   static String title(Query ctx) {
     final List<String> p = _firstPair(ctx);
     return NameWeight.pick(p[1].trim(), ctx.embeddedTags['title'], ctx.filenameWeight);

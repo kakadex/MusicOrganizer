@@ -9,8 +9,10 @@ import '../../core/model/lyrics_doc.dart';
 import '../../core/model/query.dart';
 import '../../core/model/vfile.dart';
 import '../../core/lyrics/zh.dart';
+import '../../core/match/artist_rules.dart';
 import '../../core/match/local_query.dart';
 import '../../core/source/offer_score.dart';
+import '../../core/source/tag_source.dart';
 
 /// 一首歌选中的歌词。
 class LyricChoice {
@@ -71,24 +73,31 @@ abstract final class LyricPick {
 
   /// 对一组命中打分并排序（淘汰项不返回）。
   static List<LyricChoice> rank(Query q, Iterable<LyricHit> hits) {
-    final String title = LocalQuery.title(q);
-    final String artist = LocalQuery.artist(q);
+    // 文件名可能把歌手与歌名写反（「水手-郑智化」），本地就有多组解释：
+    // 每条命中逐个算分取最高的那组，否则标题会被当成歌手，全都判成低分。
+    final List<List<String>> combos = TagQuery.localCombos(q);
     final bool chinese = LocalQuery.chinese(q);
     final List<LyricChoice> out = <LyricChoice>[];
     for (final LyricHit h in hits) {
       if (!h.hasLyrics()) continue;
       final bool timing = h.synced.trim().isNotEmpty;
-      final double score = offerScore(
-        localTitle: title,
-        localArtist: artist,
-        localDuration: q.localDuration,
-        candidateTitle: h.title,
-        candidateArtist: h.artist,
-        candidateDuration: h.duration,
-        source: h.source,
-        chinese: chinese,
-        hasTiming: timing,
-      );
+      double score = -1;
+      for (final List<String> combo in combos) {
+        final String rawArtist = combo[0];
+        final double s = offerScore(
+          localTitle: combo[1],
+          localArtist:
+              ArtistRules.isGenericArtist(rawArtist) ? '' : rawArtist,
+          localDuration: q.localDuration,
+          candidateTitle: h.title,
+          candidateArtist: h.artist,
+          candidateDuration: h.duration,
+          source: h.source,
+          chinese: chinese,
+          hasTiming: timing,
+        );
+        if (s > score) score = s;
+      }
       if (score < 0) continue;
       out.add(LyricChoice(hit: h, score: score)..selected = score >= lowThreshold);
     }
