@@ -1,11 +1,11 @@
-version=0.2.39
-tag=v0.2.39
+version=0.2.40
+tag=v0.2.40
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.39/MusicOrganizer-0.2.39-android-arm64-v8a.apk
-size=19805845
-sha256=08f1e3526201900fc81209f62c2a6e1f87c0fbada892055d08242567139a8fcb
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.39/MusicOrganizer-0.2.39-windows-x64.zip
-zip_size=12566981
-zip_sha256=d92f5fbc52f1e061d7e5f9fce09b6a3d3946ebada7fe94869f0e077bc55acc6d
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.39
-summary=修复批量匹配写入后列表不更新的问题。
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.40/MusicOrganizer-0.2.40-android-arm64-v8a.apk
+size=19805849
+sha256=f614e970f9522e1c611980c7085e745fcb4485c4d1d3acefea8703c5fbfd37c6
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.40/MusicOrganizer-0.2.40-windows-x64.zip
+zip_size=12566002
+zip_sha256=5ffe315cdc0aab215274ed3cd1fdcc8361ca5a4d21af2ada311ebe4770db2946
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.40
+summary=扫描完成后不再弹统计提示。
