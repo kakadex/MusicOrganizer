@@ -19,6 +19,7 @@ import '../core/match/match_queue.dart';
 import '../core/model/cancel_token.dart';
 import '../core/model/tags.dart';
 import '../core/model/vfile.dart';
+import 'cover_thumb_cache.dart';
 import 'repo_changes.dart';
 import '../core/net/http_client.dart';
 import '../core/net/net.dart';
@@ -886,6 +887,9 @@ class Repo extends ChangeNotifier {
   /// 标签写盘之后必须调用：清掉内存缓存，下次才回源。
   void invalidate(VFile f) {
     Scanner.invalidate(f);
+    // 磁盘缩略图也要删掉：这里不会重新 stat 文件，大小 / 修改时间还是旧值，
+    // 缓存键不变就会一直读到「换封面之前」那张小图（0.2.59）。
+    unawaited(CoverThumbCache.instance.remove(f));
     final Entry? e = index.find(f.docId);
     if (e != null) {
       index.add(Entry(

@@ -17,6 +17,7 @@ import '../model/cancel_token.dart';
 import '../model/progress.dart';
 import '../model/tags.dart';
 import '../model/vfile.dart';
+import '../tag/cover_art.dart';
 import '../tag/cover_reader.dart';
 import '../tag/tag_io.dart';
 import 'scan_filter.dart';
@@ -281,6 +282,12 @@ abstract final class Scanner {
     return out;
   }
 
+  /// 封面探测的第一档读多少字节（0.2.59）。
+  ///
+  /// 绝大多数封面就在文件头这一小段：读 256KB 能解出**完整**图片就直接用，
+  /// 省掉后面 2MB 的读盘；解不全（图被截断）再走 [loadForTags] 的老路。
+  static const int coverProbeBytes = 256 * 1024;
+
   /// 读出内嵌封面的字节；没有则返回 null。
   static Future<Uint8List?> readCover(FileStore st, VFile f) async {
     if (f.dir || !TagIO.canRead(f.ext())) return null;
@@ -290,10 +297,25 @@ abstract final class Scanner {
   static Future<Uint8List?> _readCoverBytes(FileStore st, VFile f, bool probeOnly) async {
     try {
       final String ext = TagIO.extOf(f.name);
-      final Uint8List data = probeOnly
-          ? await st.headBytes(f, headBytes)
-          : await loadForTags(st, f, ext);
-      if (probeOnly) return CoverReader.has(data, ext) ? Uint8List(0) : null;
+      if (probeOnly) {
+        final Uint8List data = await st.headBytes(f, headBytes);
+        return CoverReader.has(data, ext) ? Uint8List(0) : null;
+      }
+      // 第一档：只读 256KB。
+      // 注意单独包一层 try：标签被 256KB 截断时解析会越界，这属于「读少了」，
+      // 不是「没有封面」，要落到第二档去补读，不能直接当没有。
+      final Uint8List small = await st.headBytes(f, coverProbeBytes);
+      Uint8List? quick;
+      try {
+        quick = CoverReader.read(small, ext);
+      } catch (_) {
+        quick = null;
+      }
+      if (quick != null && CoverArt.isComplete(quick)) return quick;
+      // 整份文件就这么大，读完了都没有完整封面：不必再读第二遍
+      if (small.length < coverProbeBytes) return null;
+      // 第二档：按标签格式判断要不要扩到 2MB（MP4 的 moov 可能在文件尾）
+      final Uint8List data = await loadForTags(st, f, ext);
       return CoverReader.read(data, ext);
     } catch (_) {
       return null;

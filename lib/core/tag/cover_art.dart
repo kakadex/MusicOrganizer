@@ -49,6 +49,48 @@ abstract final class CoverArt {
   static bool isImage(Uint8List? b) =>
       isJpeg(b) || isPng(b) || isWebp(b) || isGif(b) || isBmp(b);
 
+  /// 这张图**是不是完整的**（不是被截断的前半段）。
+  ///
+  /// 用途：读封面时先只读文件头 256KB，能解出完整图就不用再读后面的 2MB。
+  /// 被截断的图同样能解出一半像素（显示成灰块 / 破图），所以必须按格式校验
+  /// 「结尾标记在不在」：
+  /// - JPEG 以 `FFD9` 结束；
+  /// - PNG 以 `IEND` 块结束（倒数第 8~4 字节）；
+  /// - WebP 的 RIFF 长度字段覆盖整个文件；
+  /// - GIF 以 `0x3B` 结束；
+  /// - BMP 头里的文件长度字段与实际长度一致。
+  ///
+  /// 不认识或校验不了的格式返回 false（调用方走「多读一点」的老路，宁可慢也不出错）。
+  static bool isComplete(Uint8List? b) {
+    if (b == null || b.length < 16) return false;
+    if (isJpeg(b)) {
+      // 允许尾部有极少量填充：取最后 4 字节里找 EOI
+      final int from = b.length > 4 ? b.length - 4 : b.length - 2;
+      for (int i = b.length - 2; i >= from; i--) {
+        if (b[i] == 0xFF && b[i + 1] == 0xD9) return true;
+      }
+      return false;
+    }
+    if (isPng(b)) {
+      if (b.length < 12) return false;
+      final int at = b.length - 8;
+      return b[at] == 0x49 && // I
+          b[at + 1] == 0x45 && // E
+          b[at + 2] == 0x4E && // N
+          b[at + 3] == 0x44; // D
+    }
+    if (isWebp(b)) {
+      final int riff = b[4] | (b[5] << 8) | (b[6] << 16) | (b[7] << 24);
+      return riff + 8 == b.length;
+    }
+    if (isGif(b)) return b[b.length - 1] == 0x3B;
+    if (isBmp(b) && b.length >= 6) {
+      final int size = b[2] | (b[3] << 8) | (b[4] << 16) | (b[5] << 24);
+      return size > 0 && size == b.length;
+    }
+    return false;
+  }
+
   /// MIME；不认识的返回空串。
   static String mimeOf(Uint8List? b) {
     if (isJpeg(b)) return 'image/jpeg';

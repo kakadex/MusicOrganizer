@@ -47,6 +47,9 @@ abstract final class CoverReader {
       if (frameSize <= 0 || pos + 10 + frameSize > tagEnd || frameSize > maxBytes + 1024) {
         return null;
       }
+      // 数据只读到一半（比如只读了文件头 256KB）：这个帧不完整，按「没读到」处理。
+      // 调用方据此判断要不要多读一些，而不是拿半张图去显示。
+      if (pos + 10 + frameSize > data.length) return null;
       if (id == 'APIC') {
         if (probeOnly) return Uint8List(0);
         return parseApic(Uint8List.sublistView(data, pos + 10, pos + 10 + frameSize));

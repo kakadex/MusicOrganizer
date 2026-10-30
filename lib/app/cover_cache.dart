@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import '../core/model/vfile.dart';
 import '../core/tag/cover_art.dart';
 import '../core/scan/scanner.dart';
+import 'cover_thumb_cache.dart';
 import 'repo.dart';
 
 /// 封面内存缓存（列表滚动时不重复解压同一张图）。
@@ -55,6 +56,10 @@ class CoverCache {
   bool knownMiss(VFile f) => _miss.contains(keyOf(f));
 
   /// 读一次封面；并发调用同一首只发一次请求。
+  ///
+  /// 0.2.59 起的顺序：内存 → **磁盘缩略图** → 读文件头解析原图。
+  /// 磁盘小图是上一次启动时缩好存下的（约 20–40KB），命中就不必再读
+  /// 0.5–2MB 文件头，也不必解码大图。
   Future<Uint8List?> load(VFile f) async {
     final String key = keyOf(f);
     final Uint8List? hit = _bytes[key];
@@ -66,6 +71,12 @@ class CoverCache {
     try {
       final store = Repo.instance.store;
       if (store == null) return null;
+      // 磁盘缩略图：小图直接可用；读失败就当没有（不能因为缓存读错让列表空着）
+      final Uint8List? thumb = await CoverThumbCache.instance.peek(f);
+      if (thumb != null) {
+        _bytes[key] = thumb;
+        return thumb;
+      }
       final Uint8List? art = await Scanner.readCover(store, f);
       if (art == null || art.isEmpty) {
         _miss.add(key);
@@ -86,6 +97,8 @@ class CoverCache {
         }
       }
       _bytes[key] = art;
+      // 后台缩一张存盘：不 await，别让滚动等磁盘
+      unawaited(CoverThumbCache.instance.save(f, art));
       return art;
     } catch (_) {
       _miss.add(key);

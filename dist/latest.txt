@@ -1,11 +1,11 @@
-version=0.2.58
-tag=v0.2.58
+version=0.2.59
+tag=v0.2.59
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.58/MusicOrganizer-0.2.58-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.59/MusicOrganizer-0.2.59-android-arm64-v8a.apk
 size=19806069
-sha256=dbf1c5f650318b7c6bf8d1876b65c942cadd89ed87464bb4c4b6f78b536b70d3
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.58/MusicOrganizer-0.2.58-windows-x64.zip
-zip_size=12906955
-zip_sha256=919f1982fd8056aeb89044793b6db8c57d121b5717643ff45013e6a4617721e8
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.58
-summary=「垃圾文件」进页面自动后台扫描，带进度条、可随时停止
+sha256=79dd6e434315c1aaf50d845a6f9caa242770fdb3410e263df5bdae91cc55b36e
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.59/MusicOrganizer-0.2.59-windows-x64.zip
+zip_size=12913683
+zip_sha256=1880cd1a1c586dc371cb4ac6ebaecd550c40b494091ce7323aa891d2ec3f528a
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.59
+summary=封面缩略图存盘 + 读封面只读 256KB，滚动更轻
