@@ -498,33 +498,46 @@ class _LibraryPageState extends State<LibraryPage> {
 
   Widget _build(BuildContext context) {
     final Repo repo = Repo.instance;
-    return Column(
-      children: <Widget>[
-        PageHeader(
-          title: '音乐库',
-          centerTitle: true,
-          // 左边排序、右边设置（2026-10-30 用户要求互换）：常用的是排序，
-          // 放在右手拇指更容易够到的外侧。
-          leading: _icon(Icons.sort, '排序', _showSort, key: _sortKey),
-          subtitle: repo.hasRoot
-              ? '${_shown.length} 首${_status.isEmpty ? '' : ' · $_status'}'
-              : '还没有选择曲库目录',
-          actions: <Widget>[
-            _icon(Icons.settings_outlined, '设置', () {
-              Navigator.of(context).push<void>(
-                MaterialPageRoute<void>(
-                    builder: (BuildContext _) => const SettingsPage()),
-              );
-            }),
-            // 重新扫描只保留下拉刷新：右上角再放一个按钮是重复的，
-            // 两者做的事完全一样。
-          ],
-        ),
-        if (repo.hasRoot) _searchBar(),
-        if (repo.hasRoot) _chipRow(),
-        Expanded(child: _body(repo)),
-        if (_selectMode) _selectionBar(),
-      ],
+    return PopScope(
+      // 多选时，返回键 / 左右边缘侧滑（系统返回手势）先退出多选，不要直接退出应用。
+      // 主界面就是根路由，不拦的话一滑就回到桌面。
+      canPop: !_selectMode,
+      onPopInvokedWithResult: (bool didPop, Object? result) {
+        if (didPop || !_selectMode) return;
+        setState(() {
+          _selectMode = false;
+          _dragSelecting = false;
+          _selected.clear();
+        });
+      },
+      child: Column(
+        children: <Widget>[
+          PageHeader(
+            title: '音乐库',
+            centerTitle: true,
+            // 左边排序、右边设置（2026-10-30 用户要求互换）：常用的是排序，
+            // 放在右手拇指更容易够到的外侧。
+            leading: _icon(Icons.sort, '排序', _showSort, key: _sortKey),
+            subtitle: repo.hasRoot
+                ? '${_shown.length} 首${_status.isEmpty ? '' : ' · $_status'}'
+                : '还没有选择曲库目录',
+            actions: <Widget>[
+              _icon(Icons.settings_outlined, '设置', () {
+                Navigator.of(context).push<void>(
+                  MaterialPageRoute<void>(
+                      builder: (BuildContext _) => const SettingsPage()),
+                );
+              }),
+              // 重新扫描只保留下拉刷新：右上角再放一个按钮是重复的，
+              // 两者做的事完全一样。
+            ],
+          ),
+          if (repo.hasRoot) _searchBar(),
+          if (repo.hasRoot) _chipRow(),
+          Expanded(child: _body(repo)),
+          if (_selectMode) _selectionBar(),
+        ],
+      ),
     );
   }
 

@@ -1,11 +1,11 @@
-version=0.2.56
-tag=v0.2.56
+version=0.2.57
+tag=v0.2.57
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.56/MusicOrganizer-0.2.56-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.57/MusicOrganizer-0.2.57-android-arm64-v8a.apk
 size=19806069
-sha256=f7c63a4bd052fbd898e8ab447192fca750263f86974a157b89a923d5af678344
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.56/MusicOrganizer-0.2.56-windows-x64.zip
-zip_size=12637774
-zip_sha256=4f00cb2e7ede389cf5ece294b7cff0fd84e2fe09369834bafc4aa64a2aab2d13
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.56
-summary=批量写标签提速：每首少读两遍文件。
+sha256=a62e367929696080fd8fbd0da3979f66ed6d792dd851ef2745dfa72e1d145394
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.57/MusicOrganizer-0.2.57-windows-x64.zip
+zip_size=12638291
+zip_sha256=a1f9a4bc7d87f303e90eea4af1634092876bfc283d64db53852ee9cf67f82cfc
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.57
+summary=多选时侧滑/返回只退出多选，不再退出应用。

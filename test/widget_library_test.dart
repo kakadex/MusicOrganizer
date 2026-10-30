@@ -244,6 +244,25 @@ void main() {
     expect(bold, isNotEmpty);
   });
 
+  testWidgets('多选时按返回（含左右边缘侧滑）先退出多选，不退出应用',
+      (WidgetTester tester) async {
+    final Repo repo = Repo.instance;
+    repo.resetForTest();
+    seed(repo);
+    await pumpPage(tester);
+
+    await tester.longPress(find.text('示例歌名'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('已选'), findsOneWidget);
+
+    // 系统返回：安卓全面屏的左右边缘侧滑走的就是这条路由
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('已选'), findsNothing, reason: '返回应当只退出多选');
+    expect(find.text('音乐库'), findsOneWidget, reason: '页面还在，没被退出应用');
+  });
+
   testWidgets('多选菜单里有批量改标签 / 改名 / 歌词工具 / 删除全部封面标签歌词 / 删除',
       (WidgetTester tester) async {
     final Repo repo = Repo.instance;
