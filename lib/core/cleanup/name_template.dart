@@ -10,12 +10,12 @@ import '../model/tags.dart';
 /// 模板渲染与文件名整形。
 abstract final class NameTemplate {
   /// 常用预设（顺序即界面里的顺序）。
+  ///
+  /// 只保留「艺人 / 标题」的两种常见顺序（2026-10-30 用户要求删掉其余预设）：
+  /// 带音轨、带专辑的变体都可以用下面的自定义输入框写，预设列一长反而挑花眼。
   static const List<String> presets = <String>[
     '{artist} - {title}',
     '{title} - {artist}',
-    '{track}. {title}',
-    '{artist} - {album} - {track}. {title}',
-    '{title}',
   ];
 
   /// 默认模板。

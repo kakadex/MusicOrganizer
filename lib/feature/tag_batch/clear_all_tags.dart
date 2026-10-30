@@ -1,11 +1,15 @@
-/// 删除选中文件的全部标签与歌词（内嵌歌词 + 同名 `.lrc`）。
+/// 删除选中文件的全部封面、标签与歌词（内嵌歌词 + 同名 `.lrc`）。
 ///
-/// 硬规矩：先预览（逐首列出要清掉的字段与歌词），确认后才写盘；写盘走事务层，
-/// 「撤销」可整体还原（含 `.lrc`，同进同退）。
+/// 硬规矩：先预览（逐首列出要清掉的封面 / 字段 / 歌词），确认后才写盘；写盘走事务层，
+/// 「撤销」可还原标签与 `.lrc`（同进同退）。**封面删掉就回不来了**——撤销日志只存
+/// 字段文本，存不下封面图片本身，预览里必须如实说明。
 library;
+
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../../app/cover_cache.dart';
 import '../../app/repo.dart';
 import '../../app/ui_kit.dart';
 import '../../core/fs/file_store.dart';
@@ -19,7 +23,10 @@ import '../../core/tx/write_preview.dart';
 import '../common/write_confirm_sheet.dart';
 import '../history/undo_flow.dart';
 
-/// 打开「删除全部标签和歌词」流程。[files] 是选中的曲目。
+/// 封面在预览里的行键（不是真标签字段，写盘时单独取出来，与编辑器同一个约定）。
+const String _coverKey = '__cover';
+
+/// 打开「删除全部封面、标签和歌词」流程。[files] 是选中的曲目。
 Future<void> runClearAllTags(BuildContext context, List<VFile> files) async {
   final Repo repo = Repo.instance;
   if (files.isEmpty) return;
@@ -48,6 +55,15 @@ Future<void> runClearAllTags(BuildContext context, List<VFile> files) async {
       tags = Tags();
     }
     final List<WriteLine> lines = <WriteLine>[];
+    // 封面不在 Tags.keys 里，得单独探一下（命中库索引缓存时不碰磁盘）
+    if (await Scanner.hasCover(store, f)) {
+      lines.add(WriteLine(
+        label: '封面',
+        oldText: '有内嵌封面',
+        newText: '（删除）',
+        key: _coverKey,
+      ));
+    }
     for (final String k in Tags.keys) {
       final String v = tags.get(k).trim();
       if (v.isEmpty) continue;
@@ -90,15 +106,16 @@ Future<void> runClearAllTags(BuildContext context, List<VFile> files) async {
 
   if (!context.mounted) return;
   if (plans.isEmpty) {
-    moSnack(context, '选中的文件没有标签或歌词可删');
+    moSnack(context, '选中的文件没有封面、标签或歌词可删');
     return;
   }
 
   final List<WriteTarget>? picked = await WriteConfirmSheet.show(
     context,
-    title: '删除全部标签和歌词',
-    subtitle: '逐首列出要清空的字段与歌词，可取消勾选不想删的项',
-    warning: '标签、内嵌歌词与同名 .lrc 会一并删除，写盘后可用「撤销」整体还原',
+    title: '删除全部封面、标签、歌词',
+    subtitle: '逐首列出要清空的封面、字段与歌词，可取消勾选不想删的项',
+    warning: '封面、标签、内嵌歌词与同名 .lrc 会一并删除；'
+        '撤销可还原标签与歌词，封面删掉后只能重新选图',
     targets: plans,
     commitLabel: '删除',
     unit: '首',
@@ -121,20 +138,25 @@ Future<void> runClearAllTags(BuildContext context, List<VFile> files) async {
     if (f == null) continue;
     final Map<String, String> updates = <String, String>{};
     bool removeLrc = false;
+    bool removeCover = false;
     for (final WriteLine l in t.lines) {
       if (!l.selected || !l.changed) continue;
       final String? k = l.key;
       if (k == null || k.isEmpty) continue;
-      if (k == LrcSidecar.journalKey) {
+      if (k == _coverKey) {
+        removeCover = true;
+      } else if (k == LrcSidecar.journalKey) {
         removeLrc = true;
       } else {
         updates[k] = '';
       }
     }
-    if (updates.isEmpty && !removeLrc) continue;
-    final String err =
-        await tx.apply(f, updates,
-            batchId: batchId, removeLrc: removeLrc, op: JournalOp.clear);
+    if (updates.isEmpty && !removeLrc && !removeCover) continue;
+    final String err = await tx.apply(f, updates,
+        batchId: batchId,
+        cover: removeCover ? Uint8List(0) : null,
+        removeLrc: removeLrc,
+        op: JournalOp.clear);
     if (err.isEmpty) {
       done++;
       repo.invalidate(f);
@@ -143,9 +165,11 @@ Future<void> runClearAllTags(BuildContext context, List<VFile> files) async {
       failed++;
     }
   }
-  // 清标签只清了字段，没动封面；但 invalidate 会把封面标记一起清掉，列表里
-  // 这些歌会连封面一起变空白。补读一次恢复封面的真实状态（标签读回空、封面还在）。
+  // 写盘后 invalidate 会清掉标签缓存，但**封面的内存缓存不会自己失效**：
+  // 不手动清，列表里这些歌会继续显示刚删掉的那张图（标签已经刷新，只有封面
+  // 停在旧状态），看着像没删成功。编辑器保存后也是这么清的。
   if (touched.isNotEmpty) {
+    CoverCache.instance.clear();
     await repo.loadMeta(only: touched);
   }
   if (!context.mounted) return;

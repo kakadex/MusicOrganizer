@@ -1,16 +1,16 @@
-MusicOrganizer v0.2.50 分发包（本地直发，非官方发布页）
+MusicOrganizer v0.2.51 分发包（本地直发，非官方发布页）
 ====================================================
 
 构建时间：2026-10-30
-版本：0.2.50（build 164，版本戳 0.2.50-YTVQF9）
+版本：0.2.51（build 165，版本戳 0.2.51-2XK9DT）
 说明：本目录用于直接发给他人使用，官方发布以 Gitee / GitHub Releases 为准。
 
 文件
 ----
-MusicOrganizer-0.2.50-windows-x64.zip        Windows 桌面版（解压后运行 musicorganizer.exe）
-MusicOrganizer-0.2.50-android-arm64-v8a.apk  安卓 64 位（绝大多数现代手机）
-MusicOrganizer-0.2.50-android-x86_64.apk     安卓 x86_64（少数 Intel 平板 / 模拟器）
-MusicOrganizer-0.2.50-android-armeabi-v7a.apk 安卓 32 位（老旧设备）
+MusicOrganizer-0.2.51-windows-x64.zip        Windows 桌面版（解压后运行 musicorganizer.exe）
+MusicOrganizer-0.2.51-android-arm64-v8a.apk  安卓 64 位（绝大多数现代手机）
+MusicOrganizer-0.2.51-android-x86_64.apk     安卓 x86_64（少数 Intel 平板 / 模拟器）
+MusicOrganizer-0.2.51-android-armeabi-v7a.apk 安卓 32 位（老旧设备）
 SHA256SUMS.txt                               以上文件的 SHA-256 校验和
 
 安装 / 使用
@@ -26,9 +26,9 @@ Android：允许「未知来源」后安装对应 ABI 的 APK。
 
 本版变化
 --------
-安卓端把扫描与文件读写挪到后台：全量扫描、查重、垃圾文件扫描进行时，列表照常
-滚动、按钮照常响应，返回上级也不顿；冷启动先显示上次的曲库，再在后台补齐扫描。
-Windows 桌面版功能与 v0.2.49 一致。
+界面：排序按钮移到左上、设置齿轮移到右上；长按多选的操作条整体上抬约 0.5 厘米。
+功能：「删除全部标签和歌词」改为「删除全部封面、标签、歌词」，预览里可单独取消
+封面那一行；按标签改名的预设模板精简为「艺人 - 标题」「标题 - 艺人」两条。
 
 校验（可选）
 ----------

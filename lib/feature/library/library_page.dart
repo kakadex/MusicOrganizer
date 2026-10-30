@@ -502,17 +502,19 @@ class _LibraryPageState extends State<LibraryPage> {
         PageHeader(
           title: '音乐库',
           centerTitle: true,
-          leading: _icon(Icons.settings_outlined, '设置', () {
-            Navigator.of(context).push<void>(
-              MaterialPageRoute<void>(
-                  builder: (BuildContext _) => const SettingsPage()),
-            );
-          }),
+          // 左边排序、右边设置（2026-10-30 用户要求互换）：常用的是排序，
+          // 放在右手拇指更容易够到的外侧。
+          leading: _icon(Icons.sort, '排序', _showSort, key: _sortKey),
           subtitle: repo.hasRoot
               ? '${_shown.length} 首${_status.isEmpty ? '' : ' · $_status'}'
               : '还没有选择曲库目录',
           actions: <Widget>[
-            _icon(Icons.sort, '排序', _showSort, key: _sortKey),
+            _icon(Icons.settings_outlined, '设置', () {
+              Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                    builder: (BuildContext _) => const SettingsPage()),
+              );
+            }),
             // 重新扫描只保留下拉刷新：右上角再放一个按钮是重复的，
             // 两者做的事完全一样。
           ],
@@ -727,9 +729,17 @@ class _LibraryPageState extends State<LibraryPage> {
     }
   }
 
+  /// 选中操作条整体上抬的高度（逻辑像素）。
+  ///
+  /// 用户 2026-10-30 要求「向上调整 0.5CM」：安卓上 1dp = 1/160 英寸，
+  /// 0.5cm ≈ 31.5dp，取整 32。加在下内边距上而不是把整条平移——白底照样铺到
+  /// 屏幕最底边，条下面不会留出一条灰缝。
+  static const double _selectionBarLift = 32;
+
   Widget _selectionBar() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 8, MoKit.pagePad, 8),
+      padding: const EdgeInsets.fromLTRB(
+          MoKit.pagePad, 8, MoKit.pagePad, 8 + _selectionBarLift),
       color: MoKit.card(context),
       child: Row(
         children: <Widget>[
@@ -834,8 +844,8 @@ class _LibraryPageState extends State<LibraryPage> {
           },
         ),
         MoTile(
-          title: '删除全部标签和歌词',
-          subtitle: '清空选中文件的标签与歌词（含同名 .lrc），先预览再删',
+          title: '删除全部封面、标签、歌词',
+          subtitle: '清空选中文件的封面、标签与歌词（含同名 .lrc），先预览再删',
           icon: Icons.layers_clear_outlined,
           danger: true,
           onTap: () {
@@ -882,16 +892,15 @@ class _LibraryPageState extends State<LibraryPage> {
     );
   }
 
-  /// 排序菜单：贴在右上角按钮下方展开，宽高都不超过屏幕一半。
+  /// 排序菜单：贴在左上角排序按钮下方展开，宽高都不超过屏幕一半。
   ///
   /// 原来是一个从底部升起的整屏面板——改个排序要占满整屏，视线还得上下跑。
   Future<void> _showSort() async {
     final RenderBox? box =
         _sortKey.currentContext?.findRenderObject() as RenderBox?;
     final Size screen = MediaQuery.of(context).size;
-    final Offset origin = box == null
-        ? Offset(screen.width - 56, 70)
-        : box.localToGlobal(Offset.zero);
+    final Offset origin =
+        box == null ? const Offset(8, 70) : box.localToGlobal(Offset.zero);
     final RelativeRect position = RelativeRect.fromLTRB(
       origin.dx - 8,
       origin.dy + (box?.size.height ?? 40),
