@@ -104,9 +104,11 @@ void main() {
 
     expect(find.text('开源许可'), findsOneWidget);
     expect(find.textContaining('MIT License'), findsWidgets);
-    expect(find.textContaining('MIT 许可证'), findsOneWidget);
+    expect(find.textContaining('MIT 许可协议'), findsOneWidget);
     expect(find.textContaining('Copyright (c) 2026 kakadex'), findsOneWidget);
     expect(find.textContaining('版权所有 (c) 2026 kakadex'), findsOneWidget);
+    // 译文仅供参考的法律提示
+    expect(find.textContaining('以英文原文为准'), findsOneWidget);
     // 这是本项目自己的许可，不是第三方依赖清单
     expect(find.textContaining('Third-Party'), findsNothing);
   });
