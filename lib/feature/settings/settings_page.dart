@@ -78,10 +78,18 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     // 只订阅「设置 + 目录」：曲库扫描进度不再带着设置页一起重建。
-    return ListenableBuilder(
-      listenable: _repo.changes
-          .of(<RepoDomain>[RepoDomain.settings, RepoDomain.root]),
-      builder: (BuildContext context, Widget? _) => _body(context),
+    //
+    // 外层必须是 Scaffold：本页现在是从音乐库左上角齿轮 push 出来的独立路由，
+    // 不再挂在 shell 的 Scaffold 里。少了它，页内的 InkWell（MoTile / MoButton）
+    // 一被鼠标悬停就会 Material.of(null) 崩掉。
+    return Scaffold(
+      body: SafeArea(
+        child: ListenableBuilder(
+          listenable: _repo.changes
+              .of(<RepoDomain>[RepoDomain.settings, RepoDomain.root]),
+          builder: (BuildContext context, Widget? _) => _body(context),
+        ),
+      ),
     );
   }
 

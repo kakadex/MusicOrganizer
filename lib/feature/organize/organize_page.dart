@@ -73,10 +73,17 @@ class _OrganizePageState extends State<OrganizePage> {
   Widget build(BuildContext context) {
     _scheduleJunkScan();
     // 只订阅「曲目 + 目录」两域：设置项变化不该让整理页整页重建。
-    return ListenableBuilder(
-      listenable: _repo.changes.of(
-          <RepoDomain>[RepoDomain.library, RepoDomain.root]),
-      builder: (BuildContext context, Widget? _) => _body(context),
+    //
+    // 外层必须是 Scaffold：本页现在由「设置 → 整理」push 进来，不再是 shell 的
+    // 一个 tab。少了它，卡片里的 InkWell 一悬停就会 Material.of(null) 崩掉。
+    return Scaffold(
+      body: SafeArea(
+        child: ListenableBuilder(
+          listenable: _repo.changes.of(
+              <RepoDomain>[RepoDomain.library, RepoDomain.root]),
+          builder: (BuildContext context, Widget? _) => _body(context),
+        ),
+      ),
     );
   }
 
@@ -146,8 +153,11 @@ class _OrganizePageState extends State<OrganizePage> {
           child: ListView(
             padding: const EdgeInsets.only(bottom: 16),
             children: <Widget>[
-              if (showOrganize) _scanCard(audio),
-              if (showCleanup) _cleanCard(),
+              if (showOrganize)
+                _scanCard(audio,
+                    showTitle: widget.section == OrganizeSection.all),
+              if (showCleanup)
+                _cleanCard(showTitle: widget.section == OrganizeSection.all),
             ],
           ),
         ),
@@ -155,13 +165,15 @@ class _OrganizePageState extends State<OrganizePage> {
     );
   }
 
-  Widget _scanCard(int audio) {
+  /// [showTitle] 为 false 时不画卡片标题 —— 二级页顶部已经有同名标题了，
+  /// 再画一次会出现两个「清理与查重」。
+  Widget _scanCard(int audio, {bool showTitle = true}) {
     final int unorganized = _repo.audioFiles().where((VFile f) {
       final rel = _repo.relPath(f);
       return !rel.contains('/');
     }).length;
     return SectionCard(
-      title: '扫描与整理',
+      title: showTitle ? '扫描与整理' : null,
       subtitle: _repo.hasRoot ? '$audio 首 · 待归类 $unorganized 首' : '先选一个曲库目录',
       children: <Widget>[
         Row(
@@ -194,11 +206,12 @@ class _OrganizePageState extends State<OrganizePage> {
     );
   }
 
-  Widget _cleanCard() {
+  /// [showTitle] 为 false 时不画卡片标题（二级页顶部已有同名标题）。
+  Widget _cleanCard({bool showTitle = true}) {
     final List<VFile> all = _repo.files;
     final int junk = _junkFiles.length;
     return SectionCard(
-      title: '清理与查重',
+      title: showTitle ? '清理与查重' : null,
       subtitle: '只看不改，列出来再决定',
       children: <Widget>[
         MoTile(
