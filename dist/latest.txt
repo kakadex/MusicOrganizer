@@ -1,11 +1,11 @@
-version=0.2.48
-tag=v0.2.48
+version=0.2.49
+tag=v0.2.49
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.48/MusicOrganizer-0.2.48-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.49/MusicOrganizer-0.2.49-android-arm64-v8a.apk
 size=19806069
-sha256=bfb60f376be8ca1a6f0cc841fcfea57ccd372a9349ebf4acd35928d51f5ec82f
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.48/MusicOrganizer-0.2.48-windows-x64.zip
-zip_size=12633454
-zip_sha256=e54a9d327a3798a1b1d4e43b033b2a5f36ce39fadcb6a5925da2f696f63eeb3e
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.48
-summary=整理页合并：扫描统计并入自动整理并弹统计；修复返回上级卡顿。
+sha256=9494b1711adc05a8c06d085ace4b25b23d58d2318cdf70d3ded8acecd19cf322
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.49/MusicOrganizer-0.2.49-windows-x64.zip
+zip_size=12634325
+zip_sha256=46494e98b3361ce2ed07cb64eea42b60a38259db3bf1520487ee2d492025c574
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.49
+summary=修复安卓端清理与查重、撤销历史返回上级卡顿。

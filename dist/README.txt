@@ -1,16 +1,16 @@
-MusicOrganizer v0.2.48 分发包（本地直发，非官方发布页）
+MusicOrganizer v0.2.49 分发包（本地直发，非官方发布页）
 ====================================================
 
 构建时间：2026-10-30
-版本：0.2.48（build 162，版本戳 0.2.48-G3P269）
+版本：0.2.49（build 163，版本戳 0.2.49-YTVQF9）
 说明：本目录用于直接发给他人使用，官方发布以 Gitee / GitHub Releases 为准。
 
 文件
 ----
-MusicOrganizer-0.2.48-windows-x64.zip        Windows 桌面版（解压后运行 musicorganizer.exe）
-MusicOrganizer-0.2.48-android-arm64-v8a.apk  安卓 64 位（绝大多数现代手机）
-MusicOrganizer-0.2.48-android-x86_64.apk     安卓 x86_64（少数 Intel 平板 / 模拟器）
-MusicOrganizer-0.2.48-android-armeabi-v7a.apk 安卓 32 位（老旧设备）
+MusicOrganizer-0.2.49-windows-x64.zip        Windows 桌面版（解压后运行 musicorganizer.exe）
+MusicOrganizer-0.2.49-android-arm64-v8a.apk  安卓 64 位（绝大多数现代手机）
+MusicOrganizer-0.2.49-android-x86_64.apk     安卓 x86_64（少数 Intel 平板 / 模拟器）
+MusicOrganizer-0.2.49-android-armeabi-v7a.apk 安卓 32 位（老旧设备）
 SHA256SUMS.txt                               以上文件的 SHA-256 校验和
 
 安装 / 使用
@@ -26,9 +26,8 @@ Android：允许「未知来源」后安装对应 ABI 的 APK。
 
 本版变化
 --------
-「扫描统计」并入「自动整理」：点一次先重扫曲库、再出移动计划、确认后执行，
-结束后弹统计（已移动 / 跳过 / 失败 / 仍待归类）；修复从整理二级页返回上级
-时的卡顿。
+修复安卓端从「清理与查重」「撤销历史」返回上级时的卡顿：垃圾文件改为点一下才
+扫描（不再进页面就整树遍历），撤销历史读取延后到转场动画之后。
 
 校验（可选）
 ----------
