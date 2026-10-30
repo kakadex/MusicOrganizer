@@ -1,11 +1,11 @@
-version=0.2.55
-tag=v0.2.55
+version=0.2.56
+tag=v0.2.56
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.55/MusicOrganizer-0.2.55-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.56/MusicOrganizer-0.2.56-android-arm64-v8a.apk
 size=19806069
-sha256=19171bc4323a2a8f643c547362c7f1d72bb244ea3cf5502670ce8f40f10e2585
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.55/MusicOrganizer-0.2.55-windows-x64.zip
-zip_size=12639994
-zip_sha256=01bee2eec849ff01345afda5d40d2ffd828a985e90c7c6f7d49470e17c215ada
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.55
-summary=新增「标签转简体」：把已有标签里的繁体一次转成简体。
+sha256=f7c63a4bd052fbd898e8ab447192fca750263f86974a157b89a923d5af678344
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.56/MusicOrganizer-0.2.56-windows-x64.zip
+zip_size=12637774
+zip_sha256=4f00cb2e7ede389cf5ece294b7cff0fd84e2fe09369834bafc4aa64a2aab2d13
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.56
+summary=批量写标签提速：每首少读两遍文件。

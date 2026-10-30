@@ -263,8 +263,15 @@ class TagTransaction {
       tmp = await _tempFile(ext);
       await store.copyToLocal(f, tmp);
 
-      // 2. 在副本上写
+      // 2. 读出原始字节，**先落一份本地备份**，再在内存里改标签
+      //
+      // 备份直接用这份字节写，不再把原文件整份重读一遍：批量写几百首时，每首
+      // 少一次 5MB 的 SAF 读取（几百毫秒）。备份内容与 copyToLocal 完全一致。
+      // 顺序要在 writeLocal 之前——那是纯内存改写，但备份必须拿到「改之前」的字节。
       final Uint8List data = await tmp.readAsBytes();
+      backup = await _tempFile(ext);
+      await backup.writeAsBytes(data, flush: true);
+
       final (String err, Uint8List? result) =
           TagIO.writeLocal(data, ext, updates, cover: cover);
       if (err.isNotEmpty) return '标签写入失败（原文件未修改）：$err';
@@ -284,11 +291,7 @@ class TagTransaction {
         }
       }
 
-      // 4. 备份当前原文件
-      backup = await _tempFile(ext);
-      await store.copyToLocal(f, backup);
-      // 批开着且还放得下：这份备份留到批结束（成功 commit 时删、失败 rollback 时
-      // 写回去）。不额外读盘——单文件事务本来就要这份备份做回读校验。
+      // 4. 把备份登记到批里（文件在第 2 步已经写好，这里只算配额）
       final _Batch? b = _batch;
       if (b != null && b.id == batchId) {
         final int size = await backup.length();
@@ -306,18 +309,21 @@ class TagTransaction {
       wroteOriginal = true;
       await store.writeFromLocal(f, tmp);
 
-      // 6. 回读校验，失败则恢复备份
+      // 6. 回读校验（只核对大小）
+      //
+      // 以前这里把整份文件再读一遍重解析字段；批量写几百首时，这一趟是每首多一次
+      // 5MB 的 SAF 读取（几百毫秒），几百首就是好几分钟。写回去的字节在第 3 步已经
+      // 解析校验过，这里只要确认「确实写全了」：大小不符立刻从备份还原。
       f.clearMeta();
-      final Tags after = await _readTags(f, ext);
-      for (final MapEntry<String, String> e in updates.entries) {
-        if (after.get(e.key) != e.value.trim()) {
-          await store.writeFromLocal(f, backup);
-          f.clearMeta();
-          // 已经就地还原了，这项不该再算进「批里已写入的」
-          _voidBatchBackup(batchItem);
-          batchItem = null;
-          return '回读校验失败，已从备份恢复：${e.key}';
-        }
+      final VFile? now = await store.stat(f.docId);
+      final Tags after = verify;
+      if (now == null || now.size != result.length) {
+        await store.writeFromLocal(f, backup);
+        f.clearMeta();
+        // 已经就地还原了，这项不该再算进「批里已写入的」
+        _voidBatchBackup(batchItem);
+        batchItem = null;
+        return '回读校验失败（写入长度不符），已从备份恢复';
       }
 
       // 6.5 同名 .lrc：与音频同一个事务窗口。写失败就把音频也退回去，
