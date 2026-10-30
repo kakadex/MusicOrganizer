@@ -1,16 +1,16 @@
-MusicOrganizer v0.2.51 分发包（本地直发，非官方发布页）
+MusicOrganizer v0.2.52 分发包（本地直发，非官方发布页）
 ====================================================
 
 构建时间：2026-10-30
-版本：0.2.51（build 165，版本戳 0.2.51-2XK9DT）
+版本：0.2.52（build 166，版本戳 0.2.52-P5O326）
 说明：本目录用于直接发给他人使用，官方发布以 Gitee / GitHub Releases 为准。
 
 文件
 ----
-MusicOrganizer-0.2.51-windows-x64.zip        Windows 桌面版（解压后运行 musicorganizer.exe）
-MusicOrganizer-0.2.51-android-arm64-v8a.apk  安卓 64 位（绝大多数现代手机）
-MusicOrganizer-0.2.51-android-x86_64.apk     安卓 x86_64（少数 Intel 平板 / 模拟器）
-MusicOrganizer-0.2.51-android-armeabi-v7a.apk 安卓 32 位（老旧设备）
+MusicOrganizer-0.2.52-windows-x64.zip        Windows 桌面版（解压后运行 musicorganizer.exe）
+MusicOrganizer-0.2.52-android-arm64-v8a.apk  安卓 64 位（绝大多数现代手机）
+MusicOrganizer-0.2.52-android-x86_64.apk     安卓 x86_64（少数 Intel 平板 / 模拟器）
+MusicOrganizer-0.2.52-android-armeabi-v7a.apk 安卓 32 位（老旧设备）
 SHA256SUMS.txt                               以上文件的 SHA-256 校验和
 
 安装 / 使用
@@ -26,9 +26,9 @@ Android：允许「未知来源」后安装对应 ABI 的 APK。
 
 本版变化
 --------
-界面：排序按钮移到左上、设置齿轮移到右上；长按多选的操作条整体上抬约 0.5 厘米。
-功能：「删除全部标签和歌词」改为「删除全部封面、标签、歌词」，预览里可单独取消
-封面那一行；按标签改名的预设模板精简为「艺人 - 标题」「标题 - 艺人」两条。
+修复全选几百首后点「删除全部封面、标签、歌词」像没反应的问题：现在底部任务条会
+显示「正在检查 / 正在清除 N/M」并可随时停止；多选很多首时预览面板默认折叠，
+并会提示「另外 N 首本来就没有可删的内容」。
 
 校验（可选）
 ----------

@@ -1,11 +1,11 @@
-version=0.2.51
-tag=v0.2.51
+version=0.2.52
+tag=v0.2.52
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.51/MusicOrganizer-0.2.51-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.52/MusicOrganizer-0.2.52-android-arm64-v8a.apk
 size=19806069
-sha256=8d1d5085d661e06372a39732dff39af2fbeac707d1b8db3085b89e2db795a27e
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.51/MusicOrganizer-0.2.51-windows-x64.zip
-zip_size=12634689
-zip_sha256=7213cdc309aee4ae4a44a74f46db81e0f63194acd2d6758e206ead6b17ab3d16
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.51
-summary=界面细节调整，删除功能扩到封面，改名模板精简。
+sha256=a9665e77bb2138b2485b027146d374b6204ddddfd4d925dbaf8064c423571ca1
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.52/MusicOrganizer-0.2.52-windows-x64.zip
+zip_size=12638309
+zip_sha256=cf3bd454932996402636d03af4d40f85b038ac322c18475d028e22c5bbad4931
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.52
+summary=修复全选几百首后删除封面/标签没反应。

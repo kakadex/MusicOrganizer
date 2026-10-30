@@ -39,6 +39,40 @@ abstract final class LrcSidecar {
     return null;
   }
 
+  /// 批量找出「有同名 `.lrc`」的音频，返回这些音频的 docId 集合。
+  ///
+  /// 为什么不做成循环里逐首 [locate]：它每次都要 `stat` 父目录再整份列一遍。
+  /// 900 首就是上千次跨进程查询，安卓上会长时间毫无反应（用户实测：单首能删、
+  /// 全选 900 首点下去像没点到）。这里按父目录归并，一个目录只列一次。
+  ///
+  /// 单个目录读不出来（授权抖动 / 目录刚被删）只影响该目录，不中断整批。
+  static Future<Set<String>> withSidecar(
+      FileStore store, List<VFile> audios) async {
+    final Map<String, List<VFile>> byDir = <String, List<VFile>>{};
+    for (final VFile a in audios) {
+      final String? p = a.parentId;
+      if (p == null) continue;
+      (byDir[p] ??= <VFile>[]).add(a);
+    }
+    final Set<String> out = <String>{};
+    for (final MapEntry<String, List<VFile>> e in byDir.entries) {
+      try {
+        final VFile? dir = await store.stat(e.key);
+        if (dir == null) continue;
+        final Set<String> names = <String>{};
+        for (final VFile c in await store.children(dir)) {
+          if (!c.dir) names.add(c.name.toLowerCase());
+        }
+        for (final VFile a in e.value) {
+          if (names.contains(nameFor(a).toLowerCase())) out.add(a.docId);
+        }
+      } catch (_) {
+        // 这个目录读不出来：它的音频先按「没有 .lrc」处理，不影响其它目录
+      }
+    }
+    return out;
+  }
+
   /// 读出原始字节；文件不存在返回 null（空文件返回空数组）。
   static Future<Uint8List?> readBytes(FileStore store, VFile audio) async {
     final VFile? f = await locate(store, audio);
