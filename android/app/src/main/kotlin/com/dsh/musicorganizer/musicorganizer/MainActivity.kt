@@ -4,10 +4,18 @@ import android.app.Activity
 import android.content.Intent
 import android.media.MediaScannerConnection
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.FileNotFoundException
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 
 class MainActivity : FlutterActivity() {
 
@@ -15,6 +23,33 @@ class MainActivity : FlutterActivity() {
     private var pendingPermissionResult: MethodChannel.Result? = null
     private lateinit var safPlugin: SafPlugin
     private var hostChannel: MethodChannel? = null
+
+    /**
+     * SAF 调用的后台线程池。
+     *
+     * 每一次 `resolver.query` / `openInputStream` 都是一次跨进程调用：要等
+     * DocumentsProvider 那边（文件管理器、网盘、U 盘驱动）回话，正常几毫秒，
+     * 卡的时候几十上百毫秒。这些调用原来全跑在平台主线程上，所以一次全量扫描
+     * 要发几千次，界面就一直在等同一个 Looper —— 表现就是列表卡、点返回没反应。
+     *
+     * 用池而不是单线程：Dart 侧补读标签是 8 路并发（`organize_page._readTagArtists`），
+     * 单线程会把并发压成串行，查重前的标签补读反而变慢。4 条线程够覆盖这个并发，
+     * 又不会让 provider 同时承受太多请求。
+     *
+     * 核心线程可超时回收：Activity 重建、引擎被缓存时不一定会走到
+     * [cleanUpFlutterEngine]，空闲 30 秒后这些线程自己退出，不留悬挂线程。
+     */
+    private val safIo = ThreadPoolExecutor(
+        SAF_THREADS,
+        SAF_THREADS,
+        30L,
+        TimeUnit.SECONDS,
+        LinkedBlockingQueue(),
+        { r -> Thread(r, "saf-io").apply { isDaemon = true } },
+    ).apply { allowCoreThreadTimeOut(true) }
+
+    /// 回主线程用：MethodChannel 的结果只能在平台主线程回调。
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -106,7 +141,7 @@ class MainActivity : FlutterActivity() {
                             result.success(false)
                         }
                 }
-                "uriInfo" -> safCall(result) {
+                "uriInfo" -> safCall("uriInfo", result) {
                     safPlugin.uriInfo(call.argument<String>("uri") ?: "")
                 }
                 else -> result.notImplemented()
@@ -124,20 +159,20 @@ class MainActivity : FlutterActivity() {
                         REQUEST_CODE_OPEN_TREE
                     )
                 }
-                "listRoots" -> safCall(result) { safPlugin.listRoots() }
-                "authState" -> safCall(result) {
+                "listRoots" -> safCall("listRoots", result) { safPlugin.listRoots() }
+                "authState" -> safCall("authState", result) {
                     safPlugin.authState(call.argument<String>("treeUri") ?: "")
                 }
-                "stat" -> safCall(result) {
+                "stat" -> safCall("stat", result) {
                     safPlugin.stat(call.argument<String>("treeUri") ?: "", call.argument<String>("docId"))
                 }
-                "listChildren" -> safCall(result) {
+                "listChildren" -> safCall("listChildren", result) {
                     safPlugin.listChildren(
                         call.argument<String>("treeUri") ?: "",
                         call.argument<String>("parentDocId")
                     )
                 }
-                "copyDocToCache" -> safCall(result) {
+                "copyDocToCache" -> safCall("copyDocToCache", result) {
                     safPlugin.copyDocToCache(
                         call.argument<String>("treeUri") ?: "",
                         call.argument<String>("docId") ?: "",
@@ -145,28 +180,28 @@ class MainActivity : FlutterActivity() {
                         call.argument<Int>("maxBytes") ?: 0
                     )
                 }
-                "writeCacheToDoc" -> safCall(result) {
+                "writeCacheToDoc" -> safCall("writeCacheToDoc", result) {
                     safPlugin.writeCacheToDoc(
                         call.argument<String>("treeUri") ?: "",
                         call.argument<String>("docId") ?: "",
                         call.argument<String>("cachePath") ?: ""
                     )
                 }
-                "readHead" -> safCall(result) {
+                "readHead" -> safCall("readHead", result) {
                     safPlugin.readHead(
                         call.argument<String>("treeUri") ?: "",
                         call.argument<String>("docId") ?: "",
                         call.argument<Int>("maxBytes") ?: 0
                     )
                 }
-                "readTail" -> safCall(result) {
+                "readTail" -> safCall("readTail", result) {
                     safPlugin.readTail(
                         call.argument<String>("treeUri") ?: "",
                         call.argument<String>("docId") ?: "",
                         call.argument<Int>("maxBytes") ?: 0
                     )
                 }
-                "readRange" -> safCall(result) {
+                "readRange" -> safCall("readRange", result) {
                     safPlugin.readRange(
                         call.argument<String>("treeUri") ?: "",
                         call.argument<String>("docId") ?: "",
@@ -174,7 +209,7 @@ class MainActivity : FlutterActivity() {
                         call.argument<Int>("maxBytes") ?: 0
                     )
                 }
-                "createDocument" -> safCall(result) {
+                "createDocument" -> safCall("createDocument", result) {
                     safPlugin.createDocument(
                         call.argument<String>("treeUri") ?: "",
                         call.argument<String>("parentDocId") ?: "",
@@ -182,27 +217,27 @@ class MainActivity : FlutterActivity() {
                         call.argument<String>("mime") ?: "application/octet-stream"
                     )
                 }
-                "createDir" -> safCall(result) {
+                "createDir" -> safCall("createDir", result) {
                     safPlugin.createDir(
                         call.argument<String>("treeUri") ?: "",
                         call.argument<String>("parentDocId") ?: "",
                         call.argument<String>("name") ?: ""
                     )
                 }
-                "deleteDocument" -> safCall(result) {
+                "deleteDocument" -> safCall("deleteDocument", result) {
                     safPlugin.deleteDocument(
                         call.argument<String>("treeUri") ?: "",
                         call.argument<String>("docId") ?: ""
                     )
                 }
-                "renameDocument" -> safCall(result) {
+                "renameDocument" -> safCall("renameDocument", result) {
                     safPlugin.renameDocument(
                         call.argument<String>("treeUri") ?: "",
                         call.argument<String>("docId") ?: "",
                         call.argument<String>("newName") ?: ""
                     )
                 }
-                "moveDocument" -> safCall(result) {
+                "moveDocument" -> safCall("moveDocument", result) {
                     safPlugin.moveDocument(
                         call.argument<String>("treeUri") ?: "",
                         call.argument<String>("docId") ?: "",
@@ -221,10 +256,10 @@ class MainActivity : FlutterActivity() {
                         result.error("E_IO", e.message, null)
                     }
                 }
-                "mediaStoreAudio" -> safCall(result) {
+                "mediaStoreAudio" -> safCall("mediaStoreAudio", result) {
                     safPlugin.mediaStoreAudio(call.argument<Int>("minDurationMs") ?: 0)
                 }
-                "copyMediaToCache" -> safCall(result) {
+                "copyMediaToCache" -> safCall("copyMediaToCache", result) {
                     safPlugin.copyMediaToCache(
                         call.argument<String>("uri") ?: "",
                         call.argument<String>("cachePath") ?: ""
@@ -377,21 +412,77 @@ class MainActivity : FlutterActivity() {
         result?.success(granted)
     }
 
-    private fun safCall(result: MethodChannel.Result, block: () -> Any?) {
-        try {
-            result.success(block())
-        } catch (e: SecurityException) {
-            result.error("E_NO_PERMISSION", e.message, null)
-        } catch (e: FileNotFoundException) {
-            result.error("E_NOT_FOUND", e.message, null)
-        } catch (e: Exception) {
-            result.error("E_IO", e.message, null)
+    /**
+     * 把一次 SAF 调用挪到后台线程执行，结果回主线程再回给 Dart。
+     *
+     * 线程安全：SafPlugin 的各方法只持有各自的局部变量（`seen`、`out` 都在方法里），
+     * 不共享可变字段，可以并发跑。同一个文件上的「读-改-写」靠 Dart 侧逐次 await
+     * 保证先后——它拿到上一次的结果才会发下一次，所以池子不会把同一串操作打乱。
+     *
+     * 异常映射保持原样：SecurityException / FileNotFoundException / 其他都映射成
+     * Dart 侧认识的错误码，后台线程抛异常不会冒到主线程把进程带崩。
+     *
+     * [method] 只用于慢调用日志（`adb logcat -s SafIo`），排查「哪一步慢」时有据可查。
+     */
+    private fun safCall(method: String, result: MethodChannel.Result, block: () -> Any?) {
+        val started = SystemClock.uptimeMillis()
+        val task = Runnable {
+            var value: Any? = null
+            var code: String? = null
+            var message: String? = null
+            try {
+                value = block()
+            } catch (e: SecurityException) {
+                code = "E_NO_PERMISSION"
+                message = e.message
+            } catch (e: FileNotFoundException) {
+                code = "E_NOT_FOUND"
+                message = e.message
+            } catch (e: Exception) {
+                code = "E_IO"
+                message = e.message
+            }
+            val cost = SystemClock.uptimeMillis() - started
+            if (cost >= SLOW_CALL_MS) {
+                Log.w(TAG, "saf $method 耗时 ${cost}ms（后台线程，含排队）")
+            }
+            val valueFinal = value
+            val codeFinal = code
+            val messageFinal = message
+            mainHandler.post {
+                // 引擎已经销毁时 result 的发不出去，抛了也不该崩
+                runCatching {
+                    if (codeFinal == null) result.success(valueFinal)
+                    else result.error(codeFinal, messageFinal, null)
+                }
+            }
         }
+        try {
+            safIo.execute(task)
+        } catch (_: RejectedExecutionException) {
+            // 引擎正在销毁、池子已关：这次调用没人等了，直接丢弃
+        }
+    }
+
+    override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        // 已经排队的任务让它跑完（结果发不出去由上面 runCatching 兜住），
+        // 只关入口不再接收新调用。
+        safIo.shutdown()
+        super.cleanUpFlutterEngine(flutterEngine)
     }
 
     companion object {
         private const val REQUEST_CODE_OPEN_TREE = 4401
         private const val REQUEST_CODE_EXPORT_TEXT = 4402
         private const val REQUEST_CODE_AUDIO_PERMISSION = 4402
+
+        /// SAF 后台线程数（取值理由见 safIo 的注释）。
+        private const val SAF_THREADS = 4
+
+        /// 单次 SAF 调用超过这个耗时就记一条日志（真机上排查慢查询用）。
+        private const val SLOW_CALL_MS = 200L
+
+        /// 日志标签：`adb logcat -s SafIo` 只看 SAF 相关。
+        private const val TAG = "SafIo"
     }
 }

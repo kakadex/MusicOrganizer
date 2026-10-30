@@ -1,11 +1,11 @@
-version=0.2.49
-tag=v0.2.49
+version=0.2.50
+tag=v0.2.50
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.49/MusicOrganizer-0.2.49-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.50/MusicOrganizer-0.2.50-android-arm64-v8a.apk
 size=19806069
-sha256=9494b1711adc05a8c06d085ace4b25b23d58d2318cdf70d3ded8acecd19cf322
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.49/MusicOrganizer-0.2.49-windows-x64.zip
-zip_size=12634325
-zip_sha256=46494e98b3361ce2ed07cb64eea42b60a38259db3bf1520487ee2d492025c574
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.49
-summary=修复安卓端清理与查重、撤销历史返回上级卡顿。
+sha256=9e23a5df93a99ef96dc2e9414225f90c1ce24e1f9c531a4f8c26846e5614cc25
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.50/MusicOrganizer-0.2.50-windows-x64.zip
+zip_size=12634329
+zip_sha256=7a2bd76864df9e940539597315833e5231429f1badef5c18d8d3329cf2ca2049
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.50
+summary=安卓端扫描与读写改到后台，界面不再卡住。
