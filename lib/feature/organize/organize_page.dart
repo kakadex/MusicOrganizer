@@ -11,6 +11,7 @@ import '../../core/dedupe/duplicates.dart';
 import '../../core/fs/file_store.dart';
 import '../../core/fs/tree_ref.dart';
 import '../../core/match/text_util.dart';
+import '../../core/model/cancel_token.dart';
 import '../../core/model/duplicate_group.dart';
 import '../../core/model/tags.dart';
 import '../../core/model/task_control.dart';
@@ -66,8 +67,17 @@ class _OrganizePageState extends State<OrganizePage> {
   List<VFile> _junkFiles = <VFile>[];
   bool _junkScanning = false;
   String _junkRootId = '';
+  _FlagToken? _junkCancel;
 
   Repo get _repo => Repo.instance;
+
+  @override
+  void dispose() {
+    // 返回上级时立刻停掉垃圾扫描：整树遍历在主 isolate 上跑，
+    // 不取消的话返回动画会被磁盘 IO 拖住（用户实测的「返回卡顿」）。
+    _junkCancel?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -105,21 +115,28 @@ class _OrganizePageState extends State<OrganizePage> {
     final FileStore? st = _repo.store;
     if (st == null || _repo.roots.isEmpty) return;
     if (!mounted) return;
+    final _FlagToken token = _FlagToken();
+    _junkCancel = token;
     setState(() => _junkScanning = true);
     try {
       final List<VFile> all = <VFile>[];
       for (final TreeRef r in _repo.roots) {
+        if (token.isCancelled()) return;
         final VFile rootDir = VFile(docId: r.rootDocId, name: r.rootDocId, dir: true);
-        all.addAll(await Scanner.walkAll(st, rootDir, filter: _repo.scanFilter()));
+        all.addAll(await Scanner.walkAll(st, rootDir,
+            filter: _repo.scanFilter(), cancel: token));
+        if (token.isCancelled()) return;
       }
+      if (!mounted || token.isCancelled()) return;
       final List<VFile> junk = all.where(Junk.isJunk).toList();
-      if (!mounted) return;
       setState(() {
         _junkFiles = junk;
         _junkScanning = false;
       });
     } catch (_) {
-      if (mounted) setState(() => _junkScanning = false);
+      if (mounted && !token.isCancelled()) {
+        setState(() => _junkScanning = false);
+      }
     }
   }
 
@@ -982,4 +999,21 @@ class _OrganizePageState extends State<OrganizePage> {
     if (!mounted) return;
     moSnack(context, '已删除 $ok 个');
   }
+}
+
+/// 极简取消令牌：只承载「该停了」这一个状态。
+///
+/// 项目里的 [CancelToken] 是纯接口（只有 isCancelled），这里给整理页的
+/// 垃圾扫描补一个可置位的实现；`dispose()` 时置位，`Scanner.walkAll`
+/// 每进一个目录都会查一次，从而在返回上级时尽快退出遍历。
+class _FlagToken implements CancelToken {
+  bool _cancelled = false;
+
+  void cancel() => _cancelled = true;
+
+  @override
+  bool isCancelled() => _cancelled;
+
+  @override
+  bool isCancelledNow() => _cancelled;
 }
