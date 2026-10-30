@@ -66,7 +66,9 @@ class _OrganizePageState extends State<OrganizePage> {
   /// 垃圾文件候选：走全量遍历（含非音频），不是曲库列表里挑。
   List<VFile> _junkFiles = <VFile>[];
   bool _junkScanning = false;
-  String _junkRootId = '';
+
+  /// 是否已经手动扫过一次（没扫过时「垃圾文件」那行显示「点一下扫描」）。
+  bool _junkScanned = false;
   _FlagToken? _junkCancel;
 
   Repo get _repo => Repo.instance;
@@ -80,8 +82,14 @@ class _OrganizePageState extends State<OrganizePage> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    // 注意：这里**不**自动扫垃圾。整树遍历在主 isolate 上跑，进页面就扫会让
+    // 转场动画卡一下；用户点「垃圾文件」那行时才扫（见 _cleanCard）。
+  }
+
+  @override
   Widget build(BuildContext context) {
-    _scheduleJunkScan();
     // 只订阅「曲目 + 目录」两域：设置项变化不该让整理页整页重建。
     //
     // 外层必须是 Scaffold：本页现在由「设置 → 整理」push 进来，不再是 shell 的
@@ -97,20 +105,10 @@ class _OrganizePageState extends State<OrganizePage> {
     );
   }
 
-  /// 曲库根目录变了（首次授权 / 换目录 / 刚删完垃圾）就重扫一次垃圾候选。
-  ///
-  /// 只在需要垃圾列表的入口（清理与查重）跑：「扫描与整理」用不到它，
-  /// 进去还全树遍历一遍会明显卡首帧。
-  void _scheduleJunkScan() {
-    if (widget.section == OrganizeSection.organize) return;
-    final String id = _repo.roots.map((t) => t.rootDocId).join('|');
-    if (id.isEmpty || _junkScanning || _junkRootId == id) return;
-    _junkRootId = id;
-    // 等页面推入动画结束再扫，否则大曲库下首帧会被磁盘遍历拖住
-    Future<void>.delayed(const Duration(milliseconds: 300), _scanJunk);
-  }
-
   /// 遍历整棵目录树找垃圾（Thumbs.db / .bak / .tmp 都不是音频，不在曲库列表里）。
+  ///
+  /// 只在用户点「垃圾文件」时跑：进页面就自动扫会让整树遍历和转场动画抢主线程，
+  /// 进 / 退页面都发卡（用户 2026-10-30 实测）。
   Future<void> _scanJunk() async {
     final FileStore? st = _repo.store;
     if (st == null || _repo.roots.isEmpty) return;
@@ -132,6 +130,7 @@ class _OrganizePageState extends State<OrganizePage> {
       setState(() {
         _junkFiles = junk;
         _junkScanning = false;
+        _junkScanned = true;
       });
     } catch (_) {
       if (mounted && !token.isCancelled()) {
@@ -140,9 +139,8 @@ class _OrganizePageState extends State<OrganizePage> {
     }
   }
 
-  /// 删完垃圾或整理完让计数重新算一遍。
+  /// 删完垃圾后重新扫一遍（保持「发现 N 个」是新数）。
   Future<void> _refreshJunk() async {
-    _junkRootId = '';
     await _scanJunk();
   }
 
@@ -265,11 +263,21 @@ class _OrganizePageState extends State<OrganizePage> {
         ),
         MoTile(
           title: '垃圾文件',
+          // 不再进页面就自动扫：整树遍历会拖住转场（进 / 退都卡）。
+          // 没扫过时这行就是入口，点一下才开始扫。
           subtitle: _junkScanning
               ? '正在扫描…'
-              : (junk == 0 ? '没有发现' : '发现 $junk 个（.bak / Thumbs.db / 0 字节…）'),
+              : (!_junkScanned
+                  ? '点一下扫描（Thumbs.db / .bak / .tmp / 0 字节）'
+                  : (junk == 0
+                      ? '没有发现'
+                      : '发现 $junk 个（.bak / Thumbs.db / 0 字节…）')),
           icon: Icons.delete_outline,
-          onTap: junk == 0 ? null : () => _junk(),
+          onTap: _junkScanning
+              ? null
+              : (!_junkScanned
+                  ? () => _scanJunk()
+                  : (junk == 0 ? null : () => _junk())),
         ),
       ],
     );

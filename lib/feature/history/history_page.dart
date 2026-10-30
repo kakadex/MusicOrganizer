@@ -24,7 +24,11 @@ class _HistoryPageState extends State<HistoryPage> {
   @override
   void initState() {
     super.initState();
-    _load();
+    // 转场结束后再读：撤销记录要读 journal（最多 2000 条 JSONL）并逐行解析，
+    // 和推入动画抢主线程时会顿一下；这里让动画先走完。
+    Future<void>.delayed(const Duration(milliseconds: 80), () {
+      if (mounted) _load();
+    });
   }
 
   Future<void> _load() async {
