@@ -1,11 +1,11 @@
-version=0.2.52
-tag=v0.2.52
+version=0.2.53
+tag=v0.2.53
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.52/MusicOrganizer-0.2.52-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.53/MusicOrganizer-0.2.53-android-arm64-v8a.apk
 size=19806069
-sha256=a9665e77bb2138b2485b027146d374b6204ddddfd4d925dbaf8064c423571ca1
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.52/MusicOrganizer-0.2.52-windows-x64.zip
-zip_size=12638309
-zip_sha256=cf3bd454932996402636d03af4d40f85b038ac322c18475d028e22c5bbad4931
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.52
-summary=修复全选几百首后删除封面/标签没反应。
+sha256=423d07551dacd0f8c858d6f8bc4a245560e4dd17549b3178c4df84f648eb919f
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.53/MusicOrganizer-0.2.53-windows-x64.zip
+zip_size=12638286
+zip_sha256=4f7f6e54b30f1f9fb4bab115e0ab9d3c91e1c307fab389aadfa8d5a0074bed3a
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.53
+summary=修复任务条进度文字被按钮挡住。

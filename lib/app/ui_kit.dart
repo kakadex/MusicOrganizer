@@ -848,10 +848,12 @@ class _TaskBarState extends State<TaskBar> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
+          // 第一行只放任务名和按钮：进度文字（「52/85 · 正在清除 xxx」）另起一行
+          // 占满整宽，否则会被右侧的「暂停 / 停止」挤掉半截，看不到正在处理哪首。
           Row(
             children: <Widget>[
               Expanded(
-                child: Text('${t.title} · ${c.summary()}',
+                child: Text(t.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
@@ -865,6 +867,18 @@ class _TaskBarState extends State<TaskBar> {
               }),
             ],
           ),
+          if (c.summary().trim().isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(c.summary(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: MoKit.fsCaption, color: MoKit.text(context))),
+              ),
+            ),
           const SizedBox(height: 6),
           ClipRRect(
             borderRadius: BorderRadius.circular(3),
