@@ -83,6 +83,11 @@ void main() {
     expect(find.text('关于'), findsOneWidget);
     expect(find.text('检查更新'), findsOneWidget);
     expect(find.text('启动时静默检查更新'), findsOneWidget);
+    // 对齐 LyricoX 关于页补齐的四项
+    expect(find.text('开源许可'), findsOneWidget);
+    expect(find.text('项目主页'), findsOneWidget);
+    expect(find.text('问题反馈'), findsOneWidget);
+    expect(find.text('隐私说明'), findsOneWidget);
     // 说明文字与实际行为对不上，已删；留着这条断言防止又被加回去
     expect(find.textContaining('每天最多一次'), findsNothing);
 

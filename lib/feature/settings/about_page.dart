@@ -44,6 +44,42 @@ class _AboutPageState extends State<AboutPage> {
                 padding: const EdgeInsets.only(bottom: 16),
                 children: <Widget>[
                   SectionCard(
+                    title: '应用信息',
+                    children: <Widget>[
+                      MoTile(
+                        title: '开源许可',
+                        subtitle: '本应用用到的第三方库许可',
+                        icon: Icons.description_outlined,
+                        onTap: () => showLicensePage(
+                          context: context,
+                          applicationName: 'MusicOrganizer',
+                          applicationVersion: kAppVersionFull,
+                          applicationLegalese: '本地音乐标签 / 歌词整理工具',
+                        ),
+                      ),
+                      MoTile(
+                        title: '项目主页',
+                        subtitle: 'Gitee · 国内可访问',
+                        icon: Icons.home_outlined,
+                        onTap: () => _openUrl(Endpoints.urlOf('gitee', 2)),
+                      ),
+                      MoTile(
+                        title: '问题反馈',
+                        subtitle: 'GitHub Issues，附上版本号更好定位',
+                        icon: Icons.bug_report_outlined,
+                        onTap: () =>
+                            _openUrl('${Endpoints.urlOf('update', 2)}/issues'),
+                      ),
+                      MoTile(
+                        title: '隐私说明',
+                        subtitle: '不采集、不上传任何用户数据',
+                        icon: Icons.privacy_tip_outlined,
+                        onTap: () => _openUrl(
+                            '${Endpoints.urlOf('gitee', 2)}/blob/main/PRIVACY.md'),
+                      ),
+                    ],
+                  ),
+                  SectionCard(
                     title: '更新',
                     children: <Widget>[
                       MoTile(
