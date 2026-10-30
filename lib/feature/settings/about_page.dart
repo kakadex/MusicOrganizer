@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/repo.dart';
@@ -6,6 +6,7 @@ import '../../app/ui_kit.dart';
 import '../../core/source/endpoints.dart';
 import '../../core/version.dart';
 import 'update_sheet.dart';
+import 'license_page.dart';
 
 /// 「关于」独立页：版本、检查更新、静默更新开关、下载入口。
 ///
@@ -46,6 +47,15 @@ class _AboutPageState extends State<AboutPage> {
                   SectionCard(
                     title: '应用信息',
                     children: <Widget>[
+                      MoTile(
+                        title: '开源许可',
+                        subtitle: 'MIT License · 本项目自身的开源许可',
+                        icon: Icons.description_outlined,
+                        onTap: () => Navigator.of(context).push<void>(
+                          MaterialPageRoute<void>(
+                              builder: (BuildContext _) => const ProjectLicensePage()),
+                        ),
+                      ),
                       MoTile(
                         title: '项目主页',
                         subtitle: 'Gitee · 国内可访问',

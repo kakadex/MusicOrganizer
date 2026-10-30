@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:musicorganizer/app/repo.dart';
 import 'package:musicorganizer/feature/organize/organize_page.dart';
 import 'package:musicorganizer/feature/settings/about_page.dart';
+import 'package:musicorganizer/feature/settings/license_page.dart';
 import 'package:musicorganizer/feature/settings/settings_page.dart';
 
 Future<void> _hover(WidgetTester tester, String text) async {
@@ -83,15 +84,30 @@ void main() {
     expect(find.text('关于'), findsOneWidget);
     expect(find.text('检查更新'), findsOneWidget);
     expect(find.text('启动时静默检查更新'), findsOneWidget);
-    // 对齐 LyricoX 关于页补齐的三项（开源许可按用户要求不加）
+    // 对齐 LyricoX 关于页补齐的三项（开源许可 = 本项目自己的 MIT）
     expect(find.text('项目主页'), findsOneWidget);
     expect(find.text('问题反馈'), findsOneWidget);
     expect(find.text('隐私说明'), findsOneWidget);
-    expect(find.text('开源许可'), findsNothing);
+    expect(find.text('开源许可'), findsOneWidget);
     // 说明文字与实际行为对不上，已删；留着这条断言防止又被加回去
     expect(find.textContaining('每天最多一次'), findsNothing);
 
     await _hover(tester, '检查更新');
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('开源许可页：显示本项目自己的 MIT 全文', (WidgetTester tester) async {
+    Repo.instance.resetForTest();
+    await tester.pumpWidget(const MaterialApp(home: ProjectLicensePage()));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(find.text('开源许可'), findsOneWidget);
+    expect(find.textContaining('MIT License'), findsWidgets);
+    expect(find.textContaining('MIT 许可证'), findsOneWidget);
+    expect(find.textContaining('Copyright (c) 2026 kakadex'), findsOneWidget);
+    expect(find.textContaining('版权所有 (c) 2026 kakadex'), findsOneWidget);
+    // 这是本项目自己的许可，不是第三方依赖清单
+    expect(find.textContaining('Third-Party'), findsNothing);
   });
 }
