@@ -1,11 +1,11 @@
-version=0.2.53
-tag=v0.2.53
+version=0.2.54
+tag=v0.2.54
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.53/MusicOrganizer-0.2.53-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.54/MusicOrganizer-0.2.54-android-arm64-v8a.apk
 size=19806069
-sha256=423d07551dacd0f8c858d6f8bc4a245560e4dd17549b3178c4df84f648eb919f
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.53/MusicOrganizer-0.2.53-windows-x64.zip
-zip_size=12638286
-zip_sha256=4f7f6e54b30f1f9fb4bab115e0ab9d3c91e1c307fab389aadfa8d5a0074bed3a
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.53
-summary=修复任务条进度文字被按钮挡住。
+sha256=0728e1f83d4c8870044a48f6b541dff9194a7d3fcdc0071bcf2a68c5c59ece67
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.54/MusicOrganizer-0.2.54-windows-x64.zip
+zip_size=12638452
+zip_sha256=6a419d2bc60831a61eb2a2b95b6763f78b8b424a59d0a74ea442862f5bc052e7
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.54
+summary=按标签改名时文件名统一转简体。

@@ -1,16 +1,16 @@
-MusicOrganizer v0.2.53 分发包（本地直发，非官方发布页）
+MusicOrganizer v0.2.54 分发包（本地直发，非官方发布页）
 ====================================================
 
 构建时间：2026-10-30
-版本：0.2.53（build 167，版本戳 0.2.53-586T1X）
+版本：0.2.54（build 168，版本戳 0.2.54-26TAGD）
 说明：本目录用于直接发给他人使用，官方发布以 Gitee / GitHub Releases 为准。
 
 文件
 ----
-MusicOrganizer-0.2.53-windows-x64.zip        Windows 桌面版（解压后运行 musicorganizer.exe）
-MusicOrganizer-0.2.53-android-arm64-v8a.apk  安卓 64 位（绝大多数现代手机）
-MusicOrganizer-0.2.53-android-x86_64.apk     安卓 x86_64（少数 Intel 平板 / 模拟器）
-MusicOrganizer-0.2.53-android-armeabi-v7a.apk 安卓 32 位（老旧设备）
+MusicOrganizer-0.2.54-windows-x64.zip        Windows 桌面版（解压后运行 musicorganizer.exe）
+MusicOrganizer-0.2.54-android-arm64-v8a.apk  安卓 64 位（绝大多数现代手机）
+MusicOrganizer-0.2.54-android-x86_64.apk     安卓 x86_64（少数 Intel 平板 / 模拟器）
+MusicOrganizer-0.2.54-android-armeabi-v7a.apk 安卓 32 位（老旧设备）
 SHA256SUMS.txt                               以上文件的 SHA-256 校验和
 
 安装 / 使用
@@ -26,9 +26,8 @@ Android：允许「未知来源」后安装对应 ABI 的 APK。
 
 本版变化
 --------
-修复底部任务条的进度文字被「暂停 / 停止」挡住：任务名和按钮在上面一行，
-「6/21 · 正在清除 某首歌.mp3」单独占一整行。匹配标签、补封面、整理、体检等
-所有长任务都适用。
+修复「按标签改名」会把文件名变成繁体：拼文件名时先把中文转成简体再拼，标签本身
+不动；改名面板里的样例也跟着显示简体。
 
 校验（可选）
 ----------

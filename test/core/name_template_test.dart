@@ -74,5 +74,24 @@ void main() {
     test('{ext} 显式写了就不再追加', () {
       expect(NameTemplate.render('{title}.{ext}', fields(), '.mp3'), '晴天.mp3');
     });
+
+    test('标签是繁体时，生成的文件名转成简体', () {
+      final Tags t = Tags();
+      t.put('artist', '張學友');
+      t.put('title', '她來聽我的演唱會');
+      t.put('album', '走過1999');
+      final String name = NameTemplate.render(
+          '{artist} - {title}', NameTemplate.fields(t), '.mp3');
+      expect(name, '张学友 - 她来听我的演唱会.mp3');
+      expect(NameTemplate.fields(t)['album'], '走过1999');
+    });
+
+    test('英文与数字原样保留', () {
+      final Tags t = Tags();
+      t.put('artist', 'Beyond');
+      t.put('title', '光輝歲月');
+      expect(NameTemplate.render('{artist} - {title}', NameTemplate.fields(t), '.flac'),
+          'Beyond - 光辉岁月.flac');
+    });
   });
 }

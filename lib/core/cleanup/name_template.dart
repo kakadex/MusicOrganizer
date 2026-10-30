@@ -4,6 +4,7 @@
 /// `TextUtil.normalizeStemForCleanup`，两者分开才好单独测。
 library;
 
+import '../lyrics/zh.dart';
 import '../match/text_util.dart';
 import '../model/tags.dart';
 
@@ -64,15 +65,20 @@ abstract final class NameTemplate {
   }
 
   /// 由一条标签记录构造字段表。
+  ///
+  /// 中文一律转成简体再拼文件名：标签里可能是繁体（老文件自带、台湾版专辑），
+  /// 照抄会让改完的文件名整片变繁体——用户实测反馈过这个问题。匹配与查重本来
+  /// 就繁简不敏感，文件名统一成简体不影响识别；标签本身不改，只影响文件名。
   static Map<String, String> fields(Tags? tags) {
     final Map<String, String> m = <String, String>{};
     if (tags == null) return m;
-    m['artist'] = TextUtil.safeStr(tags.get('artist'));
-    m['title'] = TextUtil.safeStr(tags.get('title'));
-    m['album'] = TextUtil.safeStr(tags.get('album'));
+    String g(String? raw) => Zh.toSimplified(TextUtil.safeStr(raw));
+    m['artist'] = g(tags.get('artist'));
+    m['title'] = g(tags.get('title'));
+    m['album'] = g(tags.get('album'));
     m['year'] = TextUtil.safeStr(tags.get('year'));
     m['date'] = TextUtil.safeStr(tags.get('year'));
-    m['genre'] = TextUtil.safeStr(tags.get('genre'));
+    m['genre'] = g(tags.get('genre'));
     m['track'] = TextUtil.safeStr(tags.get('track'));
     return m;
   }
