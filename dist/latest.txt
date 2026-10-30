@@ -1,11 +1,11 @@
-version=0.2.45
-tag=v0.2.45
+version=0.2.46
+tag=v0.2.46
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.45/MusicOrganizer-0.2.45-android-arm64-v8a.apk
-size=19805849
-sha256=8f6e54104b2537e39b73102b3456d49d0d12c41470a30ac2b50c63d9d60b7063
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.45/MusicOrganizer-0.2.45-windows-x64.zip
-zip_size=12639086
-zip_sha256=cc4503c5fab8418ab84a6006a5325c7b138c9ecf26f340a397164850cadd2d11
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.45
-summary=说明修正版：功能同 v0.2.44，补写批量兜底默认不勾选、繁体转简。
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.46/MusicOrganizer-0.2.46-android-arm64-v8a.apk
+size=19740533
+sha256=fa07cf6fc2931a72b164980c043361d129cedea2d45ea25f8561670b72a85e51
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.46/MusicOrganizer-0.2.46-windows-x64.zip
+zip_size=12630883
+zip_sha256=dcece757095b0422fbb73ab87794244b68dee3bf22054eec9e540e0e3e66dfd0
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.46
+summary=界面改版：主界面只留音乐库，整理与关于收进二级页。
