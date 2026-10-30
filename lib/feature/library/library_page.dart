@@ -34,6 +34,7 @@ import '../organize/rename_flow.dart';
 import '../lyrics_batch/lyrics_tool_sheet.dart';
 import '../tag_batch/batch_edit.dart';
 import '../tag_batch/clear_all_tags.dart';
+import '../tag_batch/zh_convert.dart';
 import 'preview_sheet.dart';
 
 /// 曲库页：搜索 + 筛选 + 排序 + 多选 + 批量匹配。
@@ -851,6 +852,15 @@ class _LibraryPageState extends State<LibraryPage> {
           onTap: () {
             Navigator.of(context).pop();
             runClearAllTags(context, files);
+          },
+        ),
+        MoTile(
+          title: '标签转简体',
+          subtitle: '把标题 / 歌手 / 专辑等字段里的繁体统一转成简体，先预览再写',
+          icon: Icons.translate,
+          onTap: () {
+            Navigator.of(context).pop();
+            runConvertTagsToSimplified(context, files);
           },
         ),
         MoTile(

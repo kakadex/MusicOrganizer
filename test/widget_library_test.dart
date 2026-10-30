@@ -257,13 +257,18 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('批量补标签'), findsOneWidget);
-    expect(find.text('批量改标签'), findsOneWidget);
-    expect(find.text('按标签改名'), findsOneWidget);
-    expect(find.text('歌词工具'), findsOneWidget);
-    expect(find.text('删除全部封面、标签、歌词'), findsOneWidget);
-    // 「删除选中的文件」在面板折叠区外，滚一下再断言
-    await tester.scrollUntilVisible(find.text('删除选中的文件'), 120,
-        scrollable: find.byType(Scrollable).last);
-    expect(find.text('删除选中的文件'), findsOneWidget);
+    // 菜单项变多了：按视觉顺序逐项滚到可见再断言（一次滚到底会把上面的顶出去）
+    final Finder scrollable = find.byType(Scrollable).last;
+    for (final String item in <String>[
+      '批量改标签',
+      '歌词工具',
+      '删除全部封面、标签、歌词',
+      '标签转简体',
+      '按标签改名',
+      '删除选中的文件',
+    ]) {
+      await tester.scrollUntilVisible(find.text(item), 80, scrollable: scrollable);
+      expect(find.text(item), findsOneWidget);
+    }
   });
 }
