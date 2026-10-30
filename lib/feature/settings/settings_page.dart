@@ -4,7 +4,6 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/repo.dart';
 import '../../app/repo_changes.dart';
@@ -23,11 +22,11 @@ import '../../core/version.dart';
 import '../../platform/host_channel.dart';
 import '../health/health_page.dart';
 import '../organize/organize_page.dart';
+import 'about_page.dart';
 import 'data_source_page.dart';
 import 'folder_page.dart';
 import '../library/media_import_sheet.dart';
 import '../history/history_page.dart';
-import 'update_sheet.dart';
 import '../../platform/windows_file_assoc.dart';
 
 /// 设置页：偏好 / 整理 / 主题 / 维护 / 备份 / 关于（更新检查与更新渠道都收在「关于」里）。
@@ -891,60 +890,21 @@ class _SettingsPageState extends State<SettingsPage> {
     moSnack(context, '已恢复 ${diff.length} 项默认设置');
   }
 
+  /// 关于只留一个入口，点进去才是版本 / 检查更新 / 静默开关 / 发布页。
+  ///
+  /// 这些内容都是「偶尔看一眼」的，平铺在设置里会把常用项挤下去。
   Widget _aboutCard() {
     return SectionCard(
       title: '关于',
       children: <Widget>[
-        MoTile(title: '版本', subtitle: kAppVersionFull, icon: Icons.info_outline),
         MoTile(
-          title: '检查更新',
-          subtitle: 'Gitee 优先，GitHub 兜底',
-          icon: Icons.system_update_alt,
-          onTap: () => UpdateSheet.show(context),
-        ),
-        MoTile(
-          title: '启动时静默检查更新',
-          subtitle: '每天最多一次，查到新版在底栏提示一句',
-          icon: Icons.notifications_none,
-          trailing: Switch(
-            value: _repo.settings.get<bool>('update_silent', fallback: true) ?? true,
-            onChanged: (bool v) {
-              _repo.setSetting('update_silent', v);
-              setState(() {});
-            },
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text('下载（国内用户优先访问 Gitee，速度更快）',
-            style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
-        const SizedBox(height: 4),
-        MoTile(
-          title: 'Gitee 发布页',
-          subtitle: '国内站点，推荐',
-          icon: Icons.download,
-          onTap: () => _openUrl(Endpoints.urlOf('gitee', 1)),
-        ),
-        MoTile(
-          title: 'GitHub 发布页',
-          subtitle: '海外站点',
-          icon: Icons.download_outlined,
-          onTap: () => _openUrl(Endpoints.urlOf('update', 1)),
+          title: '版本与更新',
+          subtitle: '$kAppVersionFull · 检查更新 / 下载入口 / 静默更新',
+          icon: Icons.info_outline,
+          onTap: () => _push(const AboutPage()),
         ),
       ],
     );
-  }
-
-  Future<void> _openUrl(String url) async {
-    final Uri? uri = Uri.tryParse(url);
-    if (uri == null || url.isEmpty) {
-      if (mounted) moSnack(context, '地址无效：$url');
-      return;
-    }
-    try {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } catch (_) {
-      if (mounted) moSnack(context, '打不开浏览器，请手动复制：$url');
-    }
   }
 
   String _themeName(MoThemeId id) {

@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:musicorganizer/app/repo.dart';
 import 'package:musicorganizer/feature/organize/organize_page.dart';
+import 'package:musicorganizer/feature/settings/about_page.dart';
 import 'package:musicorganizer/feature/settings/settings_page.dart';
 
 Future<void> _hover(WidgetTester tester, String text) async {
@@ -70,5 +71,22 @@ void main() {
     expect(find.text('扫描与整理'), findsOneWidget);
     expect(find.text('自动整理'), findsOneWidget);
     expect(find.text('文件名清理'), findsNothing);
+  });
+
+  testWidgets('关于页独立挂载：静默更新不再写「每天最多一次」的说明',
+      (WidgetTester tester) async {
+    Repo.instance.resetForTest();
+    await tester.pumpWidget(const MaterialApp(home: AboutPage()));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(find.text('关于'), findsOneWidget);
+    expect(find.text('检查更新'), findsOneWidget);
+    expect(find.text('启动时静默检查更新'), findsOneWidget);
+    // 说明文字与实际行为对不上，已删；留着这条断言防止又被加回去
+    expect(find.textContaining('每天最多一次'), findsNothing);
+
+    await _hover(tester, '检查更新');
+    expect(tester.takeException(), isNull);
   });
 }
