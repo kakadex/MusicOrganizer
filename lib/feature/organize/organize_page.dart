@@ -88,11 +88,16 @@ class _OrganizePageState extends State<OrganizePage> {
   }
 
   /// 曲库根目录变了（首次授权 / 换目录 / 刚删完垃圾）就重扫一次垃圾候选。
+  ///
+  /// 只在需要垃圾列表的入口（清理与查重）跑：「扫描与整理」用不到它，
+  /// 进去还全树遍历一遍会明显卡首帧。
   void _scheduleJunkScan() {
+    if (widget.section == OrganizeSection.organize) return;
     final String id = _repo.roots.map((t) => t.rootDocId).join('|');
     if (id.isEmpty || _junkScanning || _junkRootId == id) return;
     _junkRootId = id;
-    Future<void>.delayed(Duration.zero, _scanJunk);
+    // 等页面推入动画结束再扫，否则大曲库下首帧会被磁盘遍历拖住
+    Future<void>.delayed(const Duration(milliseconds: 300), _scanJunk);
   }
 
   /// 遍历整棵目录树找垃圾（Thumbs.db / .bak / .tmp 都不是音频，不在曲库列表里）。
@@ -125,7 +130,13 @@ class _OrganizePageState extends State<OrganizePage> {
   }
 
   Widget _body(BuildContext context) {
-    final int audio = _repo.audioFiles().length;
+    // 只遍历一次：audio 与「待归类」都用同一份列表算，避免大曲库下每次
+    // 重建都跑两遍全表（之前是 _body 一遍、_scanCard 又一遍）。
+    final List<VFile> audioFiles = _repo.audioFiles();
+    final int audio = audioFiles.length;
+    final int unorganized = audioFiles
+        .where((VFile f) => !_repo.relPath(f).contains('/'))
+        .length;
     final bool showOrganize = widget.section != OrganizeSection.cleanup;
     final bool showCleanup = widget.section != OrganizeSection.organize;
     final String title = switch (widget.section) {
@@ -143,8 +154,9 @@ class _OrganizePageState extends State<OrganizePage> {
           leading: widget.embedded
               ? IconButton(
                   tooltip: '返回',
+                  iconSize: 28,
                   icon: Icon(Icons.arrow_back,
-                      size: 20, color: MoKit.text(context)),
+                      size: 28, color: MoKit.text(context)),
                   onPressed: () => Navigator.of(context).maybePop(),
                 )
               : null,
@@ -155,6 +167,7 @@ class _OrganizePageState extends State<OrganizePage> {
             children: <Widget>[
               if (showOrganize)
                 _scanCard(audio,
+                    unorganized: unorganized,
                     showTitle: widget.section == OrganizeSection.all),
               if (showCleanup)
                 _cleanCard(showTitle: widget.section == OrganizeSection.all),
@@ -167,14 +180,15 @@ class _OrganizePageState extends State<OrganizePage> {
 
   /// [showTitle] 为 false 时不画卡片标题 —— 二级页顶部已经有同名标题了，
   /// 再画一次会出现两个「清理与查重」。
-  Widget _scanCard(int audio, {bool showTitle = true}) {
-    final int unorganized = _repo.audioFiles().where((VFile f) {
-      final rel = _repo.relPath(f);
-      return !rel.contains('/');
-    }).length;
+  Widget _scanCard(int audio, {int? unorganized, bool showTitle = true}) {
+    final int pending = unorganized ??
+        _repo.audioFiles().where((VFile f) {
+          final rel = _repo.relPath(f);
+          return !rel.contains('/');
+        }).length;
     return SectionCard(
       title: showTitle ? '扫描与整理' : null,
-      subtitle: _repo.hasRoot ? '$audio 首 · 待归类 $unorganized 首' : '先选一个曲库目录',
+      subtitle: _repo.hasRoot ? '$audio 首 · 待归类 $pending 首' : '先选一个曲库目录',
       children: <Widget>[
         Row(
           children: <Widget>[

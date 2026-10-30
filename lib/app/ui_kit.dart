@@ -90,21 +90,22 @@ class PageHeader extends StatelessWidget {
     );
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 14, MoKit.pagePad, 6),
+      // 顶部只留 4：主界面标题要贴近状态栏，上面留 14 会显得空
+      padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 4, MoKit.pagePad, 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: <Widget>[
           if (leading != null)
             leading!
           else if (centerTitle)
-            const SizedBox(width: 48),
+            const SizedBox(width: 52),
           Expanded(
             child: centerTitle ? Center(child: titleBlock) : titleBlock,
           ),
           if (actions != null)
             ...actions!
           else if (centerTitle)
-            const SizedBox(width: 48),
+            const SizedBox(width: 52),
         ],
       ),
     );
@@ -878,16 +879,19 @@ class _TaskBarState extends State<TaskBar> {
     );
   }
 
+  /// 任务条右侧的小胶囊按钮（暂停/继续、停止）。
+  ///
+  /// 原来 padding 10×4、字号 11，在桌面大屏上太小不好点，整体放大一倍。
   Widget _tiny(BuildContext context, String label, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
         decoration: BoxDecoration(
             color: MoKit.soft(context), borderRadius: BorderRadius.circular(999)),
         child: Text(label,
             style: TextStyle(
-                fontSize: MoKit.fsCaption,
+                fontSize: MoKit.fsTitle,
                 fontWeight: FontWeight.w600,
                 color: MoKit.primary(context))),
       ),

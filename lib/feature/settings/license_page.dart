@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../app/ui_kit.dart';
@@ -64,14 +64,14 @@ class ProjectLicensePage extends StatelessWidget {
               leading: IconButton(
                 tooltip: '返回',
                 icon: Icon(Icons.arrow_back,
-                    size: 20, color: MoKit.text(context)),
+                    size: 28, color: MoKit.text(context)),
                 onPressed: () => Navigator.of(context).maybePop(),
               ),
               actions: <Widget>[
                 IconButton(
                   tooltip: '复制全文',
                   icon: Icon(Icons.copy_all_outlined,
-                      size: 20, color: MoKit.text(context)),
+                      size: 28, color: MoKit.text(context)),
                   onPressed: () async {
                     await Clipboard.setData(
                         ClipboardData(text: kProjectLicenseText));

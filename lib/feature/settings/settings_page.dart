@@ -95,7 +95,16 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _body(BuildContext context) {
     return Column(
       children: <Widget>[
-        PageHeader(title: '设置', subtitle: '版本 $kAppVersionFull'),
+        PageHeader(
+          title: '设置',
+          subtitle: '版本 $kAppVersionFull',
+          leading: IconButton(
+            tooltip: '返回',
+            iconSize: 28,
+            icon: Icon(Icons.arrow_back, size: 28, color: MoKit.text(context)),
+            onPressed: () => Navigator.of(context).maybePop(),
+          ),
+        ),
         Expanded(
           child: ListView(
             padding: const EdgeInsets.only(bottom: 16),

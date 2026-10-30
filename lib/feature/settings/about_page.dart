@@ -36,7 +36,7 @@ class _AboutPageState extends State<AboutPage> {
               leading: IconButton(
                 tooltip: '返回',
                 icon: Icon(Icons.arrow_back,
-                    size: 20, color: MoKit.text(context)),
+                    size: 28, color: MoKit.text(context)),
                 onPressed: () => Navigator.of(context).maybePop(),
               ),
             ),

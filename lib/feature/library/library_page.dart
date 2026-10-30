@@ -530,7 +530,11 @@ class _LibraryPageState extends State<LibraryPage> {
       key: key,
       tooltip: tip,
       onPressed: onTap,
-      icon: Icon(icon, size: 20, color: onTap == null ? MoKit.faint(context) : MoKit.text(context)),
+      // 图标从 20 放大到 36（设置齿轮 / 排序都是它画的），按钮本身保持 44 命中区
+      iconSize: 36,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+      icon: Icon(icon, size: 36, color: onTap == null ? MoKit.faint(context) : MoKit.text(context)),
     );
   }
 
