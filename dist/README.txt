@@ -1,23 +1,23 @@
-MusicOrganizer v0.2.46 分发包（本地直发，非官方发布页）
+MusicOrganizer v0.2.47 分发包（本地直发，非官方发布页）
 ====================================================
 
 构建时间：2026-10-30
-版本：0.2.46（build 160，版本戳 0.2.46-HE9XR9）
+版本：0.2.47（build 161，版本戳 0.2.47-37WQKV）
 说明：本目录用于直接发给他人使用，官方发布以 Gitee / GitHub Releases 为准。
 
 文件
 ----
-MusicOrganizer-0.2.46-windows-x64.zip        Windows 桌面版（解压后运行 musicorganizer.exe）
-MusicOrganizer-0.2.46-android-arm64-v8a.apk  安卓 64 位（绝大多数现代手机）
-MusicOrganizer-0.2.46-android-x86_64.apk     安卓 x86_64（少数 Intel 平板 / 模拟器）
-MusicOrganizer-0.2.46-android-armeabi-v7a.apk 安卓 32 位（老旧设备）
+MusicOrganizer-0.2.47-windows-x64.zip        Windows 桌面版（解压后运行 musicorganizer.exe）
+MusicOrganizer-0.2.47-android-arm64-v8a.apk  安卓 64 位（绝大多数现代手机）
+MusicOrganizer-0.2.47-android-x86_64.apk     安卓 x86_64（少数 Intel 平板 / 模拟器）
+MusicOrganizer-0.2.47-android-armeabi-v7a.apk 安卓 32 位（老旧设备）
 SHA256SUMS.txt                               以上文件的 SHA-256 校验和
 
 安装 / 使用
 ----------
 Windows：解压 zip，双击 musicorganizer.exe。首次运行若被 SmartScreen 拦，
   点「更多信息 → 仍要运行」即可（安装包未向微软付费签名，属正常提示）。
-  之后可在「设置 → 关于 → 版本与更新 → 检查更新」里直接下载更新。
+  之后可在「音乐库左上角齿轮 → 关于 → 版本与更新 → 检查更新」里直接下载更新。
 
 Android：允许「未知来源」后安装对应 ABI 的 APK。
   - 不确定机型就装 android-arm64-v8a（主流）；很老的 32 位机装 armeabi-v7a；
@@ -26,8 +26,9 @@ Android：允许「未知来源」后安装对应 ABI 的 APK。
 
 本版变化
 --------
-界面改版：主界面只保留音乐库（去底部导航、标题居中、左上角设置齿轮）；
-整理并入设置为两个二级入口；关于收成独立页，含本项目 MIT 中英对照许可。
+界面细节：设置齿轮与排序图标放大一倍、「音乐库」标题上移、任务条「暂停 / 继续」
+「停止」按钮放大一倍、设置页补返回箭头；关于页 MIT 中文译文改准并注明以英文
+原文为准；点进「扫描与整理」「清理与查重」不再卡首帧。
 
 校验（可选）
 ----------

@@ -1,11 +1,11 @@
-version=0.2.46
-tag=v0.2.46
+version=0.2.47
+tag=v0.2.47
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.46/MusicOrganizer-0.2.46-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.47/MusicOrganizer-0.2.47-android-arm64-v8a.apk
 size=19740533
-sha256=fa07cf6fc2931a72b164980c043361d129cedea2d45ea25f8561670b72a85e51
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.46/MusicOrganizer-0.2.46-windows-x64.zip
-zip_size=12630883
-zip_sha256=dcece757095b0422fbb73ab87794244b68dee3bf22054eec9e540e0e3e66dfd0
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.46
-summary=界面改版：主界面只留音乐库，整理与关于收进二级页。
+sha256=c9780d0a9bc9adbb5278204cef74b0545cac9ffe3e18bae024c389ab78b9afe5
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.47/MusicOrganizer-0.2.47-windows-x64.zip
+zip_size=12631000
+zip_sha256=dcafe46c539f62a76c5032100a9c709fed4e620ed01a766a8f6b82ad4750b3b9
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.47
+summary=界面细节调整：图标与任务条按钮放大、整理页不再卡首帧。
