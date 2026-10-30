@@ -1,13 +1,17 @@
 name: release
 
-# 推 v* tag 时出包并建 Release（安卓 APK + 桌面 zip）。
+# 手动触发的备用出包通道。默认发版走本地：
+#   本地构建 → git push tag → make_gitee_release.py / make_github_release.py 两端上传。
+#
+# 2026-10-30 改动（重要）：
+#   1. 去掉 push tag 触发 —— 之前推任何 v* tag 都会触发本工作流，而它最后一步会
+#      「删掉除当前 tag 外的所有 Release 和 tag」，一旦 secrets 配齐就会误删历史 tag。
+#   2. 删掉「只留最新一版」的删除逻辑：本工作流只负责出包，不删除任何远端内容。
 on:
-  push:
-    tags: ['v*']
   workflow_dispatch:
     inputs:
       tag:
-        description: '要发布的 tag（已存在）'
+        description: '要发布的 tag（必须已存在，如 v0.2.46）'
         required: true
 
 permissions:
@@ -122,32 +126,17 @@ jobs:
       - name: Create Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ github.event.inputs.tag }}
         run: |
+          if [ -z "$TAG" ]; then echo "缺少 tag 输入"; exit 1; fi
+          git fetch --tags --force
+          if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "::error::tag $TAG 不存在，请先 git push 该 tag"; exit 1
+          fi
           gh release create "$TAG" dist/* \
             --title "$TAG" \
             --notes-file RELEASE_NOTES.md 2>/dev/null || \
           gh release create "$TAG" dist/* --title "$TAG" --generate-notes
 
-      # 线上只留最新一版：旧 Release 与旧 tag 一并清掉（本地 tag 留着做历史存档）。
-      # GITHUB_TOKEN 自带 contents: write，不需要额外 PAT。
-      # java-legacy 是旧版代码的存档指针，保留。
-      - name: Keep only the latest release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          gh release list --limit 100 --json tagName --jq '.[].tagName' \
-            | while read -r t; do
-              if [ "$t" != "$TAG" ]; then
-                echo "删除旧 Release：$t"
-                gh release delete "$t" --yes --cleanup-tag || true
-              fi
-            done
-          git fetch --tags --force || true
-          git tag --list | while read -r t; do
-            if [ "$t" != "$TAG" ] && [ "$t" != "java-legacy" ]; then
-              echo "删除旧 tag：$t"
-              git push origin --delete "$t" || true
-            fi
-          done
+      # 注意：这里不再删除任何旧 Release /旧 tag。
+      # 历史版本由本地 cleanup_gitee_releases.py（Gitee）或人工处理。
