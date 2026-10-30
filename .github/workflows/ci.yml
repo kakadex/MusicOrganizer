@@ -29,14 +29,21 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      # 注意：下面的 build 步骤**不要**加 `--no-pub`。
+      # 2026-10-31 实测踩坑：加了之后 `flutter build apk` 不再刷新插件注册表，
+      # 会沿用上一步 `flutter test` 生成的 GeneratedPluginRegistrant（里面带
+      # integration_test 这个 dev 插件），而 release 的 Gradle 依赖里没有它，
+      # 于是 javac 报 `package dev.flutter.plugins.integration_test does not exist`。
+      # pub get 本身有缓存，省这一步没意义。
+
       - name: Analyze
-        run: flutter analyze --fatal-infos --no-pub
+        run: flutter analyze --fatal-infos
 
       - name: Test
-        run: flutter test --no-pub
+        run: flutter test
 
       - name: Build APK (release, split per ABI)
         # CI 环境没有 key.properties，正式签名闸会让 release 构建直接失败。
         # CI 产物不用于发布（发版走本地构建 + 两端 API 上传），这里只为验证
         # 「能编过」，所以显式允许 debug 签名。
-        run: flutter build apk --split-per-abi --release --no-pub -PallowDebugSign=true
+        run: flutter build apk --split-per-abi --release -PallowDebugSign=true
