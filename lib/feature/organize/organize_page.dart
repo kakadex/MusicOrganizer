@@ -207,19 +207,12 @@ class _OrganizePageState extends State<OrganizePage> {
       title: showTitle ? '扫描与整理' : null,
       subtitle: _repo.hasRoot ? '$audio 首 · 待归类 $pending 首' : '先选一个曲库目录',
       children: <Widget>[
-        Row(
-          children: <Widget>[
-            Expanded(
-                child: MoButton('扫描统计',
-                    primary: false,
-                    busy: _busyOn == _BusyOn.scan,
-                    onPressed: _busy ? null : _rescan)),
-            const SizedBox(width: 8),
-            Expanded(
-                child: MoButton('自动整理',
-                    busy: _busyOn == _BusyOn.organize,
-                    onPressed: _busy ? null : _organize)),
-          ],
+        // 扫描与整理合并成一个动作：点一次先重扫曲库，再按规则出移动计划，
+        // 确认后执行，结束后弹统计。原来的「扫描统计」按钮不再单独存在。
+        MoButton(
+          '自动整理',
+          busy: _busy,
+          onPressed: _busy ? null : _organize,
         ),
         const SizedBox(height: 8),
         MoButton(
@@ -229,7 +222,8 @@ class _OrganizePageState extends State<OrganizePage> {
         ),
         const SizedBox(height: 8),
         Text(
-          '自动整理只做三件事：按选定规则算目标目录、给出移动计划、你确认后才动文件。'
+          '点一次做完整套：先重新扫描曲库，再按上面的规则算目标目录并给出移动计划，'
+          '你在预览里逐首确认后才动文件；整理完弹一份统计。'
           '认不出歌手的不搬，同名文件一律跳过，绝不覆盖。',
           style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context)),
         ),
@@ -279,22 +273,6 @@ class _OrganizePageState extends State<OrganizePage> {
         ),
       ],
     );
-  }
-
-  Future<void> _rescan() async {
-    setState(() {
-      _busyOn = _BusyOn.scan;
-      _status = '正在扫描…';
-    });
-    final ScanOutcome out = await _repo.rescan();
-    if (!mounted) return;
-    if (out.ok) await _repo.loadMeta();
-    if (!mounted) return;
-    setState(() {
-      _busyOn = _BusyOn.none;
-      _status = out.ok ? '' : out.error;
-    });
-    // 扫完不再弹提示框：结果就在曲库列表里，不必再弹一条详细信息
   }
 
   /// 当前目录规则；没设过、或存的不是内置模板时，回到默认的「歌手」。
@@ -352,6 +330,31 @@ class _OrganizePageState extends State<OrganizePage> {
       moSnack(context, '先选一个曲库目录');
       return;
     }
+
+    // ① 先重新扫描（原「扫描统计」那一步并进来了）：整理前的目录状态必须是新的，
+    //    否则会按上一次的列表算目标位置。
+    setState(() {
+      _busyOn = _BusyOn.scan;
+      _status = '正在扫描…';
+    });
+    final ScanOutcome out = await _repo.rescan();
+    if (!mounted) return;
+    if (!out.ok) {
+      setState(() {
+        _busyOn = _BusyOn.none;
+        _status = '';
+      });
+      moSnack(context, '扫描失败：${out.error}');
+      return;
+    }
+    await _repo.loadMeta();
+    if (!mounted) return;
+    setState(() {
+      _busyOn = _BusyOn.none;
+      _status = '';
+    });
+
+    // ② 按目录规则算移动计划
     final List<VFile> files = _repo.audioFiles();
     if (files.isEmpty) {
       moSnack(context, '曲库里还没有曲目');
@@ -416,10 +419,86 @@ class _OrganizePageState extends State<OrganizePage> {
       setState(() => _busyOn = _BusyOn.none);
       if (r.ok > 0) await _repo.rescan();
       if (!mounted) return;
-      moSnack(context, r.summary());
+      // ③ 结束弹统计（移动 / 跳过 / 失败 + 整理后的曲库状况），替代原来的一行提示
+      await _showOrganizeSummary(r);
     } finally {
       TaskCenter.finish();
     }
+  }
+
+  /// 整理完成后的统计弹窗。
+  Future<void> _showOrganizeSummary(OrganizeResult r) async {
+    final List<VFile> files = _repo.audioFiles();
+    final int audio = files.length;
+    final int pending =
+        files.where((VFile f) => !_repo.relPath(f).contains('/')).length;
+    final bool moved = r.ok > 0;
+    await showMoSheet<void>(
+      context,
+      title: moved ? '整理完成' : '没有移动文件',
+      actionLabel: '知道了',
+      onAction: () => Navigator.of(context).maybePop(),
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 0, MoKit.pagePad, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              _summaryRow('已移动', '${r.ok} 首'),
+              _summaryRow('跳过', '${r.skipped} 首'),
+              if (r.failed > 0) _summaryRow('失败', '${r.failed} 首'),
+              if (r.cancelled) _summaryRow('状态', '中途停止，已移动的不回滚'),
+              const SizedBox(height: 10),
+              Container(height: 1, color: MoKit.line(context)),
+              const SizedBox(height: 10),
+              _summaryRow('曲库', '共 $audio 首'),
+              _summaryRow('仍待归类', '$pending 首'),
+              const SizedBox(height: 6),
+              Text(
+                '跳过通常是目标目录已有同名文件，或曲目已经在该目录下；'
+                '认不出歌手的曲目不会被移动。',
+                style: TextStyle(
+                    fontSize: MoKit.fsCaption, color: MoKit.sub(context)),
+              ),
+              if (r.errors.isNotEmpty) ...<Widget>[
+                const SizedBox(height: 8),
+                Text('失败原因（前 ${r.errors.length} 条）：',
+                    style: TextStyle(
+                        fontSize: MoKit.fsCaption, color: MoKit.err(context))),
+                for (final String e in r.errors.take(5))
+                  Text('· $e',
+                      style: TextStyle(
+                          fontSize: MoKit.fsCaption,
+                          color: MoKit.err(context))),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _summaryRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: <Widget>[
+          SizedBox(
+            width: 76,
+            child: Text(label,
+                style: TextStyle(
+                    fontSize: MoKit.fsBody, color: MoKit.sub(context))),
+          ),
+          Expanded(
+            child: Text(value,
+                style: TextStyle(
+                    fontSize: MoKit.fsBody,
+                    fontWeight: FontWeight.w600,
+                    color: MoKit.text(context))),
+          ),
+        ],
+      ),
+    );
   }
 
   /// 文件名清理 / 改名：先选规则或模板，出计划，确认后才动盘。
