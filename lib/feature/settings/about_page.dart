@@ -47,17 +47,6 @@ class _AboutPageState extends State<AboutPage> {
                     title: '应用信息',
                     children: <Widget>[
                       MoTile(
-                        title: '开源许可',
-                        subtitle: '本应用用到的第三方库许可',
-                        icon: Icons.description_outlined,
-                        onTap: () => showLicensePage(
-                          context: context,
-                          applicationName: 'MusicOrganizer',
-                          applicationVersion: kAppVersionFull,
-                          applicationLegalese: '本地音乐标签 / 歌词整理工具',
-                        ),
-                      ),
-                      MoTile(
                         title: '项目主页',
                         subtitle: 'Gitee · 国内可访问',
                         icon: Icons.home_outlined,
