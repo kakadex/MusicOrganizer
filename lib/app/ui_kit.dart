@@ -46,40 +46,65 @@ abstract final class MoKit {
 }
 
 /// 页面标题（大标题 + 一行说明）。
+///
+/// [leading] 放左侧入口（设置齿轮 / 返回箭头）；[centerTitle] 让标题居中 ——
+/// 主界面用它把「音乐库」摆到顶部正中，左右各留一个按钮位保证不偏。
 class PageHeader extends StatelessWidget {
-  const PageHeader({super.key, required this.title, this.subtitle, this.actions});
+  const PageHeader({
+    super.key,
+    required this.title,
+    this.subtitle,
+    this.actions,
+    this.leading,
+    this.centerTitle = false,
+  });
 
   final String title;
   final String? subtitle;
   final List<Widget>? actions;
+  final Widget? leading;
+  final bool centerTitle;
 
   @override
   Widget build(BuildContext context) {
+    final Widget titleBlock = Column(
+      crossAxisAlignment:
+          centerTitle ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Text(title,
+            textAlign: centerTitle ? TextAlign.center : TextAlign.start,
+            style: TextStyle(
+                fontSize: MoKit.fsHuge,
+                fontWeight: FontWeight.w600,
+                color: MoKit.text(context))),
+        if (subtitle != null && subtitle!.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(subtitle!,
+                textAlign: centerTitle ? TextAlign.center : TextAlign.start,
+                style: TextStyle(
+                    fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
+          ),
+      ],
+    );
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 14, MoKit.pagePad, 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: <Widget>[
+          if (leading != null)
+            leading!
+          else if (centerTitle)
+            const SizedBox(width: 48),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(title,
-                    style: TextStyle(
-                        fontSize: MoKit.fsHuge,
-                        fontWeight: FontWeight.w600,
-                        color: MoKit.text(context))),
-                if (subtitle != null && subtitle!.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Text(subtitle!,
-                        style: TextStyle(
-                            fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
-                  ),
-              ],
-            ),
+            child: centerTitle ? Center(child: titleBlock) : titleBlock,
           ),
-          ...?actions,
+          if (actions != null)
+            ...actions!
+          else if (centerTitle)
+            const SizedBox(width: 48),
         ],
       ),
     );

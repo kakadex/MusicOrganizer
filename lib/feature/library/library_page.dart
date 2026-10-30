@@ -20,6 +20,7 @@ import '../../core/cover/folder_cover.dart';
 import '../../core/cover/sidecar_cover.dart';
 import '../../core/fs/file_store.dart';
 import '../../core/fs/tree_ref.dart';
+import '../settings/settings_page.dart';
 import '../../core/scan/scanner.dart';
 import '../../core/scan/search_index.dart';
 import '../../core/scan/search_query.dart';
@@ -500,6 +501,13 @@ class _LibraryPageState extends State<LibraryPage> {
       children: <Widget>[
         PageHeader(
           title: '音乐库',
+          centerTitle: true,
+          leading: _icon(Icons.settings_outlined, '设置', () {
+            Navigator.of(context).push<void>(
+              MaterialPageRoute<void>(
+                  builder: (BuildContext _) => const SettingsPage()),
+            );
+          }),
           subtitle: repo.hasRoot
               ? '${_shown.length} 首${_status.isEmpty ? '' : ' · $_status'}'
               : '还没有选择曲库目录',

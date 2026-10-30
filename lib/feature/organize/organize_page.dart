@@ -23,11 +23,27 @@ import '../../core/tx/write_preview.dart';
 import '../common/write_confirm_sheet.dart';
 import 'rename_flow.dart';
 
-/// 整理页：**三张任务卡**（扫描与整理 / 批量处理 / 清理），而不是一长串平铺按钮。
+/// 整理页要显示哪一块：全部（旧行为）/ 只显示扫描整理 / 只显示清理与查重。
+///
+/// 主界面已改成只有音乐库，整理相关功能从「设置 → 整理」两个入口进入：
+/// 每个入口带一个 section，页面只渲染对应那张卡，不再平铺全部内容。
+enum OrganizeSection { all, organize, cleanup }
+
+/// 整理页：**按 section 显示任务卡**（扫描与整理 / 清理与查重）。
 ///
 /// 危险动作（移动、删除）一律「先出计划 → 用户确认 → 再执行」。
 class OrganizePage extends StatefulWidget {
-  const OrganizePage({super.key});
+  const OrganizePage({
+    super.key,
+    this.section = OrganizeSection.all,
+    this.embedded = false,
+  });
+
+  /// 只渲染哪一块。
+  final OrganizeSection section;
+
+  /// 作为二级页从设置推入：顶部显示返回箭头。
+  final bool embedded;
 
   @override
   State<OrganizePage> createState() => _OrganizePageState();
@@ -103,15 +119,35 @@ class _OrganizePageState extends State<OrganizePage> {
 
   Widget _body(BuildContext context) {
     final int audio = _repo.audioFiles().length;
+    final bool showOrganize = widget.section != OrganizeSection.cleanup;
+    final bool showCleanup = widget.section != OrganizeSection.organize;
+    final String title = switch (widget.section) {
+      OrganizeSection.cleanup => '清理与查重',
+      OrganizeSection.organize => '扫描与整理',
+      OrganizeSection.all => '整理',
+    };
     return Column(
       children: <Widget>[
-        PageHeader(title: '整理', subtitle: _repo.hasRoot ? '$audio 首 · ${_status.isEmpty ? '待整理' : _status}' : '还没有选择曲库目录'),
+        PageHeader(
+          title: title,
+          subtitle: _repo.hasRoot
+              ? '$audio 首 · ${_status.isEmpty ? '待整理' : _status}'
+              : '还没有选择曲库目录',
+          leading: widget.embedded
+              ? IconButton(
+                  tooltip: '返回',
+                  icon: Icon(Icons.arrow_back,
+                      size: 20, color: MoKit.text(context)),
+                  onPressed: () => Navigator.of(context).maybePop(),
+                )
+              : null,
+        ),
         Expanded(
           child: ListView(
             padding: const EdgeInsets.only(bottom: 16),
             children: <Widget>[
-              _scanCard(audio),
-              _cleanCard(),
+              if (showOrganize) _scanCard(audio),
+              if (showCleanup) _cleanCard(),
             ],
           ),
         ),

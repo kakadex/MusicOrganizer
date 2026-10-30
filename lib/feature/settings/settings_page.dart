@@ -22,6 +22,7 @@ import '../../core/settings/settings_backup.dart';
 import '../../core/version.dart';
 import '../../platform/host_channel.dart';
 import '../health/health_page.dart';
+import '../organize/organize_page.dart';
 import 'data_source_page.dart';
 import 'folder_page.dart';
 import '../library/media_import_sheet.dart';
@@ -29,10 +30,10 @@ import '../history/history_page.dart';
 import 'update_sheet.dart';
 import '../../platform/windows_file_assoc.dart';
 
-/// 设置页：偏好 / 主题 / 维护 / 备份 / 关于（更新检查与更新渠道都收在「关于」里）。
+/// 设置页：偏好 / 整理 / 主题 / 维护 / 备份 / 关于（更新检查与更新渠道都收在「关于」里）。
 ///
-/// 与「整理」明确分工：这里只放**偏好与维护**，功能类动作不在这（把工具卡塞进设置里，
-/// 结果主功能要点三次才能到）。
+/// 2026-10-30 起主界面只保留音乐库，「整理」页整体并入本页：曲库整理与清理查重
+/// 各是一个入口，点进去才是具体功能（见 [_organizeCard]）。
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
 
@@ -93,6 +94,7 @@ class _SettingsPageState extends State<SettingsPage> {
             padding: const EdgeInsets.only(bottom: 16),
             children: <Widget>[
               _dirCard(),
+              _organizeCard(),
               _matchCard(),
               _scanCard(),
               _netCard(),
@@ -173,6 +175,33 @@ class _SettingsPageState extends State<SettingsPage> {
     await _repo.clearRoot();
     if (!mounted) return;
     moSnack(context, '已移除曲库目录');
+  }
+
+  /// 整理入口：原独立「整理」页并入设置后，按功能拆成两个二级页。
+  ///
+  /// 只放入口不放具体按钮 —— 清理与查重下面有 5 个动作，平铺在设置里会把
+  /// 偏好项挤得找不到；点进去才是那些动作。
+  Widget _organizeCard() {
+    return SectionCard(
+      title: '整理',
+      subtitle: '扫描统计、自动整理、清理与查重',
+      children: <Widget>[
+        MoTile(
+          title: '扫描与整理',
+          subtitle: '扫描统计、按目录规则自动整理（先出计划，确认后才动文件）',
+          icon: Icons.tune,
+          onTap: () => _push(const OrganizePage(
+              section: OrganizeSection.organize, embedded: true)),
+        ),
+        MoTile(
+          title: '清理与查重',
+          subtitle: '文件名清理、重复文件筛选、扁平化、空文件夹、垃圾文件',
+          icon: Icons.cleaning_services_outlined,
+          onTap: () => _push(const OrganizePage(
+              section: OrganizeSection.cleanup, embedded: true)),
+        ),
+      ],
+    );
   }
 
   Widget _matchCard() {
