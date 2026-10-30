@@ -1,17 +1,17 @@
-MusicOrganizer v0.2.57 分发包（本地直发，非官方发布页）
+MusicOrganizer v0.2.58 分发包（本地直发，非官方发布页）
 ====================================================
 
-构建时间：2026-10-30
-版本：0.2.57（build 171，版本戳 0.2.57-WXQHFJ）
+构建时间：2026-10-31
+版本：0.2.58（build 172，版本戳 0.2.58-PT8LQ5）
 说明：本目录用于直接发给他人使用，官方发布以 Gitee / GitHub Releases 为准。
 
 文件
 ----
-MusicOrganizer-0.2.54-windows-x64.zip        Windows 桌面版（解压后运行 musicorganizer.exe）
-MusicOrganizer-0.2.54-android-arm64-v8a.apk  安卓 64 位（绝大多数现代手机）
-MusicOrganizer-0.2.54-android-x86_64.apk     安卓 x86_64（少数 Intel 平板 / 模拟器）
-MusicOrganizer-0.2.54-android-armeabi-v7a.apk 安卓 32 位（老旧设备）
-SHA256SUMS.txt                               以上文件的 SHA-256 校验和
+MusicOrganizer-0.2.58-windows-x64.zip          Windows 桌面版（解压后运行 musicorganizer.exe）
+MusicOrganizer-0.2.58-android-arm64-v8a.apk    安卓 64 位（绝大多数现代手机）
+MusicOrganizer-0.2.58-android-x86_64.apk       安卓 x86_64（少数 Intel 平板 / 模拟器）
+MusicOrganizer-0.2.58-android-armeabi-v7a.apk  安卓 32 位（老旧设备）
+SHA256SUMS.txt                                 以上文件的 SHA-256 校验和
 
 安装 / 使用
 ----------
@@ -26,7 +26,7 @@ Android：允许「未知来源」后安装对应 ABI 的 APK。
 
 本版变化
 --------
-修复多选时左右侧滑（系统返回手势）会直接退出应用：现在只退出多选、回到普通列表。
+「垃圾文件」进页面自动后台扫描，带进度条、可随时停止
 
 校验（可选）
 ----------

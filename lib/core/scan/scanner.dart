@@ -128,13 +128,17 @@ abstract final class Scanner {
   ///
   /// 与 [walkMusic] 不同：这里不排除 `.lrc.bak` / `.tmp` / `Thumbs.db` 之类，
   /// 垃圾清理恰恰要在它们里面找候选；隐藏文件与目录照例跳过。
+  /// [progressEvery] 每收多少个文件报一次进度：默认 200（曲库扫描够用），
+  /// 垃圾清理这类要显示「已扫过多少个」的入口传小一点（如 20），界面才动得起来。
   static Future<List<VFile>> walkAll(
     FileStore st,
     VFile root, {
     CancelToken? cancel,
     Progress? progress,
     ScanFilter? filter,
+    int progressEvery = 200,
   }) async {
+    final int every = progressEvery <= 0 ? 1 : progressEvery;
     final List<VFile> out = <VFile>[];
 
     Future<void> walk(VFile dir, int depth) async {
@@ -147,7 +151,7 @@ abstract final class Scanner {
           }
         } else if (!c.isHidden() && !(filter?.skip(c) ?? false)) {
           out.add(c);
-          if (progress != null && out.length % 200 == 0) {
+          if (progress != null && out.length % every == 0) {
             progress.onProgress(out.length, out.length, c.name);
           }
         }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../app/repo.dart';
@@ -13,6 +15,7 @@ import '../../core/fs/tree_ref.dart';
 import '../../core/match/text_util.dart';
 import '../../core/model/cancel_token.dart';
 import '../../core/model/duplicate_group.dart';
+import '../../core/model/progress.dart';
 import '../../core/model/tags.dart';
 import '../../core/model/task_control.dart';
 import '../../core/model/vfile.dart';
@@ -46,6 +49,21 @@ class OrganizePage extends StatefulWidget {
   /// 作为二级页从设置推入：顶部显示返回箭头。
   final bool embedded;
 
+  /// 本次运行内的垃圾扫描结果缓存。
+  ///
+  /// 安卓上 SAF 每次列目录都是一次跨进程往返，整树遍历即使不在主线程做，
+  /// 也会让手机持续发热耗电 —— 所以一个曲库目录集合只扫一次，返回再进来
+  /// 直接用缓存（要重扫点那一行右侧的刷新按钮）。换目录时键变了，自然重扫。
+  static List<VFile>? _junkCache;
+  static String _junkCacheKey = '';
+
+  /// 清掉扫描结果缓存（单测之间需要互不影响）。
+  @visibleForTesting
+  static void resetJunkCacheForTest() {
+    _junkCache = null;
+    _junkCacheKey = '';
+  }
+
   @override
   State<OrganizePage> createState() => _OrganizePageState();
 }
@@ -67,9 +85,12 @@ class _OrganizePageState extends State<OrganizePage> {
   List<VFile> _junkFiles = <VFile>[];
   bool _junkScanning = false;
 
-  /// 是否已经手动扫过一次（没扫过时「垃圾文件」那行显示「点一下扫描」）。
+  /// 是否已经扫过一次（没扫过时「垃圾文件」那行显示「准备扫描」）。
   bool _junkScanned = false;
   _FlagToken? _junkCancel;
+
+  /// 扫描进度：本次已经走过多少个文件（只在扫描期间显示）。
+  int _junkChecked = 0;
 
   Repo get _repo => Repo.instance;
 
@@ -84,9 +105,41 @@ class _OrganizePageState extends State<OrganizePage> {
   @override
   void initState() {
     super.initState();
-    // 注意：这里**不**自动扫垃圾。整树遍历在主 isolate 上跑，进页面就扫会让
-    // 转场动画卡一下；用户点「垃圾文件」那行时才扫（见 _cleanCard）。
+    // 0.2.58 起「垃圾文件」不再需要先点一下：进页面就在后台自动扫一次。
+    //
+    // 仍然等首帧之后再排（转场动画约 300ms），而且结果按「曲库目录集合」
+    // 缓存在本次运行里 —— 安卓上 SAF 是跨进程查询，整树遍历很贵，返回再进来
+    // 不重扫（见 [_autoJunkScan]）。只想看扫描整理那半页时不扫。
+    if (widget.section != OrganizeSection.organize) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        unawaited(_autoJunkScan());
+      });
+    }
   }
+
+  /// 自动扫描的入口：有缓存就直接用，没有才真的遍历一遍。
+  Future<void> _autoJunkScan() async {
+    if (_junkKey().isEmpty) return; // 还没选曲库目录
+    final List<VFile>? cached = OrganizePage._junkCacheKey == _junkKey()
+        ? OrganizePage._junkCache
+        : null;
+    if (cached != null) {
+      setState(() {
+        _junkFiles = cached;
+        _junkScanned = true;
+      });
+      return;
+    }
+    // 先让转场动画走完再碰磁盘：首帧和成百上千次目录查询挤在一起就是卡顿。
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    if (!mounted || _junkScanning || _junkScanned) return;
+    await _scanJunk();
+  }
+
+  /// 缓存键：曲库目录集合（换目录 / 多选目录变了就要重扫）。
+  String _junkKey() =>
+      _repo.roots.map((TreeRef r) => r.rootDocId).join('|');
 
   @override
   Widget build(BuildContext context) {
@@ -107,40 +160,70 @@ class _OrganizePageState extends State<OrganizePage> {
 
   /// 遍历整棵目录树找垃圾（Thumbs.db / .bak / .tmp 都不是音频，不在曲库列表里）。
   ///
-  /// 只在用户点「垃圾文件」时跑：进页面就自动扫会让整树遍历和转场动画抢主线程，
-  /// 进 / 退页面都发卡（用户 2026-10-30 实测）。
+  /// 0.2.58 起由 [initState] 自动触发，也可以点那一行 / 右侧刷新手动触发。
+  /// 遍历过程中每 20 个文件回一次进度，界面显示「已扫过 N 个文件」和一条进度条；
+  /// 随时可以点「停止」，离开页面（[dispose]）也会取消。
   Future<void> _scanJunk() async {
     final FileStore? st = _repo.store;
     if (st == null || _repo.roots.isEmpty) return;
-    if (!mounted) return;
+    if (!mounted || _junkScanning) return;
     final _FlagToken token = _FlagToken();
     _junkCancel = token;
-    setState(() => _junkScanning = true);
+    setState(() {
+      _junkScanning = true;
+      _junkChecked = 0;
+    });
     try {
       final List<VFile> all = <VFile>[];
+      final _JunkProgress progress = _JunkProgress((int done, String _) {
+        if (!mounted || token.isCancelled()) return;
+        setState(() => _junkChecked = done);
+      });
       for (final TreeRef r in _repo.roots) {
         if (token.isCancelled()) return;
         final VFile rootDir = VFile(docId: r.rootDocId, name: r.rootDocId, dir: true);
         all.addAll(await Scanner.walkAll(st, rootDir,
-            filter: _repo.scanFilter(), cancel: token));
+            filter: _repo.scanFilter(),
+            cancel: token,
+            progress: progress,
+            progressEvery: 20));
         if (token.isCancelled()) return;
       }
       if (!mounted || token.isCancelled()) return;
       final List<VFile> junk = all.where(Junk.isJunk).toList();
+      OrganizePage._junkCache = junk;
+      OrganizePage._junkCacheKey = _junkKey();
+      if (!mounted) return;
       setState(() {
         _junkFiles = junk;
         _junkScanning = false;
+        _junkChecked = 0;
         _junkScanned = true;
       });
     } catch (_) {
       if (mounted && !token.isCancelled()) {
-        setState(() => _junkScanning = false);
+        setState(() {
+          _junkScanning = false;
+          _junkChecked = 0;
+        });
       }
     }
   }
 
+  /// 停止正在跑的扫描（结果作废，下次进来会重扫）。
+  void _stopJunkScan() {
+    _junkCancel?.cancel();
+    if (!mounted) return;
+    setState(() {
+      _junkScanning = false;
+      _junkChecked = 0;
+    });
+  }
+
   /// 删完垃圾后重新扫一遍（保持「发现 N 个」是新数）。
   Future<void> _refreshJunk() async {
+    OrganizePage._junkCache = null;
+    OrganizePage._junkCacheKey = '';
     await _scanJunk();
   }
 
@@ -263,18 +346,31 @@ class _OrganizePageState extends State<OrganizePage> {
         ),
         MoTile(
           title: '垃圾文件',
-          // 不再进页面就自动扫：整树遍历会拖住转场（进 / 退都卡）。
-          // 没扫过时这行就是入口，点一下才开始扫。
+          // 0.2.58：进页面自动在后台扫，不用先点一下；扫过就复用本次运行的结果。
+          // 扫描中显示进度条与已扫过的数量，点一下即停止；扫完右侧有刷新按钮。
           subtitle: _junkScanning
-              ? '正在扫描…'
+              ? '正在后台扫描… 已扫过 $_junkChecked 个文件（点一下停止）'
               : (!_junkScanned
-                  ? '点一下扫描（Thumbs.db / .bak / .tmp / 0 字节）'
+                  ? '准备扫描（Thumbs.db / .bak / .tmp / 0 字节）'
                   : (junk == 0
                       ? '没有发现'
                       : '发现 $junk 个（.bak / Thumbs.db / 0 字节…）')),
           icon: Icons.delete_outline,
+          trailing: _junkScanning
+              ? const SizedBox(
+                  width: 72,
+                  child: LinearProgressIndicator(minHeight: 3),
+                )
+              : (!_junkScanned
+                  ? null
+                  : IconButton(
+                      tooltip: '重新扫描',
+                      icon: Icon(Icons.refresh,
+                          size: 20, color: MoKit.sub(context)),
+                      onPressed: _scanJunk,
+                    )),
           onTap: _junkScanning
-              ? null
+              ? _stopJunkScan
               : (!_junkScanned
                   ? () => _scanJunk()
                   : (junk == 0 ? null : () => _junk())),
@@ -1103,4 +1199,16 @@ class _FlagToken implements CancelToken {
 
   @override
   bool isCancelledNow() => _cancelled;
+}
+
+/// 把 [Scanner.walkAll] 的三参数进度回调收窄成「已扫过多少个 + 当前文件名」。
+///
+/// 垃圾扫描不关心总数（遍历前不知道树有多大），只要一个能显示进度的计数。
+class _JunkProgress implements Progress {
+  _JunkProgress(this.onTick);
+
+  final void Function(int done, String name) onTick;
+
+  @override
+  void onProgress(int done, int total, String message) => onTick(done, message);
 }

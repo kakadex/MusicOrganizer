@@ -14,22 +14,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Flutter (stable)
+      - name: Set up Flutter (pinned)
         uses: subosito/flutter-action@v2
         with:
+          # 锁定版本，不要再用浮动的 `stable`。
+          # 原因：`--fatal-infos` 把 info 级提示也算失败，而上游 stable 每隔几周
+          # 就会新增或调整 lint 与 analyzer 提示 —— 代码一个字没改，CI 也会突然变红，
+          # 这就是之前「偶发红」的来源。锁到发版用的同一条工具链（3.47.8）之后，
+          # 本地 `dart analyze` 与 CI 的结论就一致了；升级 Flutter 时两边一起改。
+          flutter-version: 3.47.8
           channel: stable
+          cache: true
 
       - name: Install dependencies
         run: flutter pub get
 
       - name: Analyze
-        run: flutter analyze --fatal-infos
+        run: flutter analyze --fatal-infos --no-pub
 
       - name: Test
-        run: flutter test
+        run: flutter test --no-pub
 
       - name: Build APK (release, split per ABI)
         # CI 环境没有 key.properties，正式签名闸会让 release 构建直接失败。
         # CI 产物不用于发布（发版走本地构建 + 两端 API 上传），这里只为验证
         # 「能编过」，所以显式允许 debug 签名。
-        run: flutter build apk --split-per-abi --release -PallowDebugSign=true
+        run: flutter build apk --split-per-abi --release --no-pub -PallowDebugSign=true

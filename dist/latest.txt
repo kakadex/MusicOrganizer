@@ -1,11 +1,11 @@
-version=0.2.57
-tag=v0.2.57
+version=0.2.58
+tag=v0.2.58
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.57/MusicOrganizer-0.2.57-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.58/MusicOrganizer-0.2.58-android-arm64-v8a.apk
 size=19806069
-sha256=a62e367929696080fd8fbd0da3979f66ed6d792dd851ef2745dfa72e1d145394
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.57/MusicOrganizer-0.2.57-windows-x64.zip
-zip_size=12638291
-zip_sha256=a1f9a4bc7d87f303e90eea4af1634092876bfc283d64db53852ee9cf67f82cfc
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.57
-summary=多选时侧滑/返回只退出多选，不再退出应用。
+sha256=dbf1c5f650318b7c6bf8d1876b65c942cadd89ed87464bb4c4b6f78b536b70d3
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.58/MusicOrganizer-0.2.58-windows-x64.zip
+zip_size=12906955
+zip_sha256=919f1982fd8056aeb89044793b6db8c57d121b5717643ff45013e6a4617721e8
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.58
+summary=「垃圾文件」进页面自动后台扫描，带进度条、可随时停止
