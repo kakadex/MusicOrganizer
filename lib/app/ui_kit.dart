@@ -842,8 +842,13 @@ class _TaskBarState extends State<TaskBar> {
     if (!_visible || t == null) return const SizedBox.shrink();
     final TaskControl c = t.control;
     final int pct = c.percent();
+    // 安卓上系统导航栏（三键 / 手势条）盖在应用最底部：这里不躲开的话
+    // 「暂停 / 停止」按钮会被压掉半截（用户 2026-10-31 实测部分机型）。
+    // 桌面端 padding.bottom = 0，行为不变。
+    final double bottomInset = MediaQuery.of(context).padding.bottom;
     return Container(
-      padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 8, MoKit.pagePad, 8),
+      padding: EdgeInsets.fromLTRB(
+          MoKit.pagePad, 8, MoKit.pagePad, 8 + bottomInset),
       color: MoKit.card(context),
       child: Column(
         mainAxisSize: MainAxisSize.min,

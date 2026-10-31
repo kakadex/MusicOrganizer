@@ -1,16 +1,16 @@
-MusicOrganizer v0.2.59 分发包（本地直发，非官方发布页）
+MusicOrganizer v0.2.60 分发包（本地直发，非官方发布页）
 ====================================================
 
 构建时间：2026-10-31
-版本：0.2.59（build 173，版本戳 0.2.59-04VJW6）
+版本：0.2.60（build 174，版本戳 0.2.60-Q5WNIU）
 说明：本目录用于直接发给他人使用，官方发布以 Gitee / GitHub Releases 为准。
 
 文件
 ----
-MusicOrganizer-0.2.59-windows-x64.zip          Windows 桌面版（解压后运行 musicorganizer.exe）
-MusicOrganizer-0.2.59-android-arm64-v8a.apk    安卓 64 位（绝大多数现代手机）
-MusicOrganizer-0.2.59-android-x86_64.apk       安卓 x86_64（少数 Intel 平板 / 模拟器）
-MusicOrganizer-0.2.59-android-armeabi-v7a.apk  安卓 32 位（老旧设备）
+MusicOrganizer-0.2.60-windows-x64.zip          Windows 桌面版（解压后运行 musicorganizer.exe）
+MusicOrganizer-0.2.60-android-arm64-v8a.apk    安卓 64 位（绝大多数现代手机）
+MusicOrganizer-0.2.60-android-x86_64.apk       安卓 x86_64（少数 Intel 平板 / 模拟器）
+MusicOrganizer-0.2.60-android-armeabi-v7a.apk  安卓 32 位（老旧设备）
 SHA256SUMS.txt                                 以上文件的 SHA-256 校验和
 
 安装 / 使用
@@ -26,7 +26,7 @@ Android：允许「未知来源」后安装对应 ABI 的 APK。
 
 本版变化
 --------
-封面缩略图存盘 + 读封面只读 256KB，滚动更轻
+底部按钮避开安卓系统导航栏，不再被挡
 
 校验（可选）
 ----------

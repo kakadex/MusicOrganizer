@@ -242,8 +242,12 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
   }
 
   Widget _bottomBar() {
+    // 安卓的系统导航栏盖在应用最底部：不躲开的话「写入 N 首」会被压住
+    // （用户 2026-10-31 实测）。桌面端 bottomInset = 0，行为不变。
+    final double bottomInset = MediaQuery.of(context).padding.bottom;
     return Container(
-      padding: const EdgeInsets.fromLTRB(MoKit.pagePad, 8, MoKit.pagePad, 10),
+      padding: EdgeInsets.fromLTRB(
+          MoKit.pagePad, 8, MoKit.pagePad, 10 + bottomInset),
       color: MoKit.card(context),
       child: Row(
         children: <Widget>[

@@ -743,17 +743,20 @@ class _LibraryPageState extends State<LibraryPage> {
     }
   }
 
-  /// 选中操作条整体上抬的高度（逻辑像素）。
+  /// 选中操作条的整体内边距。
   ///
-  /// 用户 2026-10-30 要求「向上调整 0.5CM」：安卓上 1dp = 1/160 英寸，
-  /// 0.5cm ≈ 31.5dp，取整 32。加在下内边距上而不是把整条平移——白底照样铺到
-  /// 屏幕最底边，条下面不会留出一条灰缝。
-  static const double _selectionBarLift = 32;
+  /// 用户 2026-10-30 要求「向上调整 0.5CM」：加在下内边距上而不是把整条平移
+  /// ——白底照样铺到屏幕最底边，条下面不会留出一条灰缝。
+  /// 0.2.60：把写死的 32dp 换成「系统导航栏实际高度 + 余量」——部分机型
+  /// 三键导航栏比手势条高，写死的值不够，按钮仍会被压掉半截（2026-10-31 实测）。
+  /// 桌面端导航栏高度为 0，退化为原来的固定 8dp（+余量），不受影响。
+  static const double _selectionBarLift = 4;
 
   Widget _selectionBar() {
+    final double bottomInset = MediaQuery.of(context).padding.bottom;
     return Container(
-      padding: const EdgeInsets.fromLTRB(
-          MoKit.pagePad, 8, MoKit.pagePad, 8 + _selectionBarLift),
+      padding: EdgeInsets.fromLTRB(
+          MoKit.pagePad, 8, MoKit.pagePad, 8 + _selectionBarLift + bottomInset),
       color: MoKit.card(context),
       child: Row(
         children: <Widget>[
