@@ -218,7 +218,9 @@ void main() {
       final ScanStats s = Scanner.statsOf(all);
       expect(s.audio, 2);
       expect(s.lyrics, 1);
-      expect(s.files, 4);
+      // 0.2.65 修复：files 语义是「待整理的音频文件数」，只数音频，
+      // 歌词(.lrc)与其它非音频文件(.txt)都不算——之前这里数了全部 4 个。
+      expect(s.files, 2);
       expect(s.summary().contains('曲目 2 首'), isTrue);
     });
   });

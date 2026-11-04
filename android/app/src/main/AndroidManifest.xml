@@ -13,7 +13,7 @@
     <!-- 安卓 13+ 要显式申请才能显示任务通知 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
-        android:label="musicorganizer"
+        android:label="音乐整理"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

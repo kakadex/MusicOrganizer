@@ -2,8 +2,15 @@
 ///
 /// 关键约束（不可放宽）：**日志里不得出现本机路径、身份与凭据**。
 /// 所以写入前一律过 [sanitize]：绝对路径只留最后一段，其余抹掉。
+///
+/// 0.2.65：写盘改异步。原来每条日志都 `writeAsStringSync(flush: true)`，
+/// 同步强制刷盘——现在调用点虽不多，但都是错误路径；一旦将来往热路径加
+/// 日志，这一下就会变成卡顿源。现在 [write] 只入内存队列，后台定时器
+/// 每 500ms（或攒满 32 条）批量写一次；**error 级别立即 flush**，
+/// 崩溃日志不会因为还没到定时器就丢。
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -21,26 +28,69 @@ abstract final class Log {
   /// 单文件上限（超过就轮换）。
   static const int maxBytes = 512 * 1024;
 
+  /// 攒满多少条强制 flush 一次。
+  static const int _batchSize = 32;
+
+  /// 定时 flush 间隔。
+  static const Duration _flushInterval = Duration(milliseconds: 500);
+
   static File? _file;
   static bool _ready = false;
+
+  /// 单测注入：日志目录（不传时用应用支持目录）。测试专用，勿在生产路径设置。
+  static Future<Directory?> Function()? dirOverride;
+
+  /// 待写队列：还没落盘的完整日志行。
+  static final List<String> _pending = <String>[];
+
+  /// 定时 flush 的计时器。
+  static Timer? _timer;
+
+  /// 正在写盘（防止定时器与 error 立即 flush 并发写同一文件）。
+  static bool _writing = false;
+
+  /// 写盘完成但期间又有人入队：需要再补一轮。
+  static bool _dirty = false;
 
   /// 准备日志目录（启动时调一次；失败就静默不记日志）。
   static Future<void> init() async {
     if (_ready) return;
     try {
-      final Directory base = await getApplicationSupportDirectory();
+      final Directory? base = dirOverride != null
+          ? await dirOverride!()
+          : await getApplicationSupportDirectory();
+      if (base == null) {
+        _ready = false;
+        return;
+      }
       final Directory dir = Directory('${base.path}/logs');
       if (!dir.existsSync()) dir.createSync(recursive: true);
       _file = File('${dir.path}/app.log');
       _ready = true;
       _rotateIfNeeded();
       _purgeOld();
+      _timer ??= Timer.periodic(_flushInterval, (_) => flush());
     } catch (_) {
       _ready = false;
     }
   }
 
+  /// 单测之间复位：清状态、停定时器。测试专用，勿在生产路径调用。
+  static void resetForTest() {
+    _timer?.cancel();
+    _timer = null;
+    _pending.clear();
+    _writing = false;
+    _dirty = false;
+    _file = null;
+    _ready = false;
+    dirOverride = null;
+  }
+
   /// 记一条日志。
+  ///
+  /// info / warn / debug 入队，由定时器批量异步写；**error 同步写盘**——
+  /// 崩溃日志不能赌「进程在异步 flush 完成前还活着」，必须当场落盘。
   static void write(LogLevel level, String message,
       {Object? error, StackTrace? stack}) {
     if (!_ready || _file == null) return;
@@ -58,9 +108,57 @@ abstract final class Log {
         sb.write('\n    ${sanitize(_shortStack(stack))}');
       }
       sb.write('\n');
-      _file!.writeAsStringSync(sb.toString(), mode: FileMode.append, flush: true);
+      if (level == LogLevel.error) {
+        // 错误路径：先把队列里的历史写进去，再写本条，保证顺序
+        final File? f = _file;
+        if (f != null) {
+          if (_pending.isNotEmpty) {
+            final String batch = _pending.join();
+            _pending.clear();
+            f.writeAsStringSync(batch, mode: FileMode.append, flush: true);
+          }
+          f.writeAsStringSync(sb.toString(), mode: FileMode.append, flush: true);
+        }
+        return;
+      }
+      _pending.add(sb.toString());
+      if (_pending.length >= _batchSize) {
+        // 攒满一批：异步写，不阻塞当前调用
+        unawaited(flush());
+      }
     } catch (_) {
       // 记日志失败不能影响主流程
+    }
+  }
+
+  /// 把队列里的日志写进文件（异步执行；幂等，重复调用安全）。
+  ///
+  /// 不 await 也能用——下次 flush 会接着写剩下的。需要「保证这次写完了」
+  /// 的调用方（导出 / 清空前）请 await。
+  static Future<void> flush() async {
+    if (_pending.isEmpty) return;
+    if (_writing) {
+      _dirty = true;
+      return;
+    }
+    _writing = true;
+    try {
+      final File? f = _file;
+      if (f == null) {
+        _pending.clear();
+        return;
+      }
+      final String batch = _pending.join();
+      _pending.clear();
+      await f.writeAsString(batch, mode: FileMode.append, flush: true);
+    } catch (_) {
+      // 写失败不阻塞主流程；已清掉的队列不恢复（宁可少记，不能卡）
+    } finally {
+      _writing = false;
+      if (_dirty) {
+        _dirty = false;
+        unawaited(flush());
+      }
     }
   }
 
@@ -73,6 +171,7 @@ abstract final class Log {
   /// 读最近的日志（给界面看）。
   static Future<String> readTail({int maxBytes = 64 * 1024}) async {
     await init();
+    await flush(); // 先把队列里的写进去，界面才看得到最新
     final File? f = _file;
     if (f == null || !f.existsSync()) return '';
     try {
@@ -97,6 +196,7 @@ abstract final class Log {
   /// 导出的是**清理过**的文本 —— 不含本机路径与身份信息。
   static Future<String?> export() async {
     await init();
+    await flush();
     final File? f = _file;
     if (f == null) return null;
     try {
@@ -117,6 +217,7 @@ abstract final class Log {
   /// 导出用的全文（已脱敏）；安卓上交给系统「保存到…」用。
   static Future<String> exportText({int maxBytes = 512 * 1024}) async {
     await init();
+    await flush();
     final File? f = _file;
     if (f == null) return '';
     try {
@@ -132,6 +233,7 @@ abstract final class Log {
   /// 清空日志。
   static Future<void> clear() async {
     await init();
+    await flush();
     try {
       _file?.writeAsStringSync('');
     } catch (_) {

@@ -193,7 +193,7 @@ abstract final class Scanner {
         s.lyrics++;
       }
     }
-    s.files = files.where((VFile f) => !f.dir).length;
+    s.files = files.where((VFile f) => !f.dir && f.audio()).length;
     s.groups = groups;
     return s;
   }

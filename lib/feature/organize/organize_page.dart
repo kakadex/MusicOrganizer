@@ -991,23 +991,47 @@ class _OrganizePageState extends State<OrganizePage> {
     }
     final FileStore? st = _repo.store;
     if (st == null || _repo.roots.isEmpty) return;
+
+    // 遍历阶段也挂任务 + 进度：大曲库走 SAF 要几百上千次跨进程列目录，
+    // 不反馈的话用户会以为卡死（用户实测「等好久没进度」就发生在这一段）。
+    final RunningTask? scanTask = TaskCenter.start('扫描待扁平化文件');
+    final TaskControl? scanCtl = scanTask?.control;
     final List<FlattenPlan> plans = <FlattenPlan>[];
-    for (final TreeRef r in _repo.roots) {
-      final VFile rootDir = VFile(docId: r.rootDocId, name: r.rootDocId, dir: true);
-      List<VFile> all = <VFile>[];
-      try {
-        all = await Scanner.walkAll(st, rootDir, filter: _repo.scanFilter());
-      } catch (e) {
-        if (mounted) moSnack(context, '遍历失败：$e');
-        return;
+    try {
+      for (final TreeRef r in _repo.roots) {
+        final VFile rootDir =
+            VFile(docId: r.rootDocId, name: r.rootDocId, dir: true);
+        List<VFile> all;
+        try {
+          all = await Scanner.walkAll(
+            st,
+            rootDir,
+            filter: _repo.scanFilter(),
+            progress: _JunkProgress((int done, String name) {
+              scanCtl?.report(done, done, '已扫过 $done 个文件');
+            }),
+            progressEvery: 50,
+          );
+        } catch (e) {
+          if (mounted) moSnack(context, '遍历失败：$e');
+          return;
+        }
+        plans.addAll(Flattener.plan(all, rootDocId: r.rootDocId));
       }
-      plans.addAll(Flattener.plan(all, rootDocId: r.rootDocId));
+    } finally {
+      TaskCenter.finish();
     }
     if (!mounted) return;
     if (plans.isEmpty) {
       moSnack(context, '没有需要扁平化的文件（都已经在根目录这一层）');
       return;
     }
+    // 统计分开展示：音频和歌词是两个东西，别笼统叫「个文件」
+    final int audioCount = plans.where((FlattenPlan p) => p.source.audio()).length;
+    final int lyricCount = plans.where((FlattenPlan p) => p.source.lyric()).length;
+    final String counts = lyricCount > 0
+        ? '$audioCount 首音频 + $lyricCount 个歌词文件'
+        : '$audioCount 首音频';
     final List<WriteTarget> targets = <WriteTarget>[
       for (final FlattenPlan p in plans)
         WriteTarget(
@@ -1029,11 +1053,11 @@ class _OrganizePageState extends State<OrganizePage> {
     ];
     final List<WriteTarget>? picked = await WriteConfirmSheet.show(
       context,
-      title: '扁平化预览',
-      subtitle: '勾中的曲目会搬到曲库目录这一层；搬空的子目录会被删掉',
+      title: '扁平化预览（$counts）',
+      subtitle: '音频与同名歌词会一起搬到曲库目录这一层，保持同名不丢；搬空的子目录会被删掉',
       targets: targets,
       commitLabel: '开始移动',
-      unit: '个',
+      unit: '项',
       verb: '移动',
     );
     if (picked == null || picked.isEmpty || !mounted) return;
@@ -1068,7 +1092,7 @@ class _OrganizePageState extends State<OrganizePage> {
           root: rootDir,
           plans: e.value,
           onProgress: (int done, int total) =>
-              control?.report(done, total, '移动中'),
+              control?.report(done, total, '正在移动 $done/$total'),
         );
         moved += r.moved;
         removedDirs += r.removedDirs;

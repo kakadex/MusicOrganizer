@@ -1,11 +1,11 @@
-version=0.2.64
-tag=v0.2.64
+version=0.2.65
+tag=v0.2.65
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.64/MusicOrganizer-0.2.64-android-arm64-v8a.apk
-size=19806069
-sha256=52ccd3922745d66d9941672bbb9d511a6dd39e791569844153d30c54742c2966
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.64/MusicOrganizer-0.2.64-windows-x64.zip
-zip_size=12655582
-zip_sha256=bee58ca840c9d9b833a5b86137b4162f5c7b89e730470dc762310d66fff16ad9
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.64
-summary=多选拖动更跟手，大曲库滚动手感略顺
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.65/MusicOrganizer-0.2.65-android-arm64-v8a.apk
+size=19806081
+sha256=4edfc5fbf13f76a6b12f79a92b59310584279016c70f7d88cfd0e33f6c75cbd0
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.65/MusicOrganizer-0.2.65-windows-x64.zip
+zip_size=12657302
+zip_sha256=f1749dd32ddb12d5226c3b165125e48f95fcc87172f2db3ddba6877590b76c5d
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.65
+summary=扁平化有进度、统计分开展示；图标中文名；日志异步
