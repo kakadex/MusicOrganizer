@@ -1,11 +1,11 @@
-version=0.2.65
-tag=v0.2.65
+version=0.2.66
+tag=v0.2.66
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.65/MusicOrganizer-0.2.65-android-arm64-v8a.apk
-size=19806081
-sha256=4edfc5fbf13f76a6b12f79a92b59310584279016c70f7d88cfd0e33f6c75cbd0
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.65/MusicOrganizer-0.2.65-windows-x64.zip
-zip_size=12657302
-zip_sha256=f1749dd32ddb12d5226c3b165125e48f95fcc87172f2db3ddba6877590b76c5d
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.65
-summary=扁平化有进度、统计分开展示；图标中文名；日志异步
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.66/MusicOrganizer-0.2.66-android-arm64-v8a.apk
+size=19806077
+sha256=241dc5f38911ffd6ed6aa7bc1674ea4383afc2dcafffec61f4180cd2bd3d6e9c
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.66/MusicOrganizer-0.2.66-windows-x64.zip
+zip_size=12658364
+zip_sha256=24846b1fc4c10fb9c1ce492f7c2920ca2812d7e38db9b411c1508447b0b1b8a1
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.66
+summary=扁平化能看到进度、可中途停止，.lrc.txt 歌词不再漏搬

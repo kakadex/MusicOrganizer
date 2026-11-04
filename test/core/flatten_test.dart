@@ -47,6 +47,36 @@ void main() {
     expect(plans.first.source.name, 'b.flac');
   });
 
+  test('双扩展名歌词文本（xxx.lrc.txt）也一起搬，普通 txt 不搬', () {
+    // 真机反馈：扁平化之后子目录里还剩一堆 `歌名.lrc.txt`。
+    // 这类文件扩展名是 .txt，music() 认不出，原来会被漏掉。
+    final List<VFile> files = <VFile>[
+      audio('root/x/song.mp3', 'song.mp3', 'root/x'),
+      audio('root/x/song.lrc.txt', 'song.lrc.txt', 'root/x'),
+      audio('root/x/playlist.txt', 'playlist.txt', 'root/x'),
+      audio('root/x/cover.jpg', 'cover.jpg', 'root/x'),
+    ];
+    final List<FlattenPlan> plans = Flattener.plan(files, rootDocId: 'root');
+    expect(plans.map((FlattenPlan p) => p.source.name).toList(),
+        <String>['song.mp3', 'song.lrc.txt'],
+        reason: '音频与它的双扩展名歌词要一起进计划，其他 txt/jpg 不进');
+  });
+
+  test('lyricText 只认「主名以歌词扩展名结尾的 .txt」', () {
+    VFile f(String name) =>
+        VFile(docId: 'root/$name', parentId: 'root', name: name);
+    expect(f('a.mp3').lyricText(), isFalse);
+    expect(f('a.lrc').lyricText(), isFalse, reason: '正常 .lrc 由 lyric() 认');
+    expect(f('a.lrc.txt').lyricText(), isTrue);
+    expect(f('a.LRC.TXT').lyricText(), isTrue, reason: '大小写不敏感');
+    expect(f('a.krc.txt').lyricText(), isTrue);
+    expect(f('a.srt.txt').lyricText(), isTrue);
+    expect(f('playlist.txt').lyricText(), isFalse, reason: '普通 txt 不能当歌词');
+    expect(f('a.txt').lyricText(), isFalse);
+    expect(f('a.lrc.bak.txt').lyricText(), isFalse,
+        reason: '备份文件交给 Junk 判定，不算歌词');
+  });
+
   test('深层目录的相对路径去掉 SAF 卷前缀', () {
     final List<VFile> files = <VFile>[
       audio('primary:Music/A/B/c.mp3', 'c.mp3', 'primary:Music/A/B'),

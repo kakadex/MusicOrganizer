@@ -81,6 +81,25 @@ class VFile {
   bool audio() => !dir && audioExts.contains(ext());
   bool lyric() => !dir && lyricExts.contains(ext());
   bool music() => !dir && musicExts.contains(ext());
+
+  /// 形如 `xxx.lrc.txt` 的歌词文本（部分工具导出歌词时会保留 `.txt` 后缀）。
+  ///
+  /// 扩展名是 `.txt`（所以 [lyric] 认不出、[music] 也收不到），但主名末尾
+  /// 还带着一个歌词扩展名。用户实测：扁平化之后就剩这一堆文件留在子目录里。
+  ///
+  /// 只认「主名以歌词扩展名结尾」的 `.txt`，**不把任意 `.txt` 当歌词**——
+  /// 曲库里还常有 playlist.txt / README.txt 这类文件，不能被一起搬走。
+  bool lyricText() {
+    if (dir) return false;
+    final String n = name.toLowerCase();
+    if (!n.endsWith('.txt') || n.length <= 4) return false;
+    final String stem = n.substring(0, n.length - 4); // 去掉 .txt
+    for (final String e in lyricExts) {
+      if (stem.endsWith(e)) return true;
+    }
+    return false;
+  }
+
   bool isHidden() => name.startsWith('.');
   bool metaCached() => cachedTags != null;
 

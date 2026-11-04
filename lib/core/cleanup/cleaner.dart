@@ -249,6 +249,10 @@ abstract final class Flattener {
   ///
   /// [rootDocId] 是目标目录（通常是曲库根）；[files] 是它下面的全部文件
   /// （含子目录里的）。已经在根目录的文件跳过。
+  ///
+  /// 收两类文件：音频 + 音频/歌词扩展名（`music()`），以及形如
+  /// `xxx.lrc.txt` 的歌词文本（[VFile.lyricText]）。后者扩展名是 `.txt`，
+  /// 原来会被漏掉、扁平化后留在子目录里（用户实测反馈）。
   static List<FlattenPlan> plan(List<VFile> files, {required String rootDocId}) {
     final Set<String> taken = <String>{};
     for (final VFile f in files) {
@@ -257,7 +261,7 @@ abstract final class Flattener {
     }
     final List<FlattenPlan> out = <FlattenPlan>[];
     for (final VFile f in files) {
-      if (f.dir || !f.music()) continue;
+      if (f.dir || !(f.music() || f.lyricText())) continue;
       if ((f.parentId ?? '') == rootDocId) continue; // 已在根目录
       String name = f.name;
       if (taken.contains(name.toLowerCase())) name = _unique(name, taken);

@@ -97,6 +97,17 @@ class _OrganizePageState extends State<OrganizePage> {
   /// 无谓操作。改成 notifier 后只有那一行文字重建。
   final ValueNotifier<int> _junkChecked = ValueNotifier<int>(0);
 
+  /// 扁平化进度文案（页面内显示，不用全局 TaskBar）。
+  ///
+  /// 0.2.66：扁平化原来把进度挂在 TaskCenter 的全局任务条上，但「整理」是
+  /// push 进来的二级页，TaskBar 在 shell 主界面底部、被盖住，用户根本看不到，
+  /// 只会觉得「点下去没反应」再点一次又撞上「已有任务在跑」。现在进度直接
+  /// 显示在「扁平化文件夹」这一行里，和垃圾扫描的进度一样可见。
+  final ValueNotifier<String> _flattenStatus = ValueNotifier<String>('');
+
+  /// 扁平化遍历阶段的取消令牌：非 null 表示正在跑，再点一次即停止。
+  _FlagToken? _flattenCancel;
+
   /// 曲库统计缓存（音频数 / 待归类数）。
   ///
   /// 原来这两个数在 [_body] 里每次重建都现算：`_repo.audioFiles()` 遍历全表
@@ -146,7 +157,10 @@ class _OrganizePageState extends State<OrganizePage> {
     // 返回上级时立刻停掉垃圾扫描：整树遍历在主 isolate 上跑，
     // 不取消的话返回动画会被磁盘 IO 拖住（用户实测的「返回卡顿」）。
     _junkCancel?.cancel();
+    // 扁平化遍历同理：离开页面就别继续扫了
+    _flattenCancel?.cancel();
     _junkChecked.dispose();
+    _flattenStatus.dispose();
     super.dispose();
   }
 
@@ -378,7 +392,21 @@ class _OrganizePageState extends State<OrganizePage> {
         ),
         MoTile(
           title: '扁平化文件夹',
-          subtitle: '把所有子目录里的曲子搬到当前目录这一层（撞名自动加 _2，不覆盖）',
+          // 0.2.66：进度显示在这一行里（不用全局任务条——整理页是二级页，
+          // shell 底部的 TaskBar 被盖住，用户原来完全看不到进度）。
+          // 注意 MoTile 里 subtitleWidget 优先于 subtitle，所以空闲时要
+          // 自己把说明文字画出来，否则说明会消失。
+          subtitleWidget: ValueListenableBuilder<String>(
+            valueListenable: _flattenStatus,
+            builder: (BuildContext c, String status, Widget? _) => Text(
+              status.isEmpty
+                  ? '把所有子目录里的曲子搬到当前目录这一层（撞名自动加 _2，不覆盖）'
+                  : status,
+              style: TextStyle(
+                  fontSize: MoKit.fsCaption,
+                  color: status.isEmpty ? MoKit.sub(c) : MoKit.primary(c)),
+            ),
+          ),
           icon: Icons.account_tree_outlined,
           onTap: all.isEmpty ? null : _flatten,
         ),
@@ -985,6 +1013,13 @@ class _OrganizePageState extends State<OrganizePage> {
   /// 扁平化：子目录里的音频 → 当前曲库目录这一层。
   Future<void> _flatten() async {
     if (_busy) return;
+    // 正在跑：再点一次就是停止（和「垃圾文件」那一行同样的交互）。
+    // 没有这个出口的话，SAF 遍历慢时用户只能干等，而这个页面的全局任务条
+    // 又被二级页盖住、点不到「停止」。
+    if (_flattenCancel != null) {
+      _flattenCancel!.cancel();
+      return;
+    }
     if (TaskCenter.isBusy()) {
       moSnack(context, '已有任务在跑，先等它结束');
       return;
@@ -992,10 +1027,15 @@ class _OrganizePageState extends State<OrganizePage> {
     final FileStore? st = _repo.store;
     if (st == null || _repo.roots.isEmpty) return;
 
-    // 遍历阶段也挂任务 + 进度：大曲库走 SAF 要几百上千次跨进程列目录，
-    // 不反馈的话用户会以为卡死（用户实测「等好久没进度」就发生在这一段）。
+    // 遍历阶段也挂任务（防重入）+ 页面内进度：大曲库走 SAF 要几百上千次
+    // 跨进程列目录，不反馈的话用户会以为卡死。
+    //
+    // 注意：进度显示在「扁平化文件夹」这一行里（_flattenStatus），不用全局
+    // TaskBar——整理页是 push 进来的二级页，shell 里的 TaskBar 被盖住看不到。
     final RunningTask? scanTask = TaskCenter.start('扫描待扁平化文件');
     final TaskControl? scanCtl = scanTask?.control;
+    final _FlagToken token = _FlagToken();
+    _flattenCancel = token;
     final List<FlattenPlan> plans = <FlattenPlan>[];
     try {
       for (final TreeRef r in _repo.roots) {
@@ -1007,8 +1047,11 @@ class _OrganizePageState extends State<OrganizePage> {
             st,
             rootDir,
             filter: _repo.scanFilter(),
+            cancel: token,
             progress: _JunkProgress((int done, String name) {
+              if (!mounted || token.isCancelled()) return;
               scanCtl?.report(done, done, '已扫过 $done 个文件');
+              _flattenStatus.value = '正在扫描… 已扫过 $done 个文件（再点一下停止）';
             }),
             progressEvery: 50,
           );
@@ -1016,10 +1059,19 @@ class _OrganizePageState extends State<OrganizePage> {
           if (mounted) moSnack(context, '遍历失败：$e');
           return;
         }
+        if (token.isCancelled()) return;
         plans.addAll(Flattener.plan(all, rootDocId: r.rootDocId));
       }
     } finally {
       TaskCenter.finish();
+      _flattenCancel = null;
+      // 遍历结束就清掉进度：接下来是预览面板，别让「正在扫描…」一直挂着。
+      // 页面已销毁时不碰 notifier（dispose 里已经 release 了）。
+      if (mounted) _flattenStatus.value = '';
+    }
+    if (token.isCancelled()) {
+      if (mounted) moSnack(context, '已停止扫描');
+      return;
     }
     if (!mounted) return;
     if (plans.isEmpty) {
@@ -1091,8 +1143,11 @@ class _OrganizePageState extends State<OrganizePage> {
           st,
           root: rootDir,
           plans: e.value,
-          onProgress: (int done, int total) =>
-              control?.report(done, total, '正在移动 $done/$total'),
+          onProgress: (int done, int total) {
+            if (!mounted) return;
+            control?.report(done, total, '正在移动 $done/$total');
+            _flattenStatus.value = '正在移动 $done/$total';
+          },
         );
         moved += r.moved;
         removedDirs += r.removedDirs;
@@ -1107,6 +1162,7 @@ class _OrganizePageState extends State<OrganizePage> {
           '${failed > 0 ? ' · 失败 $failed 个' : ''}');
     } finally {
       TaskCenter.finish();
+      if (mounted) _flattenStatus.value = '';
     }
   }
 
