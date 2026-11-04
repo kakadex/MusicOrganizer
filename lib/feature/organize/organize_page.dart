@@ -90,7 +90,54 @@ class _OrganizePageState extends State<OrganizePage> {
   _FlagToken? _junkCancel;
 
   /// 扫描进度：本次已经走过多少个文件（只在扫描期间显示）。
-  int _junkChecked = 0;
+  ///
+  /// 用 [ValueNotifier] 而不是普通字段 + setState：`progressEvery: 20` 意味着一万
+  /// 个文件的树会回调 500 次，每次 setState 都要把整个页面重建一遍，而
+  /// [_body] 里还要遍历全表算「多少首 / 待整理多少」。两者相乘就是几百万次
+  /// 无谓操作。改成 notifier 后只有那一行文字重建。
+  final ValueNotifier<int> _junkChecked = ValueNotifier<int>(0);
+
+  /// 曲库统计缓存（音频数 / 待归类数）。
+  ///
+  /// 原来这两个数在 [_body] 里每次重建都现算：`_repo.audioFiles()` 遍历全表
+  /// 新建一个 List，再对每个文件调 `_repo.relPath(f)`（多目录时是循环字符串
+  /// 比较）。一万个文件的树配 500 次进度 setState = 500 万次操作。
+  ///
+  /// 现在用 [_statsFingerprint] 做廉价指纹，只有指纹变了才重算。
+  int _audioCount = 0;
+  int _unorganizedCount = 0;
+
+  /// 算统计时的指纹；null = 还没算过。
+  String? _statsFingerprint;
+
+  /// 曲库的廉价指纹：根目录集合 + 文件数。
+  ///
+  /// 不用 `files.hashCode`（要对全表求值，本身就贵），也不用监听通知
+  /// （通知很密，而且通知到达时数据未必已经写好）。这两个值变了才重算统计，
+  /// 足够覆盖「扫描完 / 换目录 / 删文件」这几种真实场景。
+  String _statsFingerprintNow() {
+    final StringBuffer sb = StringBuffer();
+    for (final TreeRef r in _repo.roots) {
+      sb.write(r.rootDocId);
+      sb.write('|');
+    }
+    sb.write(_repo.files.length);
+    return sb.toString();
+  }
+
+  /// 需要时才重算曲库统计。
+  void _recomputeStatsIfNeeded() {
+    final String fp = _statsFingerprintNow();
+    if (fp == _statsFingerprint) return;
+    final List<VFile> files = _repo.audioFiles();
+    int unorganized = 0;
+    for (final VFile f in files) {
+      if (!_repo.relPath(f).contains('/')) unorganized++;
+    }
+    _audioCount = files.length;
+    _unorganizedCount = unorganized;
+    _statsFingerprint = fp;
+  }
 
   Repo get _repo => Repo.instance;
 
@@ -99,6 +146,7 @@ class _OrganizePageState extends State<OrganizePage> {
     // 返回上级时立刻停掉垃圾扫描：整树遍历在主 isolate 上跑，
     // 不取消的话返回动画会被磁盘 IO 拖住（用户实测的「返回卡顿」）。
     _junkCancel?.cancel();
+    _junkChecked.dispose();
     super.dispose();
   }
 
@@ -171,13 +219,14 @@ class _OrganizePageState extends State<OrganizePage> {
     _junkCancel = token;
     setState(() {
       _junkScanning = true;
-      _junkChecked = 0;
+      _junkChecked.value = 0;
     });
     try {
       final List<VFile> all = <VFile>[];
       final _JunkProgress progress = _JunkProgress((int done, String _) {
         if (!mounted || token.isCancelled()) return;
-        setState(() => _junkChecked = done);
+        // 只动进度条那一行，不整页重建（一万个文件会回调 500 次）。
+        _junkChecked.value = done;
       });
       for (final TreeRef r in _repo.roots) {
         if (token.isCancelled()) return;
@@ -197,14 +246,14 @@ class _OrganizePageState extends State<OrganizePage> {
       setState(() {
         _junkFiles = junk;
         _junkScanning = false;
-        _junkChecked = 0;
+        _junkChecked.value = 0;
         _junkScanned = true;
       });
     } catch (_) {
       if (mounted && !token.isCancelled()) {
         setState(() {
           _junkScanning = false;
-          _junkChecked = 0;
+          _junkChecked.value = 0;
         });
       }
     }
@@ -216,7 +265,7 @@ class _OrganizePageState extends State<OrganizePage> {
     if (!mounted) return;
     setState(() {
       _junkScanning = false;
-      _junkChecked = 0;
+      _junkChecked.value = 0;
     });
   }
 
@@ -228,13 +277,11 @@ class _OrganizePageState extends State<OrganizePage> {
   }
 
   Widget _body(BuildContext context) {
-    // 只遍历一次：audio 与「待归类」都用同一份列表算，避免大曲库下每次
-    // 重建都跑两遍全表（之前是 _body 一遍、_scanCard 又一遍）。
-    final List<VFile> audioFiles = _repo.audioFiles();
-    final int audio = audioFiles.length;
-    final int unorganized = audioFiles
-        .where((VFile f) => !_repo.relPath(f).contains('/'))
-        .length;
+    // 统计数据走缓存：只有根目录集合 / 文件数变了才重算（见 [_recomputeStatsIfNeeded]），
+    // 不再每次 build 都遍历全表 + 逐个算相对路径。
+    _recomputeStatsIfNeeded();
+    final int audio = _audioCount;
+    final int unorganized = _unorganizedCount;
     final bool showOrganize = widget.section != OrganizeSection.cleanup;
     final bool showCleanup = widget.section != OrganizeSection.organize;
     final String title = switch (widget.section) {
@@ -279,11 +326,8 @@ class _OrganizePageState extends State<OrganizePage> {
   /// [showTitle] 为 false 时不画卡片标题 —— 二级页顶部已经有同名标题了，
   /// 再画一次会出现两个「清理与查重」。
   Widget _scanCard(int audio, {int? unorganized, bool showTitle = true}) {
-    final int pending = unorganized ??
-        _repo.audioFiles().where((VFile f) {
-          final rel = _repo.relPath(f);
-          return !rel.contains('/');
-        }).length;
+    // 调用方都传了 unorganized；兜底也走缓存，不再现场遍历全表。
+    final int pending = unorganized ?? _unorganizedCount;
     return SectionCard(
       title: showTitle ? '扫描与整理' : null,
       subtitle: _repo.hasRoot ? '$audio 首 · 待归类 $pending 首' : '先选一个曲库目录',
@@ -349,12 +393,24 @@ class _OrganizePageState extends State<OrganizePage> {
           // 0.2.58：进页面自动在后台扫，不用先点一下；扫过就复用本次运行的结果。
           // 扫描中显示进度条与已扫过的数量，点一下即停止；扫完右侧有刷新按钮。
           subtitle: _junkScanning
-              ? '正在后台扫描… 已扫过 $_junkChecked 个文件（点一下停止）'
+              ? null
               : (!_junkScanned
                   ? '准备扫描（Thumbs.db / .bak / .tmp / 0 字节）'
                   : (junk == 0
                       ? '没有发现'
                       : '发现 $junk 个（.bak / Thumbs.db / 0 字节…）')),
+          // 扫描中只有这一行在变：用 ValueListenableBuilder 订阅进度，
+          // 不让整个 tile（以及整页）跟着重建。
+          subtitleWidget: _junkScanning
+              ? ValueListenableBuilder<int>(
+                  valueListenable: _junkChecked,
+                  builder: (BuildContext c, int checked, Widget? _) => Text(
+                    '正在后台扫描… 已扫过 $checked 个文件（点一下停止）',
+                    style: TextStyle(
+                        fontSize: MoKit.fsCaption, color: MoKit.sub(c)),
+                  ),
+                )
+              : null,
           icon: Icons.delete_outline,
           trailing: _junkScanning
               ? const SizedBox(

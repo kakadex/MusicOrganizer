@@ -76,7 +76,16 @@ class _LibraryPageState extends State<LibraryPage> {
   final Map<String, GlobalKey> _rowKeys = <String, GlobalKey>{};
   final Set<String> _selected = <String>{};
   bool _busy = false;
-  String _status = '';
+
+  /// 顶部副标题的状态文案（「正在扫描…」「读取标签 320/900」…）。
+  ///
+  /// 用 [ValueNotifier] 而不是普通字段 + setState：读标签进度是**每首回调一次**
+  /// （`repo.loadMeta` 的 onProgress），900 首就是 900 次 setState，每次都把
+  /// 整个页面（头部 / 搜索框 / 筛选条 / ListView.builder 的 builder 闭包）
+  /// 重建一遍。视觉上只有一行文字在变，代价却是整页。
+  ///
+  /// 改成 notifier 之后，只有订阅它的那个副标题 widget 会重建。
+  final ValueNotifier<String> _status = ValueNotifier<String>('');
   String _query = '';
   /// 当前检索词（命中高亮用）。
   List<String> _terms = <String>[];
@@ -116,6 +125,7 @@ class _LibraryPageState extends State<LibraryPage> {
   void dispose() {
     _searchDebounce?.cancel();
     _repoChanges.removeListener(_onRepoChanged);
+    _status.dispose();
     _search.dispose();
     super.dispose();
   }
@@ -140,26 +150,27 @@ class _LibraryPageState extends State<LibraryPage> {
     final repo = Repo.instance;
     setState(() {
       _busy = true;
-      if (!silent) _status = '正在扫描…';
+      if (!silent) _status.value = '正在扫描…';
     });
     final ScanOutcome out = await repo.rescan();
     if (!mounted) return;
     if (!out.ok) {
       setState(() {
         _busy = false;
-        _status = out.error;
+        _status.value = out.error;
       });
       return;
     }
-    if (!silent) setState(() => _status = '读取标签…');
+    if (!silent) _status.value = '读取标签…';
+    // 进度只更新 notifier，不 setState：每首一次 setState 会把整页重建 900 次。
     await repo.loadMeta(onProgress: (int done, int total) {
       if (!mounted || silent) return;
-      setState(() => _status = '读取标签 $done/$total');
+      _status.value = '读取标签 $done/$total';
     });
     if (!mounted) return;
     setState(() {
       _busy = false;
-      _status = '';
+      _status.value = '';
     });
     _applyFilter();
     // 扫完不弹任何提示：列表与顶部副标题就在眼前，数字变了自然看得到，
@@ -543,9 +554,21 @@ class _LibraryPageState extends State<LibraryPage> {
             // 左边排序、右边设置（2026-10-30 用户要求互换）：常用的是排序，
             // 放在右手拇指更容易够到的外侧。
             leading: _icon(Icons.sort, '排序', _showSort, key: _sortKey),
-            subtitle: repo.hasRoot
-                ? '${_shown.length} 首${_status.isEmpty ? '' : ' · $_status'}'
-                : '还没有选择曲库目录',
+            // 副标题单独订阅 notifier：读标签进度变化时只重建这一行。
+            subtitleWidget: repo.hasRoot
+                ? ValueListenableBuilder<String>(
+                    valueListenable: _status,
+                    builder: (BuildContext c, String status, Widget? _) => Text(
+                      '${_shown.length} 首${status.isEmpty ? '' : ' · $status'}',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          fontSize: MoKit.fsCaption, color: MoKit.sub(c)),
+                    ),
+                  )
+                : Text('还没有选择曲库目录',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
             actions: <Widget>[
               _icon(Icons.settings_outlined, '设置', () {
                 Navigator.of(context).push<void>(
@@ -676,10 +699,11 @@ class _LibraryPageState extends State<LibraryPage> {
       );
     }
     if (_shown.isEmpty) {
-      final bool failed = _status.contains('失败') || _status.contains('E_');
+      final String status = _status.value;
+      final bool failed = status.contains('失败') || status.contains('E_');
       return EmptyState(
         icon: failed ? Icons.error_outline : Icons.music_off,
-        text: _busy ? '正在扫描…' : (failed ? _status : '这个筛选下没有曲目'),
+        text: _busy ? '正在扫描…' : (failed ? status : '这个筛选下没有曲目'),
         hint: _busy
             ? null
             : (failed ? '目录授权可能已失效，重新选一次目录即可' : '换个筛选条件，或下拉重新扫描'),

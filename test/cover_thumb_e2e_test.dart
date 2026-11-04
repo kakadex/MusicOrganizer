@@ -108,7 +108,7 @@ void main() {
     }
   });
 
-  test('第一次解析原图并落盘缩略图；清内存后第二次直接读小图', () async {
+  test('第一次解析原图并缩图；清内存后第二次直接读磁盘小图', () async {
     final Uint8List cover = await solidPng(320);
     final File mp3 = File('${lib.path}${Platform.pathSeparator}示例歌名.mp3');
     await mp3.writeAsBytes(mp3WithPngCover(cover));
@@ -118,10 +118,15 @@ void main() {
     final VFile? file = await store.stat(mp3.path);
     expect(file, isNotNull);
 
-    // 第一次：走「读文件头 + 解析 + 缩图存盘」
+    // 第一次：读文件头 + 解析原图 + 缩图，**返回的是缩过的小图**（0.2.61）。
+    //
+    // 改之前这里返回 320px 原图，由 Image.memory 的 cacheWidth 在绘制时再缩；
+    // 但内存缓存里存的就是原图，几百首下来上百 MB。现在入缓存前先缩到 160px，
+    // 原图只在这条路径上短暂存在。
     final Uint8List? first = await CoverCache.instance.load(file!);
     expect(first, isNotNull);
-    expect(await pngWidth(first!), 320, reason: '第一次拿到的是原图');
+    expect(await pngWidth(first!), 160, reason: '第一次就应拿到缩好的小图');
+    expect(first.length, lessThan(cover.length), reason: '小图必须比原图小');
 
     // 等未 await 的后台落盘完成
     final Directory cacheDir = CoverThumbCache.instance.directory!;
@@ -137,6 +142,6 @@ void main() {
     final Uint8List? second = await CoverCache.instance.load(file);
     expect(second, isNotNull);
     expect(await pngWidth(second!), 160, reason: '第二次应直接读 160px 小图');
-    expect(second.length, lessThan(first.length), reason: '小图必须比原图小');
+    expect(second.length, lessThan(cover.length), reason: '小图必须比原图小');
   });
 }

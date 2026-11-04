@@ -54,6 +54,7 @@ class PageHeader extends StatelessWidget {
     super.key,
     required this.title,
     this.subtitle,
+    this.subtitleWidget,
     this.actions,
     this.leading,
     this.centerTitle = false,
@@ -61,12 +62,26 @@ class PageHeader extends StatelessWidget {
 
   final String title;
   final String? subtitle;
+
+  /// 副标题用 widget 给（优先于 [subtitle]）。
+  ///
+  /// 用于「只有副标题一行在变」的高频刷新场景（读标签进度）：传一个
+  /// `ValueListenableBuilder` 进来，进度变化只重建这一行，不会连带把
+  /// 整个头部（标题 / 图标按钮）重建一遍。
+  final Widget? subtitleWidget;
   final List<Widget>? actions;
   final Widget? leading;
   final bool centerTitle;
 
   @override
   Widget build(BuildContext context) {
+    final Widget? sub = subtitleWidget ??
+        ((subtitle != null && subtitle!.isNotEmpty)
+            ? Text(subtitle!,
+                textAlign: centerTitle ? TextAlign.center : TextAlign.start,
+                style: TextStyle(
+                    fontSize: MoKit.fsCaption, color: MoKit.sub(context)))
+            : null);
     final Widget titleBlock = Column(
       crossAxisAlignment:
           centerTitle ? CrossAxisAlignment.center : CrossAxisAlignment.start,
@@ -78,13 +93,10 @@ class PageHeader extends StatelessWidget {
                 fontSize: MoKit.fsHuge,
                 fontWeight: FontWeight.w600,
                 color: MoKit.text(context))),
-        if (subtitle != null && subtitle!.isNotEmpty)
+        if (sub != null)
           Padding(
             padding: const EdgeInsets.only(top: 2),
-            child: Text(subtitle!,
-                textAlign: centerTitle ? TextAlign.center : TextAlign.start,
-                style: TextStyle(
-                    fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
+            child: sub,
           ),
       ],
     );
@@ -181,6 +193,7 @@ class MoTile extends StatelessWidget {
     super.key,
     required this.title,
     this.subtitle,
+    this.subtitleWidget,
     this.icon,
     this.trailing,
     this.onTap,
@@ -189,6 +202,12 @@ class MoTile extends StatelessWidget {
 
   final String title;
   final String? subtitle;
+
+  /// 副标题用 widget 给（优先于 [subtitle]）。
+  ///
+  /// 用于「只有副标题一行在变」的高频刷新场景（垃圾扫描进度）：传一个
+  /// `ValueListenableBuilder` 进来，进度变化只重建这一行。
+  final Widget? subtitleWidget;
   final IconData? icon;
   final Widget? trailing;
   final VoidCallback? onTap;
@@ -222,7 +241,12 @@ class MoTile extends StatelessWidget {
                   Text(title,
                       style: TextStyle(
                           fontSize: MoKit.fsTitle, fontWeight: FontWeight.w500, color: fg)),
-                  if (subtitle != null && subtitle!.isNotEmpty)
+                  if (subtitleWidget != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: subtitleWidget!,
+                    )
+                  else if (subtitle != null && subtitle!.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
                       child: Text(subtitle!,

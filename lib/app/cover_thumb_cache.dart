@@ -105,6 +105,22 @@ class CoverThumbCache {
     }
   }
 
+  /// 把一张原图缩到 [maxWidth] 宽并编成 PNG，返回小图字节；失败返回 null。
+  ///
+  /// 给内存缓存用（[CoverCache]）：列表格子只有 46dp，存原图白占内存。
+  /// 与 [save] 共用同一个编码器与注入点，单测里不需要真解码。
+  Future<Uint8List?> encodeSmall(Uint8List original) async {
+    if (original.isEmpty) return null;
+    try {
+      final Uint8List? small = encoderOverride != null
+          ? await encoderOverride!(original, maxWidth)
+          : await _encodePng(original, maxWidth);
+      return (small != null && small.length >= _minBytes) ? small : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// 把一张原图缩成缩略图并落盘（调用方不需要 await，失败无所谓）。
   Future<void> save(VFile f, Uint8List original) async {
     final Directory? dir = await _ensureDir();
