@@ -1,11 +1,11 @@
-version=0.2.63
-tag=v0.2.63
+version=0.2.64
+tag=v0.2.64
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.63/MusicOrganizer-0.2.63-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.64/MusicOrganizer-0.2.64-android-arm64-v8a.apk
 size=19806069
-sha256=a51551feade84b037b633b3bd0e575d9faca0f5bc02e90dd50d3d4bac46b3af2
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.63/MusicOrganizer-0.2.63-windows-x64.zip
-zip_size=12650130
-zip_sha256=339592b4c1b7cb4ea35c9b8f256599bebf51b7ecce0c46408ef00e01a7721d90
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.63
-summary=冷启动出界面更快、读标签不再周期性卡顿
+sha256=52ccd3922745d66d9941672bbb9d511a6dd39e791569844153d30c54742c2966
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.64/MusicOrganizer-0.2.64-windows-x64.zip
+zip_size=12655582
+zip_sha256=bee58ca840c9d9b833a5b86137b4162f5c7b89e730470dc762310d66fff16ad9
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.64
+summary=多选拖动更跟手，大曲库滚动手感略顺

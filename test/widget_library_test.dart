@@ -196,6 +196,37 @@ void main() {
     expect(find.text('匹配标签'), findsNothing);
   });
 
+  testWidgets('长按后拖动到下一行，会连选下一行（拖选 O(1) 反查）',
+      (WidgetTester tester) async {
+    final Repo repo = Repo.instance;
+    repo.resetForTest();
+    seed(repo);
+    await pumpPage(tester);
+
+    // 真实拖选手势：按下第一行 → 按住超过长按阈值进入多选 → **不抬手指** →
+    // 继续拖到第二行。不能用 tester.longPress()（它内部会抬手指，
+    // 把 _dragSelecting 又关掉）。
+    final Offset first = tester.getCenter(find.text('示例歌名'));
+    final Offset second = tester.getCenter(find.text('另一首'));
+    final TestGesture gesture = await tester.startGesture(first);
+    await tester.pump(const Duration(milliseconds: 600)); // 超过长按阈值 500ms
+    await tester.pumpAndSettle();
+    expect(find.textContaining('已选 1'), findsOneWidget,
+        reason: '长按后第一行应被选中');
+
+    // 拖到第二行中心
+    await gesture.moveTo(second);
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    final Finder bar = find.textContaining('已选');
+    expect(bar, findsOneWidget);
+    final String text = (tester.widget<Text>(bar).data) ?? '';
+    final int n = int.parse(RegExp(r'已选 (\d+)').firstMatch(text)!.group(1)!);
+    expect(n, greaterThanOrEqualTo(2), reason: '拖到第二行应连选，实际 $text');
+  });
+
   testWidgets('Ctrl+A 全选并进入多选，Esc 退出多选', (WidgetTester tester) async {
     final Repo repo = Repo.instance;
     repo.resetForTest();

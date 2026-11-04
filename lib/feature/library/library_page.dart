@@ -72,8 +72,17 @@ class _LibraryPageState extends State<LibraryPage> {
   /// 会被 I/O 回调和图片解码挤满，表现就是一顿一顿；向上回看命中缓存所以不卡。
   bool _scrolling = false;
 
-  /// 每行一个 key，拖选时用来判断手指落在哪一行。
-  final Map<String, GlobalKey> _rowKeys = <String, GlobalKey>{};
+  /// 列表滚动控制器：拖选时用「全局 Y → 列表内容 Y」换算行号。
+  final ScrollController _scrollController = ScrollController();
+
+  /// 列表自身的 key：拖选时用它的 RenderBox 做全局→局部坐标换算。
+  final GlobalKey _listKey = GlobalKey();
+
+  /// 列表行高（dp）。与 [_row] 外层的固定高度、ListView 的 itemExtent 保持一致。
+  ///
+  /// 实测 SongRow 在默认与多选两种模式下渲染高度都是 60.0；固定住之后
+  /// 拖选才能用「局部 Y ÷ 行高」反查行号，滚动时也不必逐项测量。
+  static const double _rowExtent = 60;
   final Set<String> _selected = <String>{};
   bool _busy = false;
 
@@ -131,6 +140,7 @@ class _LibraryPageState extends State<LibraryPage> {
     _rootWait = null;
     _repoChanges.removeListener(_onRepoChanged);
     _status.dispose();
+    _scrollController.dispose();
     _search.dispose();
     super.dispose();
   }
@@ -755,7 +765,11 @@ class _LibraryPageState extends State<LibraryPage> {
           onPointerUp: (_) => _dragSelecting = false,
           onPointerCancel: (_) => _dragSelecting = false,
           child: ListView.builder(
+            key: _listKey,
+            controller: _scrollController,
             padding: const EdgeInsets.only(bottom: 12),
+            // 行高固定：滚动时不用逐项测量，拖选也能用行高反查行号。
+            itemExtent: _rowExtent,
             // 快速滑动优化：离屏行不再保活，避免一次性为大量行保留状态、触发过多封面 I/O。
             addAutomaticKeepAlives: false,
             // 下滑时少建几屏预备行，白耗封面 I/O
@@ -770,45 +784,54 @@ class _LibraryPageState extends State<LibraryPage> {
 
   Widget _row(Entry e) {
     final bool selected = _selected.contains(e.docId);
-    return _CoverRow(
-      key: _rowKeys.putIfAbsent(e.docId, () => GlobalKey()),
-      entry: e,
-      terms: _terms,
-      selected: selected,
-      selectMode: _selectMode,
-      paused: _scrolling,
-      onTap: () {
-        if (_selectMode) {
-          _toggleSelect(e);
-        } else {
-          _showDetail(e);
-        }
-      },
-      onLongPress: () {
-        setState(() {
-          _selectMode = true;
-          _selected.add(e.docId);
-          _dragSelecting = true;
-        });
-      },
+    // 固定行高：与 ListView.itemExtent 一致。SongRow 自己渲染约 60dp，
+    // 但封面异步回来前后的高度必须一样，拖选按行高反查才准。
+    return SizedBox(
+      height: _rowExtent,
+      child: _CoverRow(
+        entry: e,
+        terms: _terms,
+        selected: selected,
+        selectMode: _selectMode,
+        paused: _scrolling,
+        onTap: () {
+          if (_selectMode) {
+            _toggleSelect(e);
+          } else {
+            _showDetail(e);
+          }
+        },
+        onLongPress: () {
+          setState(() {
+            _selectMode = true;
+            _selected.add(e.docId);
+            _dragSelecting = true;
+          });
+        },
+      ),
     );
   }
 
   /// 手指滑到哪一行就把哪一行勾上（长按进入多选后生效）。
+  ///
+  /// 0.2.64：从「遍历全表 + 每行 GlobalKey 命中测试」改成 O(1)。
+  /// 原理：事件位置是全局坐标，用列表 RenderBox 转成列表内局部 Y，
+  /// 加上滚动偏移就是「列表内容 Y」，除以固定行高直接得到行号。
+  /// 不再需要给每行发 GlobalKey，也不存在「几千次 findRenderObject 白跑」。
   void _onDragSelectMove(PointerMoveEvent event) {
     if (!_dragSelecting || !_selectMode) return;
-    for (final Entry e in _shown) {
-      final GlobalKey? key = _rowKeys[e.docId];
-      final RenderObject? box = key?.currentContext?.findRenderObject();
-      if (box is! RenderBox || !box.attached) continue;
-      final Offset local = box.globalToLocal(event.position);
-      if (local.dx < 0 || local.dy < 0 || local.dx > box.size.width || local.dy > box.size.height) {
-        continue;
-      }
-      if (!_selected.contains(e.docId)) {
-        setState(() => _selected.add(e.docId));
-      }
-      break;
+    if (_shown.isEmpty) return;
+    final RenderBox? listBox =
+        _listKey.currentContext?.findRenderObject() as RenderBox?;
+    if (listBox == null || !listBox.attached) return;
+    final double localY =
+        listBox.globalToLocal(event.position).dy + _scrollController.offset;
+    if (localY < 0) return;
+    final int index = (localY / _rowExtent).floor();
+    if (index < 0 || index >= _shown.length) return;
+    final Entry e = _shown[index];
+    if (!_selected.contains(e.docId)) {
+      setState(() => _selected.add(e.docId));
     }
   }
 
@@ -1134,7 +1157,6 @@ class _LibraryPageState extends State<LibraryPage> {
 /// 一行曲目：封面异步加载 + 标题/副标题 + 时长。
 class _CoverRow extends StatefulWidget {
   const _CoverRow({
-    super.key,
     required this.entry,
     this.terms = const <String>[],
     required this.selected,
