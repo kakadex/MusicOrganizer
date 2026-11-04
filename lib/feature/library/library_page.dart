@@ -101,6 +101,9 @@ class _LibraryPageState extends State<LibraryPage> {
   /// 曲库 / 标签两域的变化源（`loadMeta` 读回新标签后要靠它重建列表）。
   late final Listenable _repoChanges;
 
+  /// 0.2.63：授权恢复前的一次性 root 等待监听（见 [_autoScan]）。
+  Listenable? _rootWait;
+
   @override
   void initState() {
     super.initState();
@@ -124,6 +127,8 @@ class _LibraryPageState extends State<LibraryPage> {
   @override
   void dispose() {
     _searchDebounce?.cancel();
+    _rootWait?.removeListener(_onRootReady);
+    _rootWait = null;
     _repoChanges.removeListener(_onRepoChanged);
     _status.dispose();
     _search.dispose();
@@ -133,6 +138,13 @@ class _LibraryPageState extends State<LibraryPage> {
   Future<void> _autoScan() async {
     final repo = Repo.instance;
     if (!repo.hasRoot) {
+      // 0.2.63：首屏可能比授权恢复先出来（见 shell._boot），这时候没 root
+      // 不能直接放弃——否则以后没人补扫，用户会停在空状态。挂一个一次性的
+      // root 域监听，授权一恢复就自动扫一次。
+      final Listenable wait = Repo.instance.changes
+          .of(<RepoDomain>[RepoDomain.root]);
+      _rootWait = wait;
+      wait.addListener(_onRootReady);
       setState(() {});
       return;
     }
@@ -143,6 +155,17 @@ class _LibraryPageState extends State<LibraryPage> {
       return;
     }
     await _scan();
+  }
+
+  /// 授权恢复后第一次 root 通知：移除监听并开始扫描。
+  void _onRootReady() {
+    if (!mounted) return;
+    final Listenable? wait = _rootWait;
+    if (wait != null) {
+      wait.removeListener(_onRootReady);
+      _rootWait = null;
+    }
+    unawaited(_autoScan());
   }
 
   /// [silent] = 后台补扫：不动「正在扫描」状态、不弹提示，扫完静默刷新列表。

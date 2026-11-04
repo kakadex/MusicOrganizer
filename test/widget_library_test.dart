@@ -6,6 +6,7 @@ import 'package:musicorganizer/app/repo_changes.dart';
 import 'package:musicorganizer/app/theme/mo_theme.dart';
 import 'package:musicorganizer/app/theme/palette.dart';
 import 'package:musicorganizer/app/ui_kit.dart';
+import 'package:musicorganizer/core/fs/file_store.dart';
 import 'package:musicorganizer/core/model/tags.dart';
 import 'package:musicorganizer/core/fs/tree_ref.dart';
 import 'package:musicorganizer/core/model/vfile.dart';
@@ -14,6 +15,26 @@ import 'package:musicorganizer/feature/library/library_page.dart';
 
 /// 曲库页的界面级回归：不依赖任何插件（SAF / SharedPreferences / path_provider），
 /// 直接把 Repo 的曲库与索引塞好再挂页面，验证渲染 / 筛选 / 排序 / 多选。
+
+/// 内存目录树：只实现扫描要用的 `children()`，其余走 noSuchMethod 兜底。
+class _MemStore implements FileStore {
+  _MemStore(this.tree);
+
+  final Map<String, List<VFile>> tree;
+
+  /// `children()` 被调用的次数，断言「root 到达后真的发生了扫描」。
+  int childCalls = 0;
+
+  @override
+  Future<List<VFile>> children(VFile dir) async {
+    childCalls++;
+    return tree[dir.docId] ?? const <VFile>[];
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 void main() {
   VFile audio(String id, String name, {int size = 1024}) =>
       VFile(docId: id, parentId: 'r', name: name, size: size, lastModified: 1);
@@ -57,6 +78,38 @@ void main() {
     ));
     await tester.pumpAndSettle();
   }
+
+  /// 0.2.63 回归：首屏可能比授权恢复先出来（shell._boot 不再等 restoreRoot）。
+  /// 此时 LibraryPage 看到「没 root」不能直接放弃，得等 root 通知一到就补扫。
+  testWidgets('首屏先于授权恢复出现时，root 一到会自动补扫',
+      (WidgetTester tester) async {
+    final Repo repo = Repo.instance;
+    repo.resetForTest();
+    // 模拟「init 完成、restoreRoot 还没跑」：无 root、无 files，但 store 已就绪
+    final _MemStore store = _MemStore(<String, List<VFile>>{
+      'r': <VFile>[audio('r/a.mp3', 'a.mp3')],
+    });
+    repo.store = store;
+
+    await tester.pumpWidget(MaterialApp(
+      theme: MoTheme.build(MoPalette.of(MoThemeId.minimal, dark: false), dark: false),
+      home: const Scaffold(body: LibraryPage()),
+    ));
+    await tester.pumpAndSettle();
+
+    // 还没授权：应显示空状态，且没有扫描动作
+    // 注意：顶部副标题与空状态各有一处「还没有选择曲库目录」，所以用 findsWidgets
+    expect(store.childCalls, 0);
+    expect(find.text('还没有选择曲库目录'), findsWidgets);
+
+    // 授权恢复到达（等价于 restoreRoot 完成后的 setRoots + 通知）
+    repo.setRoots(<TreeRef>[const TreeRef(treeUri: 'file:///r', rootDocId: 'r')]);
+    await tester.pumpAndSettle();
+
+    // 关键断言：扫描真的被触发了——children 至少被调用一次
+    expect(store.childCalls, greaterThan(0),
+        reason: 'root 到达后应自动补扫，不能停在空状态等人手动刷新');
+  });
 
   testWidgets('默认列出全部曲目，标签已读的显示标题与歌手', (WidgetTester tester) async {
     final Repo repo = Repo.instance;

@@ -1,11 +1,11 @@
-version=0.2.62
-tag=v0.2.62
+version=0.2.63
+tag=v0.2.63
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.62/MusicOrganizer-0.2.62-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.63/MusicOrganizer-0.2.63-android-arm64-v8a.apk
 size=19806069
-sha256=58f043dbaaec5482f5a31edf79d6dc1856a2816ca9856cf102395ef1a2e79957
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.62/MusicOrganizer-0.2.62-windows-x64.zip
-zip_size=12650172
-zip_sha256=a88764eae43b498adcd6697cc03bc50f69556f14ff784afb9767058455185b3b
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.62
-summary=滚动更省内存：封面加内存上限、读标签与扫描不再整页刷新
+sha256=a51551feade84b037b633b3bd0e575d9faca0f5bc02e90dd50d3d4bac46b3af2
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.63/MusicOrganizer-0.2.63-windows-x64.zip
+zip_size=12650130
+zip_sha256=339592b4c1b7cb4ea35c9b8f256599bebf51b7ecce0c46408ef00e01a7721d90
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.63
+summary=冷启动出界面更快、读标签不再周期性卡顿

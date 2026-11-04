@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -45,18 +47,35 @@ class _MoShellState extends State<MoShell> {
   Future<void> _boot() async {
     try {
       await Repo.instance.init();
-      await Repo.instance.restoreRoot();
-      // 目录一恢复就把上次的曲库缓存灌进来：界面立刻有列表可看，
-      // 后台再增量扫一遍补差，不用每次启动都干等一轮全量扫描。
-      await Repo.instance.restoreLibraryCache();
     } catch (e) {
       _bootError = '$e';
     }
+    // 0.2.63：首屏只等 init，不等授权恢复与缓存灌入。
+    //
+    // 原来的顺序是 init → restoreRoot → restoreLibraryCache 全部 await 完才
+    // setState(_booted = true)。而 restoreRoot 在 SAF 通道抖动时自带
+    // 300ms + 500ms 两段重试，restoreLibraryCache 还要把整库缓存解码并
+    // _rebuildIndex（带歌词的大库这一下就是几百毫秒到几秒）。这段时间用户
+    // 只看到「正在准备…」。
+    //
+    // 现在 init 一完成就放界面出来，授权恢复和缓存灌入丢到后台跑；
+    // LibraryPage 会订阅 root / library 域的通知，恢复完成后自己补扫。
     if (mounted) setState(() => _booted = true);
+    unawaited(_restore());
     // 启动时就带进来的文件（ACTION_EDIT / ACTION_VIEW）
     _takeInitialIntent();
     // 静默查更新（每天最多一次）：查到新版本就在底栏提示一句，不打断。
     _silentCheck();
+  }
+
+  /// 授权恢复 + 缓存灌入：后台跑，失败只记错误条，不挡首屏。
+  Future<void> _restore() async {
+    try {
+      await Repo.instance.restoreRoot();
+      await Repo.instance.restoreLibraryCache();
+    } catch (e) {
+      if (mounted) setState(() => _bootError = '$e');
+    }
   }
 
   Future<void> _takeInitialIntent() async {

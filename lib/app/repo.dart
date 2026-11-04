@@ -463,8 +463,15 @@ class Repo extends ChangeNotifier {
         byRoot.putIfAbsent(owner, () => <VFile>[]).add(f);
       }
       final String text = jsonEncode(LibraryCache.encode(byRoot));
-      // 自检：解不回来就别写，写坏的文件只会让下次启动白白多扫一遍
-      if (LibraryCache.decode(jsonDecode(text)).isEmpty &&
+      // 自检：解不回来就别写，写坏的文件只会让下次启动白白多扫一遍。
+      //
+      // 0.2.63 起只在调试构建做：这一步是「把整库 JSON 再解一遍」，实测
+      // 900 首带歌词约 26ms、5000 首约 140ms，且每 100 首落盘一次时会被
+      // 反复执行（900 首 = 9 次），全压在 UI isolate 上。release 里它只防
+      // 「写出坏缓存文件」——而 restoreLibraryCache 的 catch 本来就会当坏
+      // 缓存处理（最坏多扫一遍），所以砍掉不损失正确性。
+      if (kDebugMode &&
+          LibraryCache.decode(jsonDecode(text)).isEmpty &&
           files.any((VFile f) => !f.dir && f.audio())) {
         return;
       }
@@ -854,6 +861,7 @@ class Repo extends ChangeNotifier {
     if (todo.isEmpty) return;
     _metaLoading = true;
     int done = 0;
+    int lastSaveAtMs = DateTime.now().millisecondsSinceEpoch;
     try {
       await Net.map<VFile, bool>(todo, Net.readThreads, cancel, (VFile f) async {
         final ScannerHead head = await Scanner.readHead(st, f);
@@ -864,8 +872,17 @@ class Repo extends ChangeNotifier {
         index.find(f.docId)?.applyTags(tags, f.cachedHasCover);
         done++;
         // 分批落盘：长任务中途被取消 / 被杀，已经读过的部分仍然留得下，
-        // 下次启动不必从零开始
-        if (done % 100 == 0) unawaited(saveLibraryCache());
+        // 下次启动不必从零开始。
+        //
+        // 0.2.63 起间隔放宽：原来是每 100 首存一次，900 首 = 9 次，每次都
+        // 在 UI isolate 上把整库编码成几 MB 的 JSON（实测带歌词的库一次约
+        // 56ms），是「读标签时每隔几秒卡一下」的主因。现在改成「每 300 首
+        // 或每 2 秒」——中途被杀最多重读 300 首，代价可接受。
+        final int now = DateTime.now().millisecondsSinceEpoch;
+        if (done % 300 == 0 || now - lastSaveAtMs >= 2000) {
+          lastSaveAtMs = now;
+          unawaited(saveLibraryCache());
+        }
         onProgress?.call(done, todo.length);
         return true;
       });
