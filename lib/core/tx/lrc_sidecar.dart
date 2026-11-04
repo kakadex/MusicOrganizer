@@ -48,23 +48,35 @@ abstract final class LrcSidecar {
   /// 单个目录读不出来（授权抖动 / 目录刚被删）只影响该目录，不中断整批。
   static Future<Set<String>> withSidecar(
       FileStore store, List<VFile> audios) async {
+    final Map<String, VFile> m = await mapSidecar(store, audios);
+    return m.keys.toSet();
+  }
+
+  /// 批量找出「音频 docId → 同名 `.lrc` 文件」，一次列目录搞定。
+  ///
+  /// 0.2.67：批量删标签时每首都要读旧 `.lrc` 做备份、再删掉它，
+  /// 那两步各自都要 `stat` + 列父目录。计划阶段已经列过一次了，
+  /// 把结果传下去就能省掉每首两次跨进程查询。
+  static Future<Map<String, VFile>> mapSidecar(
+      FileStore store, List<VFile> audios) async {
     final Map<String, List<VFile>> byDir = <String, List<VFile>>{};
     for (final VFile a in audios) {
       final String? p = a.parentId;
       if (p == null) continue;
       (byDir[p] ??= <VFile>[]).add(a);
     }
-    final Set<String> out = <String>{};
+    final Map<String, VFile> out = <String, VFile>{};
     for (final MapEntry<String, List<VFile>> e in byDir.entries) {
       try {
         final VFile? dir = await store.stat(e.key);
         if (dir == null) continue;
-        final Set<String> names = <String>{};
+        final Map<String, VFile> byName = <String, VFile>{};
         for (final VFile c in await store.children(dir)) {
-          if (!c.dir) names.add(c.name.toLowerCase());
+          if (!c.dir) byName[c.name.toLowerCase()] = c;
         }
         for (final VFile a in e.value) {
-          if (names.contains(nameFor(a).toLowerCase())) out.add(a.docId);
+          final VFile? hit = byName[nameFor(a).toLowerCase()];
+          if (hit != null) out[a.docId] = hit;
         }
       } catch (_) {
         // 这个目录读不出来：它的音频先按「没有 .lrc」处理，不影响其它目录
@@ -74,8 +86,12 @@ abstract final class LrcSidecar {
   }
 
   /// 读出原始字节；文件不存在返回 null（空文件返回空数组）。
-  static Future<Uint8List?> readBytes(FileStore store, VFile audio) async {
-    final VFile? f = await locate(store, audio);
+  ///
+  /// [known] 非 null 时直接用它，不再 `locate`（批量场景下由
+  /// [mapSidecar] 预先查好，省掉每首一次 stat + 列目录）。
+  static Future<Uint8List?> readBytes(FileStore store, VFile audio,
+      {VFile? known}) async {
+    final VFile? f = known ?? await locate(store, audio);
     if (f == null) return null;
     final File tmp = _temp();
     try {
@@ -112,10 +128,12 @@ abstract final class LrcSidecar {
   }
 
   /// 还原到事务前状态：[bytes] 为 null 表示「当时没有这个文件」，需要删掉。
-  static Future<String> restore(
-      FileStore store, VFile audio, Uint8List? bytes) async {
+  ///
+  /// [known] 含义同 [readBytes]：已确认存在的那个 `.lrc`，省掉一次探测。
+  static Future<String> restore(FileStore store, VFile audio, Uint8List? bytes,
+      {VFile? known}) async {
     if (bytes != null) return writeBytes(store, audio, bytes);
-    final VFile? existing = await locate(store, audio);
+    final VFile? existing = known ?? await locate(store, audio);
     if (existing == null) return '';
     try {
       final bool ok = await store.delete(existing);

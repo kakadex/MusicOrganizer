@@ -208,15 +208,20 @@ class TagTransaction {
   /// [lrcText] 不为 null 时，同名的 `.lrc` 也纳入本次事务：音频写成功但 `.lrc`
   /// 写失败会把音频回滚并从备份还原 `.lrc`；撤销时两者一起回退。
   /// [removeLrc] 为 true 时，删除同名的 `.lrc`（同样纳入本事务与撤销）。
+  ///
+  /// [lrcFile] 是计划阶段已经定位到的同名 `.lrc`（批量删除时由
+  /// [LrcSidecar.mapSidecar] 一次列目录查好）。传了就不再逐首 `locate`，
+  /// 省掉「读旧内容」与「删除」各一次 stat + 列目录。
   Future<String> apply(VFile f, Map<String, String> updates,
       {Uint8List? cover,
       bool record = true,
       String batchId = '',
       String? lrcText,
       bool removeLrc = false,
+      VFile? lrcFile,
       String op = JournalOp.tags}) {
-    return _serialized(() =>
-        _apply(f, updates, cover, record, batchId, lrcText, removeLrc, op));
+    return _serialized(() => _apply(
+        f, updates, cover, record, batchId, lrcText, removeLrc, lrcFile, op));
   }
 
   /// 与 `Tags.put` 一致的归一化：去首尾空白，year 只留前 4 位。
@@ -228,7 +233,7 @@ class TagTransaction {
 
   Future<String> _apply(VFile f, Map<String, String> updates, Uint8List? cover,
       bool record, String batchId, String? lrcText, bool removeLrc,
-      String op) async {
+      VFile? lrcFile, String op) async {
     final String ext = TagIO.extOf(f.name);
     if (!TagIO.canWrite(ext)) return '该格式不支持写标签：$ext';
     if (updates.isEmpty && cover == null) return '无变更，跳过写入';
@@ -239,14 +244,7 @@ class TagTransaction {
         e.key: _normalize(e.key, e.value),
     };
 
-    final Tags before = await _readTags(f, ext);
-    // .lrc 的旧内容要在**动盘之前**读出来：写失败时得靠它还原。
     final bool touchLrc = lrcText != null || removeLrc;
-    final Uint8List? lrcBefore =
-        !touchLrc ? null : await LrcSidecar.readBytes(store, f);
-    final Uint8List? lrcAfter = removeLrc
-        ? null
-        : (lrcText == null ? null : Uint8List.fromList(utf8.encode(lrcText)));
 
     File? tmp;
     File? backup;
@@ -259,16 +257,30 @@ class TagTransaction {
     // 还原也失败时（比如盘真的满了）置上：备份不能删，留着现场。
     bool keepBackup = false;
     try {
-      // 1. 副本
+      // 1. 副本 + 读出原始字节（只读**一次**）
+      //
+      // 0.2.67：以前先 _readTags 整文件读一遍拿「写之前」的字段，这里再
+      // copyToLocal 读第二遍。SAF 上每次整文件读取都是跨进程传输，
+      // 5MB 的歌一首要多花几百毫秒 —— 批量删几百首就直接卡成「一秒一首」。
+      // 现在只读这一遍，字段从这份字节里解析，tmp 留着当写回源。
       tmp = await _tempFile(ext);
       await store.copyToLocal(f, tmp);
+      final Uint8List data = await tmp.readAsBytes();
+      final Tags before = TagIO.readLocal(data, ext);
 
-      // 2. 读出原始字节，**先落一份本地备份**，再在内存里改标签
+      // .lrc 的旧内容要在**动盘之前**读出来：写失败时得靠它还原。
+      final Uint8List? lrcBefore = !touchLrc
+          ? null
+          : await LrcSidecar.readBytes(store, f, known: lrcFile);
+      final Uint8List? lrcAfter = removeLrc
+          ? null
+          : (lrcText == null ? null : Uint8List.fromList(utf8.encode(lrcText)));
+
+      // 2. 先落一份本地备份，再在内存里改标签
       //
       // 备份直接用这份字节写，不再把原文件整份重读一遍：批量写几百首时，每首
       // 少一次 5MB 的 SAF 读取（几百毫秒）。备份内容与 copyToLocal 完全一致。
       // 顺序要在 writeLocal 之前——那是纯内存改写，但备份必须拿到「改之前」的字节。
-      final Uint8List data = await tmp.readAsBytes();
       backup = await _tempFile(ext);
       await backup.writeAsBytes(data, flush: true);
 
@@ -330,7 +342,10 @@ class TagTransaction {
       //     否则会留下「内嵌歌词是新的、.lrc 还是旧的」这种半成品。
       //     restore(bytes!=null)=写入，restore(null)=删除（同进同退）。
       if (touchLrc) {
-        final String lrcErr = await LrcSidecar.restore(store, f, lrcAfter);
+        // 主路径：删除（removeLrc）或写入（lrcAfter）。删除时把计划阶段
+        // 已经定位到的那个文件直接给它，不再 stat + 列目录去「找一遍」。
+        final String lrcErr = await LrcSidecar.restore(store, f, lrcAfter,
+            known: removeLrc ? lrcFile : null);
         if (lrcErr.isNotEmpty) {
           // 音频退回写之前的字节
           await store.writeFromLocal(f, backup);
@@ -490,19 +505,6 @@ class TagTransaction {
       if (lrcErr.isNotEmpty) return false;
     }
     return err.isEmpty;
-  }
-
-  Future<Tags> _readTags(VFile f, String ext) async {
-    final File tmp = await _tempFile(ext);
-    try {
-      await store.copyToLocal(f, tmp);
-      final Uint8List data = await tmp.readAsBytes();
-      return TagIO.readLocal(data, ext);
-    } finally {
-      try {
-        await tmp.delete();
-      } catch (_) {}
-    }
   }
 
   Future<File> _tempFile(String ext) async {

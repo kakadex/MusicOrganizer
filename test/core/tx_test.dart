@@ -41,6 +41,31 @@ class _ThrowingStore extends DesktopFileStore {
   }
 }
 
+/// 统计 IO 次数的桌面版存储：用来锁住「每首歌只整文件读一次」。
+class _CountingStore extends DesktopFileStore {
+  int copyCalls = 0;
+  int statCalls = 0;
+  int childrenCalls = 0;
+
+  @override
+  Future<void> copyToLocal(VFile f, File cacheTarget) {
+    copyCalls++;
+    return super.copyToLocal(f, cacheTarget);
+  }
+
+  @override
+  Future<VFile?> stat(String id) {
+    statCalls++;
+    return super.stat(id);
+  }
+
+  @override
+  Future<List<VFile>> children(VFile dir) {
+    childrenCalls++;
+    return super.children(dir);
+  }
+}
+
 /// 只让 `.lrc` 写盘失败：用来测「歌词文件还原失败不能被吞掉」。
 class _LrcFailStore extends DesktopFileStore {
   bool failLrc = false;
@@ -125,6 +150,51 @@ void main() {
     expect(tags.get('title'), '新歌名');
     expect(tags.get('artist'), '原歌手');
     expect(tags.get('album'), '原专辑');
+  });
+
+  test('每首歌只整文件读一次（批量删除慢的根因）', () async {
+    // 0.2.67 之前：先 _readTags 读一遍拿「写之前」的字段，再 copyToLocal
+    // 读第二遍当写回源。SAF 上每次整文件读取都是跨进程传输，几百首就是
+    // 几百次多余的「秒级」开销——用户实测一秒一首。
+    final _CountingStore counting = _CountingStore();
+    counting.addRoot(dir.path);
+    final TagTransaction t =
+        TagTransaction(store: counting, journal: journal, tempDir: dir);
+    final File f = mp3('count.mp3');
+    final VFile v = (await counting.stat(f.path))!;
+
+    counting.copyCalls = 0;
+    expect(await t.apply(v, <String, String>{'title': '改个名'}), '');
+    expect(counting.copyCalls, 1,
+        reason: '读两次就是批量删除慢的根因，必须只读一次');
+  });
+
+  test('批量删除：传入已定位的 .lrc 后不再逐首探测目录', () async {
+    // 计划阶段已经用 mapSidecar 列过一次目录了；写盘阶段再 locate 就是
+    // 每首多两次 stat + 列目录（读旧内容一次、删除一次）。
+    final _CountingStore counting = _CountingStore();
+    counting.addRoot(dir.path);
+    final TagTransaction t =
+        TagTransaction(store: counting, journal: journal, tempDir: dir);
+    final File song = mp3('s.mp3');
+    final File lrc = File('${dir.path}/s.lrc')..writeAsStringSync('[00:00.00]词');
+    final VFile v = (await counting.stat(song.path))!;
+    final VFile lrcV = (await counting.stat(lrc.path))!;
+
+    counting.statCalls = 0;
+    counting.childrenCalls = 0;
+    final String err = await t.apply(
+      v,
+      <String, String>{'title': ''},
+      removeLrc: true,
+      lrcFile: lrcV,
+    );
+    expect(err, '', reason: err);
+    expect(lrc.existsSync(), isFalse, reason: '.lrc 应被删掉');
+    expect(counting.childrenCalls, 0,
+        reason: '传了 lrcFile 就不该再列目录找它');
+    expect(counting.statCalls, lessThanOrEqualTo(1),
+        reason: '只应有写完后校验大小那一次 stat');
   });
 
   test('副本校验失败 → 原文件不动', () async {

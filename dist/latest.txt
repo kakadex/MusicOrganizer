@@ -1,11 +1,11 @@
-version=0.2.66
-tag=v0.2.66
+version=0.2.67
+tag=v0.2.67
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.66/MusicOrganizer-0.2.66-android-arm64-v8a.apk
-size=19806077
-sha256=241dc5f38911ffd6ed6aa7bc1674ea4383afc2dcafffec61f4180cd2bd3d6e9c
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.66/MusicOrganizer-0.2.66-windows-x64.zip
-zip_size=12658364
-zip_sha256=24846b1fc4c10fb9c1ce492f7c2920ca2812d7e38db9b411c1508447b0b1b8a1
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.66
-summary=扁平化能看到进度、可中途停止，.lrc.txt 歌词不再漏搬
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.67/MusicOrganizer-0.2.67-android-arm64-v8a.apk
+size=19806081
+sha256=bc5b6b5f610459cc3c637bd99942ba4e3cca52b4563561bebe19534314b5c2fd
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.67/MusicOrganizer-0.2.67-windows-x64.zip
+zip_size=12656986
+zip_sha256=afe1433d02e25ea8c2931f8d21a4c621a9a26c54764979145fe9053ab693c0ef
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.67
+summary=批量删除标签/封面/歌词提速一倍以上

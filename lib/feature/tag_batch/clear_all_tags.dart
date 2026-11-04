@@ -71,14 +71,18 @@ Future<List<WriteTarget>> _plan(
     FileStore store, List<VFile> targets, TaskControl? ctl) async {
   // 同名 .lrc 先按目录一次性找出来：逐首 locate 会对每首 stat + 列一遍父目录，
   // 900 首就是上千次跨进程查询，安卓上会长时间没反应。
-  final Set<String> withLrc = await LrcSidecar.withSidecar(store, targets);
+  // 0.2.67：这里顺便把「音频 → .lrc 文件对象」的映射留到写盘阶段复用，
+  // 那样每首只列一次目录，而不是计划一次、读旧内容一次、删除一次。
+  final Map<String, VFile> lrcByAudio =
+      await LrcSidecar.mapSidecar(store, targets);
   final List<WriteTarget> plans = <WriteTarget>[];
   for (int i = 0; i < targets.length; i++) {
     if (ctl?.isCancelled() ?? false) break;
     final VFile f = targets[i];
     if (i % 20 == 0) ctl?.report(i, targets.length, '正在检查 ${f.name}');
     try {
-      final WriteTarget? plan = await _planOne(store, f, withLrc.contains(f.docId));
+      final WriteTarget? plan =
+          await _planOne(store, f, lrcByAudio[f.docId]);
       if (plan != null) plans.add(plan);
     } catch (_) {
       // 单个文件读不出来（授权抖动 / 刚刚被删）：跳过，继续看下一首
@@ -88,7 +92,10 @@ Future<List<WriteTarget>> _plan(
 }
 
 /// 单首的计划；没有可删的内容返回 null。
-Future<WriteTarget?> _planOne(FileStore store, VFile f, bool hasLrc) async {
+///
+/// [lrcFile] 是计划阶段一次性查好的同名 `.lrc`（可能为 null）。它随
+/// [WriteTarget.data] 带到写盘阶段，避免那里再逐首探测一遍。
+Future<WriteTarget?> _planOne(FileStore store, VFile f, VFile? lrcFile) async {
   Tags tags;
   try {
     tags = f.cachedTags ?? await Scanner.readTags(store, f);
@@ -124,7 +131,7 @@ Future<WriteTarget?> _planOne(FileStore store, VFile f, bool hasLrc) async {
       key: Tags.lyrics,
     ));
   }
-  if (hasLrc) {
+  if (lrcFile != null) {
     lines.add(WriteLine(
       label: '歌词文件',
       oldText: LrcSidecar.nameFor(f),
@@ -141,6 +148,8 @@ Future<WriteTarget?> _planOne(FileStore store, VFile f, bool hasLrc) async {
     risky: true,
     lines: lines,
     file: f,
+    // 计划阶段查到的 .lrc 文件带到写盘阶段，省掉那里再探测一次
+    data: lrcFile,
   );
 }
 
@@ -213,6 +222,7 @@ Future<void> _confirmAndRun(
         batchId: batchId,
         cover: removeCover ? Uint8List(0) : null,
         removeLrc: removeLrc,
+        lrcFile: removeLrc ? t.data as VFile? : null,
         op: JournalOp.clear);
     if (err.isEmpty) {
       done++;
