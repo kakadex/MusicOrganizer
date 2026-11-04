@@ -69,7 +69,21 @@ class Entry {
   late String _nAlbum;
   late String _nGenre;
   late String _nComment;
-  late String _nLyrics;
+
+  /// 歌词的归一串（**惰性计算**）。
+  ///
+  /// 为什么不像其它字段那样在 [renormalize] 里直接算：歌词是唯一的长文本
+  /// （单首上限 [SearchIndex.lyricsHead] = 20000 字），而归一化是 O(长度) 的。
+  /// 实测一首 1.86 万字歌词算一次要 1.4 ms，建索引 / 读标签时每首都要算，
+  /// 900 首带歌词的库就是 1.3 秒，5000 首接近 5 秒——全都压在 UI 线程上。
+  ///
+  /// 但搜索时歌词是 [_anyField] 的**最后一道**判断：找歌名 / 歌手在前几个字段
+  /// 就命中了，绝大多数查询根本用不到歌词串。所以改成第一次真正读到时才算，
+  /// 算完缓存；任何字段变化由 [renormalize] 置空失效。
+  String? _nLyricsCache;
+
+  String get _nLyrics => _nLyricsCache ??= SearchQuery.norm(lyrics);
+
   late String _nYear;
   late String _nExt;
 
@@ -134,6 +148,8 @@ class Entry {
   }
 
   /// 预计算归一串；任何字段变化后都要调一次。
+  ///
+  /// 歌词不在这里算，只把惰性缓存置空（见 [_nLyrics] 的说明）。
   void renormalize() {
     _nName = SearchQuery.norm(name);
     _nPath = SearchQuery.norm(relPath);
@@ -143,7 +159,7 @@ class Entry {
     _nAlbum = SearchQuery.norm(album);
     _nGenre = SearchQuery.norm(genre);
     _nComment = SearchQuery.norm(comment);
-    _nLyrics = SearchQuery.norm(lyrics);
+    _nLyricsCache = null;
     _nYear = SearchQuery.norm(year);
   }
 

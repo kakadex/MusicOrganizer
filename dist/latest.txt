@@ -1,11 +1,11 @@
-version=0.2.60
-tag=v0.2.60
+version=0.2.61
+tag=v0.2.61
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.60/MusicOrganizer-0.2.60-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.61/MusicOrganizer-0.2.61-android-arm64-v8a.apk
 size=19806069
-sha256=d8c6c7675e40b723827792e0e6391ad8aa26afb91b710d3399e3373d3659d761
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.60/MusicOrganizer-0.2.60-windows-x64.zip
-zip_size=12914198
-zip_sha256=d40686c87aae7b58eb6293c8b85a019b23625c97f7e6a43f569b11165110f1a8
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.60
-summary=底部按钮避开安卓系统导航栏，不再被挡
+sha256=51e7b151e9e26f3422e2ab567ad3098f88b5b937c9a94e2a28fb3eaaf1fe1b5e
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.61/MusicOrganizer-0.2.61-windows-x64.zip
+zip_size=12648642
+zip_sha256=0e82c61af22d3fc6b6ddc03c99b1946ddd48382855f0f5ce0c51b2aa4935afee
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.61
+summary=启动更快：歌词不再建库时预先转换，繁简转换快12倍，搜索防抖

@@ -52,13 +52,46 @@ abstract final class TextUtil {
     return m;
   }
 
+  /// 50 条短语的首字符集合（去重后最多 50 个）。
+  ///
+  /// 用来做「这个首字符到底在不在文本里」的快速判断：文本里没有这个字，
+  /// 就不可能包含以它开头的短语，那条 [String.contains] 整串扫描可以直接省掉。
+  static final Set<int> _phraseHeads = <int>{
+    for (final String p in _tradPhrases) p.codeUnitAt(0),
+  };
+
+  /// 取文本里「出现过的短语首字符」。一遍扫描，只对 [_phraseHeads] 里的字做判断。
+  static Set<int> _headsPresentIn(String s) {
+    final Set<int> out = <int>{};
+    for (final int c in s.codeUnits) {
+      if (_phraseHeads.contains(c)) out.add(c);
+    }
+    return out;
+  }
+
   /// 繁转简（短语优先，再逐字）。null 安全。
+  ///
+  /// **短语匹配为什么要分桶**：原实现对 50 条短语各做一次 `s.contains(短语)`，
+  /// 每次都是一遍全串扫描。实测 16KB 歌词归一化里 76% 的时间花在这 50 次探针上，
+  /// 而且跟文本是繁是简无关——纯简体文本也照样扫 50 遍。
+  ///
+  /// 这里先扫一遍记下「文本里出现过哪些首字符」，只有首字符真的出现过才去
+  /// 做那条 `contains`。**语义与逐条全扫完全等价**：跳过的那些 `contains`
+  /// 必定返回 false（首字符都不在，整串不可能在）。
+  ///
+  /// 注意 `replaceAll` 会改变字符串，可能让后面的短语从「不存在」变成「存在」，
+  /// 所以**每次真正替换后都重算一次首字符集合**。正常情况下一次替换都没有，
+  /// 这一遍是省下来的。
   static String toSimplified(String? text) {
     if (text == null || text.isEmpty) return '';
     String s = text;
+    Set<int> heads = _headsPresentIn(s);
     for (int i = 0; i < _tradPhrases.length; i++) {
+      if (!heads.contains(_tradPhrases[i].codeUnitAt(0))) continue;
       if (s.contains(_tradPhrases[i])) {
         s = s.replaceAll(_tradPhrases[i], _simpPhrases[i]);
+        // 替换改变了内容：重新统计，保证后面几条短语的判断跟原实现一致
+        heads = _headsPresentIn(s);
       }
     }
     final StringBuffer sb = StringBuffer();

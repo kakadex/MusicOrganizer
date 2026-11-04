@@ -196,6 +196,100 @@ void main() {
     expect(find.text('另一首'), findsNothing);
   });
 
+  // ------------------------------------------------------------------
+  // 搜索防抖：连续输入合并成一次过滤；但「回车」「清空」必须立刻生效，
+  // 否则用户打完字马上回车会拿到上一轮查询的结果。
+  // ------------------------------------------------------------------
+  group('搜索防抖', () {
+    testWidgets('防抖窗口内列表保持不变，窗口过后才过滤',
+        (WidgetTester tester) async {
+      final Repo repo = Repo.instance;
+      repo.resetForTest();
+      seed(repo);
+      await pumpPage(tester);
+
+      // 初始三首都可见
+      expect(find.text('示例歌名'), findsOneWidget);
+      expect(find.text('另一首'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), '示例歌手');
+      // 只推进很短的时间，还没到 150ms 防抖窗口
+      await tester.pump(const Duration(milliseconds: 50));
+
+      // 还没过滤：「另一首」仍在
+      expect(find.text('另一首'), findsOneWidget,
+          reason: '防抖窗口内不应立刻过滤');
+
+      // 越过防抖窗口
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
+
+      expect(find.text('示例歌名'), findsOneWidget);
+      expect(find.text('另一首'), findsNothing,
+          reason: '防抖窗口过后应完成过滤');
+    });
+
+    testWidgets('连续输入只按最后一次过滤', (WidgetTester tester) async {
+      final Repo repo = Repo.instance;
+      repo.resetForTest();
+      seed(repo);
+      await pumpPage(tester);
+
+      // 模拟快速连打：每次间隔都小于防抖窗口
+      await tester.enterText(find.byType(TextField), '示');
+      await tester.pump(const Duration(milliseconds: 40));
+      await tester.enterText(find.byType(TextField), '示例');
+      await tester.pump(const Duration(milliseconds: 40));
+      await tester.enterText(find.byType(TextField), '示例歌手');
+
+      // 此时仍不应过滤（每次输入都会重置计时器）
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('另一首'), findsOneWidget,
+          reason: '连续输入期间不应过滤');
+
+      // 停顿超过窗口，按最后一次查询过滤
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
+      expect(find.text('示例歌名'), findsOneWidget);
+      expect(find.text('另一首'), findsNothing);
+    });
+
+    testWidgets('回车立即生效，不必等防抖窗口', (WidgetTester tester) async {
+      final Repo repo = Repo.instance;
+      repo.resetForTest();
+      seed(repo);
+      await pumpPage(tester);
+
+      await tester.enterText(find.byType(TextField), '示例歌手');
+      // 立刻提交（不等 150ms）
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+
+      expect(find.text('示例歌名'), findsOneWidget);
+      expect(find.text('另一首'), findsNothing,
+          reason: '回车应立即生效，不能等防抖');
+    });
+
+    testWidgets('清空按钮立即恢复全部曲目', (WidgetTester tester) async {
+      final Repo repo = Repo.instance;
+      repo.resetForTest();
+      seed(repo);
+      await pumpPage(tester);
+
+      await tester.enterText(find.byType(TextField), '示例歌手');
+      await tester.pumpAndSettle();
+      expect(find.text('另一首'), findsNothing);
+
+      // 点搜索框右侧的清空按钮
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pump();
+
+      expect(find.text('另一首'), findsOneWidget,
+          reason: '清空应立刻恢复，不必等防抖');
+      expect(find.text('示例歌名'), findsOneWidget);
+    });
+  });
+
   testWidgets('排序项里有「修改时间」和「标签完整度」', (WidgetTester tester) async {
     final Repo repo = Repo.instance;
     repo.resetForTest();

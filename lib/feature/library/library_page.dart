@@ -81,6 +81,14 @@ class _LibraryPageState extends State<LibraryPage> {
   /// 当前检索词（命中高亮用）。
   List<String> _terms = <String>[];
 
+  /// 搜索框防抖计时器。
+  ///
+  /// 每敲一个键就重建整个列表太贵：5000 首的库一次全表过滤 + 排序要几十毫秒，
+  /// 而且是同步跑在 UI 线程上，输入法联想没上屏时界面已经在忙。这里把连续
+  /// 输入合并成一次，停顿 [_searchDebounceMs] 后才真正过滤。
+  Timer? _searchDebounce;
+  static const int _searchDebounceMs = 150;
+
   /// 曲库 / 标签两域的变化源（`loadMeta` 读回新标签后要靠它重建列表）。
   late final Listenable _repoChanges;
 
@@ -106,6 +114,7 @@ class _LibraryPageState extends State<LibraryPage> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _repoChanges.removeListener(_onRepoChanged);
     _search.dispose();
     super.dispose();
@@ -167,6 +176,22 @@ class _LibraryPageState extends State<LibraryPage> {
     }
     repo.files = <VFile>[];
     await _scan();
+  }
+
+  /// 搜索框输入变化：防抖后再过滤。
+  ///
+  /// [immediate] 用于「清空」「回车」这类明确动作——必须立刻生效，否则用户
+  /// 打完字马上回车会拿到上一轮查询的结果（防抖期间列表还是旧的）。
+  void _onQueryChanged(String v, {bool immediate = false}) {
+    _query = v;
+    _searchDebounce?.cancel();
+    if (immediate) {
+      _applyFilter();
+      return;
+    }
+    _searchDebounce = Timer(const Duration(milliseconds: _searchDebounceMs), () {
+      if (mounted) _applyFilter();
+    });
   }
 
   void _applyFilter() {
@@ -577,18 +602,15 @@ class _LibraryPageState extends State<LibraryPage> {
                   hintText: '搜索歌名 / 歌手 / 专辑 / 路径',
                   hintStyle: TextStyle(fontSize: MoKit.fsBody, color: MoKit.faint(context)),
                 ),
-                onChanged: (String v) {
-                  _query = v;
-                  _applyFilter();
-                },
+                onChanged: (String v) => _onQueryChanged(v),
+                onSubmitted: (String v) => _onQueryChanged(v, immediate: true),
               ),
             ),
             if (_query.isNotEmpty)
               IconButton(
                 onPressed: () {
                   _search.clear();
-                  _query = '';
-                  _applyFilter();
+                  _onQueryChanged('', immediate: true);
                 },
                 icon: Icon(Icons.close, size: 16, color: MoKit.faint(context)),
               ),
