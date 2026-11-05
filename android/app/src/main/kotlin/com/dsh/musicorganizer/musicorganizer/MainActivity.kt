@@ -568,7 +568,10 @@ class MainActivity : FlutterActivity() {
             startActivity(intent)
             true
         } catch (e: Exception) {
-            Log.w(TAG, "拉起安装器失败：${e.message}")
+            // 只记异常类名，不记 message：FileProvider 的异常信息里可能带
+            // APK 的绝对路径，而这行日志不走 Dart 侧的 Log.sanitize，
+            // 直接落进 logcat 就绕过了脱敏（性能排查报告附录 B 的警告）。
+            Log.w(TAG, "拉起安装器失败：${e.javaClass.simpleName}")
             false
         }
     }
