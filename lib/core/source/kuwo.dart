@@ -2,7 +2,8 @@
 ///
 /// 酷我字段全大写：SONGNAME（取不到再退 NAME）/ ARTIST / ALBUM / DURATION，
 /// 时长本来就是秒。返回体是 `abslist` 数组；标题为空的记录直接丢掉，
-/// 否则会往聚合里塞一条「只有时长」的噪声候选。
+/// 否则会往聚合里塞一条「只有时长」的噪声候选。封面从 `hts_IMG` /
+/// `web_albumpic_short` 取（搜索接口本身就带，不用单独再问一次）。
 library;
 
 import '../model/candidate.dart';
@@ -71,6 +72,9 @@ class KuwoSource implements TagSource {
               JsonPick.str(item, 'SONGNAME'), JsonPick.str(item, 'NAME'))
           ..artist = JsonPick.str(item, 'ARTIST')
           ..album = JsonPick.str(item, 'ALBUM')
+          ..coverUrl = coverOf(JsonPick.firstNonEmpty(
+              JsonPick.str(item, 'hts_IMG'),
+              JsonPick.str(item, 'web_albumpic_short')))
           ..source = key
           ..confidence = baseConfidence;
         final double? dur = double.tryParse(JsonPick.str(item, 'DURATION'));
@@ -83,5 +87,23 @@ class KuwoSource implements TagSource {
       return <Candidate>[];
     }
     return out;
+  }
+
+  /// 酷我的 `hts_IMG` 是完整地址（`http://img4.kuwo.cn/.../90.jpg` 这类，
+  /// 末段是尺寸）；`web_albumpic_short` 是缺协议头的相对路径。统一补全并把
+  /// 常见小尺寸升到 500（酷我按 `/<尺寸>.jpg` 分档，升档直接替换数字）。
+  static String coverOf(String raw) {
+    String url = raw.trim();
+    if (url.isEmpty) return '';
+    if (url.startsWith('//')) {
+      url = 'https:$url';
+    } else if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://img4.kuwo.cn/star/albumcover/$url';
+    }
+    return url
+        .replaceAll('/90.jpg', '/500.jpg')
+        .replaceAll('/120.jpg', '/500.jpg')
+        .replaceAll('/150.jpg', '/500.jpg')
+        .replaceAll('/240.jpg', '/500.jpg');
   }
 }

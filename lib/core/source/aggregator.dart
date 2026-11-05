@@ -163,9 +163,13 @@ abstract final class Aggregator {
     final List<Candidate> merged = _merge(all);
     merged.sort((Candidate a, Candidate b) {
       // 先按综合分（标题 + 艺人 + 时长）：差 0.02 以上就按分数排；
-      // 分数接近再看标题谁更像，最后才用源优先级（中文曲目国内源优先）。
+      // 分数接近再看标题谁更像；同段里「带封面地址的」优先 —— 酷狗 / 酷我 /
+      // 咪咕 / MusicBrainz 的候选没有封面字段，不加这一条时它们会凭微小
+      // 分差把带封面的候选挤出前列，封面批量就「匹配到了却拿不到图」。
       final double d = a.matchScore - b.matchScore;
       if (d.abs() > 0.02) return d > 0 ? -1 : 1;
+      final int cv = _coverRank(b) - _coverRank(a);
+      if (cv != 0) return cv;
       final double t = a.filenameScore - b.filenameScore;
       if (t.abs() > 0.02) return t > 0 ? -1 : 1;
       return SourceRank.compare(
@@ -176,6 +180,10 @@ abstract final class Aggregator {
         merged.length > maxCandidates ? merged.sublist(0, maxCandidates) : merged;
     return AggregateResult(out, errors, before);
   }
+
+  /// 候选有没有可下载的封面地址（1 有 / 0 没有；纯排序用，不算业务判定）。
+  static int _coverRank(Candidate c) =>
+      c.coverUrl.trim().isEmpty ? 0 : 1;
 
   /// 取歌词候选：并发问各家，返回按 [offerScore] 排好序的命中（越靠前越可信）。
   ///

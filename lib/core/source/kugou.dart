@@ -1,7 +1,8 @@
 /// 酷狗音乐标签源。
 ///
 /// 移动端搜索接口，字段全小写下划线：songname / singername / album_name，
-/// duration 本来就是秒。这家不给年份、音轨与封面，只用来补标题 / 艺人 / 专辑 / 时长。
+/// duration 本来就是秒。这家不给年份与音轨；封面从每条 `albumcover` 取
+/// （没有的记录留空，聚合层自会跳过）。
 library;
 
 import '../model/candidate.dart';
@@ -56,6 +57,7 @@ class KugouSource implements TagSource {
           ..title = JsonPick.str(item, 'songname')
           ..artist = JsonPick.str(item, 'singername')
           ..album = JsonPick.str(item, 'album_name')
+          ..coverUrl = coverOf(JsonPick.str(item, 'albumcover'))
           ..source = key
           ..confidence = baseConfidence;
         final double? dur = double.tryParse(JsonPick.str(item, 'duration'));
@@ -67,5 +69,24 @@ class KugouSource implements TagSource {
       return <Candidate>[];
     }
     return out;
+  }
+
+  /// 酷狗给的 `albumcover` 形如 `{hash}.jpg` / `{hash}_240x240.jpg`（花括号
+  /// 开头的模板串，也可能已是完整地址）；统一升到 500×500。不是花括号模板
+  /// 也不是完整地址的留空。
+  static String coverOf(String albumcover) {
+    final String raw = albumcover.trim();
+    if (raw.isEmpty) return '';
+    if (raw.startsWith('http://') || raw.startsWith('https://')) {
+      return raw
+          .replaceAll('240x240', '500x500')
+          .replaceAll('100x100', '500x500');
+    }
+    if (raw.startsWith('{')) {
+      // 直接拼字符串，别用 Uri.https：它会把花括号编码成 %7B%7D，
+      // 酷狗 CDN 认原始花括号，编码过的反而 404。
+      return 'https://imge.kugou.com/stdmusic/500x500/$raw';
+    }
+    return '';
   }
 }

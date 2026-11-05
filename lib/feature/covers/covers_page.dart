@@ -21,7 +21,9 @@ import '../../core/model/task_control.dart';
 import '../../core/model/vfile.dart';
 import '../../core/net/http_client.dart';
 import '../../core/scan/scanner.dart';
+import '../../core/source/album_cover.dart';
 import '../../core/source/aggregator.dart';
+import '../../core/source/tag_source.dart';
 import '../../core/tag/tag_io.dart';
 import '../../core/task/task_center.dart';
 import '../../core/tx/write_preview.dart';
@@ -266,6 +268,15 @@ class _CoversPageState extends State<CoversPage> {
             final AggregateResult agg = await Aggregator.tagCandidates(
                 q, chinese: LocalQuery.chinese(q));
             url = CoverPick.urlOf(agg.candidates);
+            // 第二跳：候选都不带封面时，用「专辑名 + 艺人」单独问专辑图
+            // （Deezer / iTunes）。冷门歌歌名搜不到图、专辑图往往还在。
+            if (url.isEmpty && agg.candidates.isNotEmpty) {
+              final String localArtist = TagQuery.artist(q);
+              final (String album, String artist) =
+                  AlbumCover.fromCandidates(agg.candidates, localArtist);
+              final AlbumCoverLookup hit = await AlbumCover.lookup(album, artist);
+              url = hit.url;
+            }
             if (url.isNotEmpty) {
               _queue?.put(
                 _keyOf(job.file),
