@@ -67,12 +67,18 @@ abstract final class Endpoints {
 
   /// 注册表：新增数据源只要在这里加一行。
   static const List<EndpointSource> sources = <EndpointSource>[
-    EndpointSource('netease', '网易云音乐', '标签', <String>['搜索'],
-        <String>['https://music.163.com/api/search/get']),
+    EndpointSource('netease', '网易云音乐', '标签', <String>['搜索', '专辑搜索'],
+        <String>[
+          'https://music.163.com/api/search/get',
+          'https://music.163.com/api/search/get'
+        ]),
     EndpointSource('qqmusic', 'QQ 音乐', '标签', <String>['搜索'],
         <String>['https://u.y.qq.com/cgi-bin/musicu.fcg']),
-    EndpointSource('kugou', '酷狗音乐', '标签', <String>['搜索'],
-        <String>['https://mobiles.kugou.com/api/v3/search/song']),
+    EndpointSource('kugou', '酷狗音乐', '标签', <String>['搜索', '专辑搜索'],
+        <String>[
+          'https://mobiles.kugou.com/api/v3/search/song',
+          'https://mobiles.kugou.com/api/v3/search/album'
+        ]),
     EndpointSource('kuwo', '酷我音乐', '标签', <String>['搜索'],
         <String>['https://search.kuwo.cn/r.s']),
     EndpointSource('migu', '咪咕音乐', '标签', <String>['搜索'],

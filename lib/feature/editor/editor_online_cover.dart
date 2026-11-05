@@ -34,7 +34,7 @@ Future<Uint8List?> pickOnlineCover(
     ],
   );
   final AggregateResult agg = await Aggregator.tagCandidates(
-      q, chinese: LocalQuery.chinese(q));
+      q, chinese: LocalQuery.chinese(q), preferCover: true);
   if (!context.mounted) return null;
   Navigator.of(context).pop();
   final List<Candidate> withCover = agg.candidates

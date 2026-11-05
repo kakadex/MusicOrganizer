@@ -221,7 +221,7 @@ class MatchRunner {
       candidate: best,
       modes: modes,
       overwrite: overwrite,
-      note: loose ? looseNote : null,
+      note: loose ? looseNote : (best.merged >= 2 ? '${best.merged} 家一致' : null),
       lowConfidence: loose ? true : null,
     );
     // 兜底命中的「另一个录音版本」不默认勾选：让人看一眼「时长差多少秒」

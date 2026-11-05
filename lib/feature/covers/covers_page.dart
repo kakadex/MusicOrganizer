@@ -476,10 +476,11 @@ class _CoversPageState extends State<CoversPage> {
         final Tags tags = await Scanner.readTags(store, job.file);
         final Query q = LocalQuery.forFile(job.file, tags);
         final AggregateResult agg = await Aggregator.tagCandidates(
-            q, chinese: LocalQuery.chinese(q));
+            q, chinese: LocalQuery.chinese(q), preferCover: true);
         url = CoverPick.urlOf(agg.candidates);
-        // 第二跳：候选都不带封面时，用「专辑名 + 艺人」单独问专辑图
-        // （Deezer / iTunes）。同一张专辑只查一次（repo.albumCovers 缓存）。
+        // 第二跳：候选都不带封面时，用「专辑名 + 艺人」问各家专辑库
+        // （网易云 / 酷狗 / Deezer / iTunes），再对比挑最像本地专辑的那张。
+        // 同一张专辑只查一次（repo.albumCovers 缓存）。
         if (url.isEmpty && agg.candidates.isNotEmpty) {
           final (String album, String artist) =
               AlbumCover.fromCandidates(agg.candidates, TagQuery.artist(q));

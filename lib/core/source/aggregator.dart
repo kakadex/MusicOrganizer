@@ -95,6 +95,7 @@ abstract final class Aggregator {
     JsonFetcher? fetch,
     Iterable<String>? only,
     bool verify = true,
+    bool preferCover = false,
   }) async {
     final bool isCn = chinese ?? TagQuery.isChineseTrack(q);
     final List<TagSource> sources = <TagSource>[];
@@ -185,8 +186,15 @@ abstract final class Aggregator {
       // 分差把带封面的候选挤出前列，封面批量就「匹配到了却拿不到图」。
       final double d = a.matchScore - b.matchScore;
       if (d.abs() > 0.02) return d > 0 ? -1 : 1;
-      final int cv = _coverRank(b) - _coverRank(a);
-      if (cv != 0) return cv;
+      // 封面批量才在乎「这条有没有图」；标签批量不该被它影响排序。
+      if (preferCover) {
+        final int cv = _coverRank(b) - _coverRank(a);
+        if (cv != 0) return cv;
+      }
+      // 多家一致优先：分数接近时，被两家以上同时命中的候选更可信
+      // （翻唱 / 同名垃圾条目通常只有一家给）。
+      final int mv = b.merged - a.merged;
+      if (mv != 0) return mv;
       final double t = a.filenameScore - b.filenameScore;
       if (t.abs() > 0.02) return t > 0 ? -1 : 1;
       return SourceRank.compare(
