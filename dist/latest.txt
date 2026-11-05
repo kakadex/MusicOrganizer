@@ -1,11 +1,11 @@
-version=0.2.83
-tag=v0.2.83
+version=0.2.84
+tag=v0.2.84
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.83/MusicOrganizer-0.2.83-android-arm64-v8a.apk
-size=19937765
-sha256=728a5222167997fe4a267e9e553fb953d38d7c734b04f16d67de40f5b76b36e2
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.83/MusicOrganizer-0.2.83-windows-x64.zip
-zip_size=12954313
-zip_sha256=6f6c7b36aa6b671f1f8d131172cd2ed1dca0f7e04e79802acdec7436631b6c7a
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.83
-summary=修复播放状态异常：移除多余事件通道
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.84/MusicOrganizer-0.2.84-android-arm64-v8a.apk
+size=19938069
+sha256=83b7fb99a287a2508fe517e89313fd8fcfd05a8c0e9dff7a8d921d173abc5cd2
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.84/MusicOrganizer-0.2.84-windows-x64.zip
+zip_size=12954381
+zip_sha256=9f241a3489fdd7c78e81b65f66107655973bb351fb0c8ef49d615e133ca96e20
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.84
+summary=播放条大改版：编辑页可见 + 控制放大

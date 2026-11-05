@@ -21,6 +21,7 @@ import '../../core/scan/scanner.dart';
 import '../../core/tag/cover_art.dart';
 import '../../core/tx/write_preview.dart';
 import '../../platform/mini_player.dart';
+import '../../platform/play_bar.dart';
 import '../../core/fs/saf_file_store.dart';
 import '../common/write_confirm_sheet.dart';
 import 'editor_cover_card.dart';
@@ -152,6 +153,8 @@ class _EditorPageState extends State<EditorPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // 应用内试听：编辑页也要能看到播放条（主界面的被本页盖住）
+      bottomNavigationBar: const PlayBar(),
       body: SafeArea(
         bottom: false,
         child: Column(

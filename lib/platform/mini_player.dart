@@ -121,6 +121,15 @@ class MiniPlayer extends ChangeNotifier {
     }
   }
 
+  /// 快退 / 快进 [seconds] 秒（拖进度用，边界自动钳住）。
+  Future<void> skip(int seconds) async {
+    final PlayerState? s = state;
+    if (s == null) return;
+    final int target = (s.positionMs + seconds * 1000)
+        .clamp(0, s.durationMs <= 0 ? s.positionMs : s.durationMs);
+    await seekTo(target);
+  }
+
   Future<void> seekTo(int ms) async {
     try {
       await _ch.invokeMethod<void>('seek', <String, Object?>{'ms': ms});
