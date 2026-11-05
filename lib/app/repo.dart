@@ -20,6 +20,7 @@ import '../core/model/cancel_token.dart';
 import '../core/model/tags.dart';
 import '../core/model/vfile.dart';
 import 'cover_thumb_cache.dart';
+import 'tag_parse_isolate.dart';
 import 'repo_changes.dart';
 import '../core/net/http_client.dart';
 import '../core/net/net.dart';
@@ -29,6 +30,7 @@ import '../core/scan/scan_filter.dart';
 import '../core/scan/scan_merge.dart';
 import '../core/scan/scan_stats.dart';
 import '../core/scan/scanner.dart';
+import '../core/tag/tag_io.dart';
 import '../core/scan/search_index.dart';
 import '../core/settings/settings.dart';
 import '../core/source/endpoints.dart';
@@ -863,29 +865,62 @@ class Repo extends ChangeNotifier {
     int done = 0;
     int lastSaveAtMs = DateTime.now().millisecondsSinceEpoch;
     try {
-      await Net.map<VFile, bool>(todo, Net.readThreads, cancel, (VFile f) async {
-        final ScannerHead head = await Scanner.readHead(st, f);
-        final Tags tags = head.tags;
-        f.cacheMeta(tags,
-            cover: head.cover != null && head.cover!.isNotEmpty,
-            lyrics: tags.get(Tags.lyrics).trim().isNotEmpty);
-        index.find(f.docId)?.applyTags(tags, f.cachedHasCover);
-        done++;
-        // 分批落盘：长任务中途被取消 / 被杀，已经读过的部分仍然留得下，
-        // 下次启动不必从零开始。
-        //
-        // 0.2.63 起间隔放宽：原来是每 100 首存一次，900 首 = 9 次，每次都
-        // 在 UI isolate 上把整库编码成几 MB 的 JSON（实测带歌词的库一次约
-        // 56ms），是「读标签时每隔几秒卡一下」的主因。现在改成「每 300 首
-        // 或每 2 秒」——中途被杀最多重读 300 首，代价可接受。
-        final int now = DateTime.now().millisecondsSinceEpoch;
-        if (done % 300 == 0 || now - lastSaveAtMs >= 2000) {
-          lastSaveAtMs = now;
-          unawaited(saveLibraryCache());
+      // 0.2.73（性能排查报告 §5.1 主方案）：把「解析 + 归一化」挪进后台 isolate。
+      //
+      // 原来逐首 readHead：读字节走平台线程池没问题，但 TagIO.readLocal +
+      // CoverReader.read 是同步 CPU 调用（输入 512KB~2MB），在 UI isolate 里
+      // 一首几毫秒、900 首就是几秒——await 只让出「等 I/O」的时间，
+      // 不让出「算」的时间。
+      //
+      // 现在分两步：字节仍按 Net.readThreads 并发读（这部分是跨进程 I/O），
+      // 解析按 20 首一批送进 isolate。缓存/进度/落盘节奏保持原样。
+      const int batch = 20;
+      for (int start = 0; start < todo.length; start += batch) {
+        if (cancel?.isCancelled() ?? false) break;
+        final int end = (start + batch < todo.length)
+            ? start + batch
+            : todo.length;
+        final List<VFile> slice = todo.sublist(start, end);
+
+        // ① 读字节：并发读；失败的首由 mapIndexed 置 null（消费端跳过），
+        //    单首容错语义与旧逻辑一致
+        final List<TagParseJob?> jobs = await Net.mapIndexed<VFile, TagParseJob>(
+          slice,
+          Net.readThreads,
+          cancel,
+          (int _, VFile f) async {
+            final String ext = TagIO.extOf(f.name);
+            final Uint8List data = await Scanner.loadForTags(st, f, ext);
+            return TagParseJob(ext: ext, bytes: data);
+          },
+        );
+
+        // ② 批解析：进后台 isolate，UI 线程不再有大块 CPU
+        final List<TagParseResult> results = await parseTagsInIsolate(
+          jobs.whereType<TagParseJob>().toList(),
+        );
+
+        // ③ 写缓存与索引（轻量，留在 UI isolate）
+        int resultAt = 0;
+        for (int i = 0; i < slice.length; i++) {
+          final VFile f = slice[i];
+          final TagParseJob? job = jobs[i];
+          if (job == null) continue; // 读字节失败的：与旧逻辑一样按空标签处理
+          final TagParseResult r = results[resultAt++];
+          final Tags tags = Tags.fromMap(r.tags);
+          f.cacheMeta(tags,
+              cover: r.cover != null && r.cover!.isNotEmpty,
+              lyrics: tags.get(Tags.lyrics).trim().isNotEmpty);
+          index.find(f.docId)?.applyTags(tags, f.cachedHasCover);
+          done++;
+          final int now = DateTime.now().millisecondsSinceEpoch;
+          if (done % 300 == 0 || now - lastSaveAtMs >= 2000) {
+            lastSaveAtMs = now;
+            unawaited(saveLibraryCache());
+          }
+          onProgress?.call(done, todo.length);
         }
-        onProgress?.call(done, todo.length);
-        return true;
-      });
+      }
     } finally {
       _metaLoading = false;
       for (final Completer<void> c in _metaWaiters) {

@@ -33,6 +33,16 @@ class Tags {
 
   final Map<String, String> _values = <String, String>{};
 
+  /// 从键值表重建（isolate 回来后还原成 Tags 用）。
+  ///
+  /// 用 [put] 走同一套归一化（trim / year 截断），与 [toMap] 互逆。
+  Tags.fromMap(Map<String, String> map) {
+    for (final String k in keys) {
+      _values[k] = '';
+    }
+    map.forEach(put);
+  }
+
   Tags() {
     for (final String k in keys) {
       _values[k] = '';

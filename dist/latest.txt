@@ -1,11 +1,11 @@
-version=0.2.72
-tag=v0.2.72
+version=0.2.73
+tag=v0.2.73
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.72/MusicOrganizer-0.2.72-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.73/MusicOrganizer-0.2.73-android-arm64-v8a.apk
 size=19872197
-sha256=22ea937c7bbdfd6b6faf22df046ed91f6e160be162782ffc9993d9a7c7be6686
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.72/MusicOrganizer-0.2.72-windows-x64.zip
-zip_size=12667998
-zip_sha256=979f9e48b66fe29affe6739f022177b9d50c95285c05790706d7b4734266922b
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.72
-summary=日志脱敏补洞：更新失败日志不再可能带本机路径
+sha256=331c9db778761749aa91c935682598c7358665724cee6c1efbb699c8a73f3002
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.73/MusicOrganizer-0.2.73-windows-x64.zip
+zip_size=12669188
+zip_sha256=2f918c1f278de99e1560ad13a4bfe6379cb61c388aae72348a9d9512c23e859e
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.73
+summary=读标签解析挪进后台线程，界面更流畅
