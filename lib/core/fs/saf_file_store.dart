@@ -137,6 +137,12 @@ class SafFileStore implements FileStore {
     return await _channel.openWithPlayer(t.treeUri, f.docId, f.mime);
   }
 
+  /// 应用内播放：返回可播的 content uri；无效位置返回 null。
+  Future<String?> playerUri(VFile f) async {
+    final TreeRef t = _treeFor(f.docId);
+    return await _channel.playerUri(t.treeUri, f.docId);
+  }
+
   @override
   Future<Uint8List> headBytes(VFile f, int maxBytes) async {
     final TreeRef t = _treeFor(f.docId);

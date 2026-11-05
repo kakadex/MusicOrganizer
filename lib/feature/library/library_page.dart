@@ -29,6 +29,8 @@ import '../../core/scan/search_query.dart';
 import '../../core/task/task_center.dart';
 import '../covers/covers_page.dart';
 import '../editor/editor_page.dart';
+import '../../platform/mini_player.dart';
+import '../../core/fs/saf_file_store.dart';
 import '../lyrics_batch/lyrics_batch_page.dart';
 import '../../core/tx/write_preview.dart';
 import '../common/write_confirm_sheet.dart';
@@ -1170,15 +1172,24 @@ class _LibraryPageState extends State<LibraryPage> {
             const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
-              child: MoButton('播放（系统播放器）', primary: false,
+              child: MoButton('播放', primary: false,
                   icon: Icons.play_arrow_outlined,
                   onPressed: () async {
                     final VFile? f = e.file;
+                    if (f == null) return;
                     final store = Repo.instance.store;
-                    if (f == null || store == null) return;
+                    if (store == null) return;
                     Navigator.of(fctx).pop();
-                    final String? err = await store.openWithPlayer(f);
-                    if (err != null && mounted) moSnack(context, err);
+                    // 安卓：应用内迷你播放条；桌面：系统默认播放器
+                    await MiniPlayer.instance.play(
+                      f,
+                      saf: store is SafFileStore ? store : null,
+                      openExternal: store.openWithPlayer,
+                    );
+                    if (mounted && MiniPlayer.instance.error != null) {
+                      moSnack(context, MiniPlayer.instance.error!);
+                      MiniPlayer.instance.clearError();
+                    }
                   }),
             ),
             const SizedBox(height: 8),

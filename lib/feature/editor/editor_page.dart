@@ -20,6 +20,8 @@ import '../../core/model/vfile.dart';
 import '../../core/scan/scanner.dart';
 import '../../core/tag/cover_art.dart';
 import '../../core/tx/write_preview.dart';
+import '../../platform/mini_player.dart';
+import '../../core/fs/saf_file_store.dart';
 import '../common/write_confirm_sheet.dart';
 import 'editor_cover_card.dart';
 import 'editor_online_cover.dart';
@@ -311,21 +313,27 @@ class _EditorPageState extends State<EditorPage> {
           const SizedBox(width: 10),
           Expanded(
             child: MoButton('播放', primary: false, onPressed: _playWithSystem),
-          ),
-        ]),
+          ),        ]),
       ],
     );
   }
 
-  /// 用系统播放器试听当前这首：手动识别时先听一听再定字段。
+  /// 应用内试听当前这首（安卓迷你播放条；桌面系统默认播放器）。
   Future<void> _playWithSystem() async {
     final store = Repo.instance.store;
     if (store == null) {
       moSnack(context, '还没有准备好文件访问');
       return;
     }
-    final String? err = await store.openWithPlayer(widget.file);
-    if (err != null && mounted) moSnack(context, err);
+    await MiniPlayer.instance.play(
+      widget.file,
+      saf: store is SafFileStore ? store : null,
+      openExternal: store.openWithPlayer,
+    );
+    if (mounted && MiniPlayer.instance.error != null) {
+      moSnack(context, MiniPlayer.instance.error!);
+      MiniPlayer.instance.clearError();
+    }
   }
 
   Future<void> _runOnlineMatch() async {

@@ -342,4 +342,14 @@ class SafChannel {
       return '打不开：$e';
     }
   }
+
+  /// 应用内播放：返回可播的 content uri；无效位置返回 null。
+  Future<String?> playerUri(String treeUri, String docId) async {
+    try {
+      return await safChannel.invokeMethod<String>(
+          'playerUri', <String, Object?>{'treeUri': treeUri, 'docId': docId});
+    } catch (_) {
+      return null;
+    }
+  }
 }

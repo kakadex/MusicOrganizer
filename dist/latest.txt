@@ -1,11 +1,11 @@
-version=0.2.80
-tag=v0.2.80
+version=0.2.81
+tag=v0.2.81
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.80/MusicOrganizer-0.2.80-android-arm64-v8a.apk
-size=19937689
-sha256=b35abd1735096937e203dd2e2170d11e4efabcdea40350a04743553e7f5f6817
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.80/MusicOrganizer-0.2.80-windows-x64.zip
-zip_size=12957421
-zip_sha256=ab37a94b0e84213e2a97faca11ddf9bf2e3514d6ccaa7d3b5e4a5179aa456601
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.80
-summary=修复外部打开音频时闪退
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.81/MusicOrganizer-0.2.81-android-arm64-v8a.apk
+size=19937765
+sha256=328a5c7d3bf12baecb33872406b8f6fa2f872b60899b43dd789bb977d404a316
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.81/MusicOrganizer-0.2.81-windows-x64.zip
+zip_size=12964868
+zip_sha256=0b2771bb3f2252a3a160c595af4f53fba51753dbc3965429a1a172d1b3f2c773
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.81
+summary=应用内迷你播放条：点播放就地试听

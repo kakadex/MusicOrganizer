@@ -26,6 +26,7 @@ class MainActivity : FlutterActivity() {
     private var pendingNotificationResult: MethodChannel.Result? = null
     private lateinit var safPlugin: SafPlugin
     private var hostChannel: MethodChannel? = null
+    private var miniPlayer: MiniPlayerPlugin? = null
 
     /**
      * SAF 调用的后台线程池。
@@ -92,6 +93,10 @@ class MainActivity : FlutterActivity() {
             "com.dsh.musicorganizer/host"
         )
         hostChannel = host
+        // 应用内迷你播放器（单曲试听）：独立通道，生命周期跟引擎走
+        miniPlayer = MiniPlayerPlugin(flutterEngine).also {
+            it.attach(flutterEngine.dartExecutor.binaryMessenger)
+        }
         host.setMethodCallHandler { call, result ->
             when (call.method) {
                 "updateTask" -> {
@@ -332,6 +337,12 @@ class MainActivity : FlutterActivity() {
                     val docId = call.argument<String>("docId") ?: ""
                     val mime = call.argument<String>("mime") ?: "audio/*"
                     result.success(openWithPlayer(treeUri, docId, mime))
+                }
+                // 应用内播放：返回可播的 content uri（必须来自已授权目录树）
+                "playerUri" -> {
+                    val treeUri = call.argument<String>("treeUri") ?: ""
+                    val docId = call.argument<String>("docId") ?: ""
+                    result.success(safPlugin.documentUriFor(treeUri, docId)?.toString())
                 }
                 // 给 Dart 侧一个可查的前台服务状态，任务结束后不必靠猜
                 "serviceState" -> result.success(TaskForegroundService.state())

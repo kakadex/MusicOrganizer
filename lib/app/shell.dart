@@ -8,6 +8,8 @@ import 'ui_kit.dart';
 import '../core/tx/journal.dart';
 import '../platform/drop_channel.dart';
 import '../platform/external_open.dart';
+import '../platform/mini_player.dart';
+import '../platform/play_bar.dart';
 import '../platform/task_service.dart';
 import '../core/tx/journal_history.dart';
 import '../feature/history/undo_flow.dart';
@@ -41,6 +43,8 @@ class _MoShellState extends State<MoShell> {
     TaskService.attach();
     // 外部调起：文件管理器里「用本应用打开」音频
     ExternalOpen.listen(_onExternalUri);
+    // 应用内迷你播放器：监听原生侧「播完 / 出错」事件
+    MiniPlayer.instance.wire();
     _boot();
   }
 
@@ -196,6 +200,8 @@ class _MoShellState extends State<MoShell> {
             Expanded(
               child: const LibraryPage(),
             ),
+            // 迷你播放条（单曲试听）：没在播时是零高度占位
+            const PlayBar(),
             const TaskBar(),
           ],
         ),
