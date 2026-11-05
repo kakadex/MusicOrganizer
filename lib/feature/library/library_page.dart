@@ -10,6 +10,7 @@ import '../../app/repo.dart';
 import '../../app/repo_changes.dart';
 import '../../app/ui_kit.dart';
 import '../../core/match/match_queue.dart';
+import '../../core/task/match_runner.dart';
 import '../../core/match/tag_plan.dart';
 import '../../core/model/tags.dart';
 import '../../core/model/task_control.dart';
@@ -523,6 +524,19 @@ class _LibraryPageState extends State<LibraryPage> {
     }
   }
 
+  /// 清空三类任务的续跑队列与匹配记忆（标签 / 封面 / 歌词）。
+  ///
+  /// 只清缓存，不触发任何匹配——下次进批量流程时全部重新联网查。
+  /// 与旧的「忽略上次结果」不同：不再针对选中批，是全局清空。
+  void _clearMatchMemory() {
+    final MatchRunner? runner = Repo.instance.runner;
+    runner?.queue?.clear();
+    runner?.memory?.clear();
+    Repo.instance.coverQueue?.clear();
+    Repo.instance.lyricsQueue?.clear();
+    moSnack(context, '已清除标签 / 封面 / 歌词的全部缓存记忆');
+  }
+
   @override
   Widget build(BuildContext context) {
     return CallbackShortcuts(
@@ -926,12 +940,12 @@ class _LibraryPageState extends State<LibraryPage> {
           },
         ),
         MoTile(
-          title: '忽略上次结果，重新匹配',
-          subtitle: '清掉这批的续跑队列与「无命中」记忆，重头问一遍',
+          title: '清除全部缓存记忆',
+          subtitle: '清空标签 / 封面 / 歌词的续跑队列与匹配记忆，下次全部重新查',
           icon: Icons.refresh,
           onTap: () {
             Navigator.of(context).pop();
-            _matchSelected(ignoreMemory: true);
+            _clearMatchMemory();
           },
         ),
         MoTile(

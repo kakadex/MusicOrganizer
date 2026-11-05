@@ -6,10 +6,10 @@
 library;
 
 /// 完整版本串：`X.Y.Z-ABC123`（UI 顶栏 / 设置页展示）。
-const String kAppVersionFull = '0.2.73-5JNJTK';
+const String kAppVersionFull = '0.2.74-4QC4F4';
 
 /// 语义版本（与 VERSION 文件一致）。
-const String kAppVersion = '0.2.73';
+const String kAppVersion = '0.2.74';
 
 /// 构建号（= versionCode = pubspec build 号）。
-const int kAppBuild = 187;
+const int kAppBuild = 188;

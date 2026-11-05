@@ -1,11 +1,11 @@
-version=0.2.73
-tag=v0.2.73
+version=0.2.74
+tag=v0.2.74
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.73/MusicOrganizer-0.2.73-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.74/MusicOrganizer-0.2.74-android-arm64-v8a.apk
 size=19872197
-sha256=331c9db778761749aa91c935682598c7358665724cee6c1efbb699c8a73f3002
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.73/MusicOrganizer-0.2.73-windows-x64.zip
-zip_size=12669188
-zip_sha256=2f918c1f278de99e1560ad13a4bfe6379cb61c388aae72348a9d9512c23e859e
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.73
-summary=读标签解析挪进后台线程，界面更流畅
+sha256=b1963d80afa950247b38495934729f214d92102f4c2f17db31c9589333108b4a
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.74/MusicOrganizer-0.2.74-windows-x64.zip
+zip_size=12935746
+zip_sha256=e37cd9b217cbacbcd1b2ca19a15ec0bd5ede6a9b2524f3e9a249ff11ada1cecd
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.74
+summary=清除全部缓存记忆：一键清空标签/封面/歌词缓存，下次全部重新查询

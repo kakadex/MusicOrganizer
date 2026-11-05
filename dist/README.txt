@@ -1,16 +1,16 @@
-MusicOrganizer v0.2.73 分发包（本地直发，非官方发布页）
+MusicOrganizer v0.2.74 分发包（本地直发，非官方发布页）
 ====================================================
 
 构建时间：2026-11-05
-版本：0.2.73（build 187，版本戳 0.2.73-5JNJTK）
+版本：0.2.74（build 188，版本戳 0.2.74-4QC4F4）
 说明：本目录用于直接发给他人使用，官方发布以 Gitee / GitHub Releases 为准。
 
 文件
 ----
-MusicOrganizer-0.2.73-windows-x64.zip          Windows 桌面版（解压后运行 musicorganizer.exe）
-MusicOrganizer-0.2.73-android-arm64-v8a.apk    安卓 64 位（绝大多数现代手机）
-MusicOrganizer-0.2.73-android-x86_64.apk       安卓 x86_64（少数 Intel 平板 / 模拟器）
-MusicOrganizer-0.2.73-android-armeabi-v7a.apk  安卓 32 位（老旧设备）
+MusicOrganizer-0.2.74-windows-x64.zip          Windows 桌面版（解压后运行 musicorganizer.exe）
+MusicOrganizer-0.2.74-android-arm64-v8a.apk    安卓 64 位（绝大多数现代手机）
+MusicOrganizer-0.2.74-android-x86_64.apk       安卓 x86_64（少数 Intel 平板 / 模拟器）
+MusicOrganizer-0.2.74-android-armeabi-v7a.apk  安卓 32 位（老旧设备）
 SHA256SUMS.txt                                 以上文件的 SHA-256 校验和
 
 安装 / 使用
@@ -26,7 +26,7 @@ Android：允许「未知来源」后安装对应 ABI 的 APK。
 
 本版变化
 --------
-读标签的解析工作挪到后台线程，读标签期间界面更流畅。
+清除全部缓存记忆：一键清空标签/封面/歌词缓存，下次全部重新查询
 
 校验（可选）
 ----------
@@ -36,4 +36,3 @@ sha256sum -c SHA256SUMS.txt
 --------
 自 v0.2.3 起统一使用同一把正式签名，之后所有版本都能直接覆盖安装，
 不再需要先卸载旧版。若从 v0.2.2 及更早版本（debug 签名）升级，需先卸载一次。
-
