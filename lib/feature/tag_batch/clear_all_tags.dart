@@ -196,6 +196,9 @@ Future<void> _confirmAndRun(
     // 底部任务条的「停止」：每首开始前看一次，不再无声地继续跑几百首
     if (ctl?.isCancelled() ?? false) {
       stopped = true;
+      // 0.2.68：通知平台把队列里还没开跑的 SAF 调用丢掉。
+      // 已经开始执行的那一个会自然完成（中途打断写入可能留下半成品）。
+      await repo.cancelPendingSaf(batchId);
       break;
     }
     final WriteTarget t = picked[i];

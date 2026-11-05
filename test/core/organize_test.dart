@@ -14,6 +14,12 @@ class MemStore implements FileStore {
   final Map<String, VFile> docs = <String, VFile>{};
   final Map<String, List<String>> kids = <String, List<String>>{};
 
+  @override
+  Future<T> runInteractive<T>(Future<T> Function() action) => action();
+
+  @override
+  Future<void> cancelPending(String token) async {}
+
   /// 新建目录次数（复用已有目录不应增加）。
   int createdDirs = 0;
 

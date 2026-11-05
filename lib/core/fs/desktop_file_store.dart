@@ -30,6 +30,12 @@ class DesktopFileStore implements FileStore {
   Future<String?> Function()? directoryPicker;
 
   @override
+  Future<T> runInteractive<T>(Future<T> Function() action) => action();
+
+  @override
+  Future<void> cancelPending(String token) async {}
+
+  @override
   Future<List<TreeRef>> roots() async => List<TreeRef>.of(_roots);
 
   @override

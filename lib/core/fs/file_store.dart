@@ -83,4 +83,19 @@ abstract class FileStore {
 
   /// 移动；null=成功，否则为失败原因（优先 moveDocument，失败回退复制+校验+删除）。
   Future<String?> move(VFile f, VFile targetDir);
+
+  /// 在「界面正在等结果」的窗口里执行 [action]（0.2.68）。
+  ///
+  /// 安卓 SAF 实现会在这段时间里把读请求标成交互优先（走独立的 2 线程池），
+  /// 免得排在批量读标签的大请求后面；桌面实现直接执行，没有调度差异。
+  ///
+  /// 用钩子而不是给每个方法加参数：接口有 7 个实现，加参数要把测试桩全改一遍；
+  /// 而且「这段时间算交互」是调用方的意图，不该塞进每个方法的签名。
+  Future<T> runInteractive<T>(Future<T> Function() action) => action();
+
+  /// 通知实现「这一批我取消了」：丢弃还在排队、尚未开跑的底层调用（0.2.68）。
+  ///
+  /// 只影响排队中的调用，已经在执行的那个会自然完成——中途打断写入反而可能
+  /// 留下半成品。桌面实现是空操作。
+  Future<void> cancelPending(String token) async {}
 }

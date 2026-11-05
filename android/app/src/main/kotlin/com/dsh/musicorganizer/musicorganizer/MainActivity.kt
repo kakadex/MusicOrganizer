@@ -48,6 +48,35 @@ class MainActivity : FlutterActivity() {
         { r -> Thread(r, "saf-io").apply { isDaemon = true } },
     ).apply { allowCoreThreadTimeOut(true) }
 
+    /**
+     * 交互池：「要快」的小调用走这里（0.2.68）。
+     *
+     * 原来只有一个 4 线程池 + FIFO 无界队列：用户快速滚动时那几个「读 256KB
+     * 拿封面」的小请求，会排在一次批量读标签的「读 2MB」后面。单个 2MB 跨进程
+     * 读在慢 provider 上是 50~200ms，于是封面看起来半天才出来、滚动时一片灰格子
+     * 突然跳出来。拆成两个池后，批量任务再也堵不住滚动。
+     *
+     * 2 条线程够覆盖「一屏几行同时要封面」，又给 provider 留余量。
+     */
+    private val safIoUi = ThreadPoolExecutor(
+        SAF_UI_THREADS,
+        SAF_UI_THREADS,
+        30L,
+        TimeUnit.SECONDS,
+        LinkedBlockingQueue(),
+        { r -> Thread(r, "saf-io-ui").apply { isDaemon = true } },
+    ).apply { allowCoreThreadTimeOut(true) }
+
+    /**
+     * 已取消的批次令牌（0.2.68）。
+     *
+     * 用户返回 / 取消批量任务后，池子里排队的调用原来仍会跑完再丢结果，白白占着
+     * provider、挡住别人的请求。Dart 侧把令牌置位后，排队任务在执行前先看一眼，
+     * 已取消就直接返回错误、不碰磁盘。
+     */
+    private val cancelledTokens: MutableSet<String> =
+        java.util.Collections.synchronizedSet(mutableSetOf())
+
     /// 回主线程用：MethodChannel 的结果只能在平台主线程回调。
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -151,6 +180,11 @@ class MainActivity : FlutterActivity() {
             flutterEngine.dartExecutor.binaryMessenger,
             "com.dsh.musicorganizer/saf"
         ).setMethodCallHandler { call, result ->
+            // 0.2.68：Dart 侧可给每次调用标「交互优先」与「所属批次令牌」。
+            // priority=true 走 safIoUi（2 线程），否则走 safIo（4 线程）。
+            // token 被取消后，排队中的任务执行前直接返回 E_CANCELLED，不碰磁盘。
+            val prio = call.argument<Boolean>("priority") == true
+            val tok = call.argument<String>("token")
             when (call.method) {
                 "pickTree" -> {
                     pendingPickResult = result
@@ -159,20 +193,29 @@ class MainActivity : FlutterActivity() {
                         REQUEST_CODE_OPEN_TREE
                     )
                 }
-                "listRoots" -> safCall("listRoots", result) { safPlugin.listRoots() }
-                "authState" -> safCall("authState", result) {
+                "cancelBatch" -> {
+                    val t = call.argument<String>("token") ?: ""
+                    if (t.isNotEmpty()) {
+                        cancelledTokens.add(t)
+                        // 取消完顺手清掉，避免长期运行时集合只增不减
+                        if (cancelledTokens.size > 32) cancelledTokens.clear()
+                    }
+                    result.success(null)
+                }
+                "listRoots" -> safCall("listRoots", result, prio, tok) { safPlugin.listRoots() }
+                "authState" -> safCall("authState", result, prio, tok) {
                     safPlugin.authState(call.argument<String>("treeUri") ?: "")
                 }
-                "stat" -> safCall("stat", result) {
+                "stat" -> safCall("stat", result, prio, tok) {
                     safPlugin.stat(call.argument<String>("treeUri") ?: "", call.argument<String>("docId"))
                 }
-                "listChildren" -> safCall("listChildren", result) {
+                "listChildren" -> safCall("listChildren", result, prio, tok) {
                     safPlugin.listChildren(
                         call.argument<String>("treeUri") ?: "",
                         call.argument<String>("parentDocId")
                     )
                 }
-                "copyDocToCache" -> safCall("copyDocToCache", result) {
+                "copyDocToCache" -> safCall("copyDocToCache", result, prio, tok) {
                     safPlugin.copyDocToCache(
                         call.argument<String>("treeUri") ?: "",
                         call.argument<String>("docId") ?: "",
@@ -180,28 +223,28 @@ class MainActivity : FlutterActivity() {
                         call.argument<Int>("maxBytes") ?: 0
                     )
                 }
-                "writeCacheToDoc" -> safCall("writeCacheToDoc", result) {
+                "writeCacheToDoc" -> safCall("writeCacheToDoc", result, prio, tok) {
                     safPlugin.writeCacheToDoc(
                         call.argument<String>("treeUri") ?: "",
                         call.argument<String>("docId") ?: "",
                         call.argument<String>("cachePath") ?: ""
                     )
                 }
-                "readHead" -> safCall("readHead", result) {
+                "readHead" -> safCall("readHead", result, prio, tok) {
                     safPlugin.readHead(
                         call.argument<String>("treeUri") ?: "",
                         call.argument<String>("docId") ?: "",
                         call.argument<Int>("maxBytes") ?: 0
                     )
                 }
-                "readTail" -> safCall("readTail", result) {
+                "readTail" -> safCall("readTail", result, prio, tok) {
                     safPlugin.readTail(
                         call.argument<String>("treeUri") ?: "",
                         call.argument<String>("docId") ?: "",
                         call.argument<Int>("maxBytes") ?: 0
                     )
                 }
-                "readRange" -> safCall("readRange", result) {
+                "readRange" -> safCall("readRange", result, prio, tok) {
                     safPlugin.readRange(
                         call.argument<String>("treeUri") ?: "",
                         call.argument<String>("docId") ?: "",
@@ -209,7 +252,7 @@ class MainActivity : FlutterActivity() {
                         call.argument<Int>("maxBytes") ?: 0
                     )
                 }
-                "createDocument" -> safCall("createDocument", result) {
+                "createDocument" -> safCall("createDocument", result, prio, tok) {
                     safPlugin.createDocument(
                         call.argument<String>("treeUri") ?: "",
                         call.argument<String>("parentDocId") ?: "",
@@ -217,27 +260,27 @@ class MainActivity : FlutterActivity() {
                         call.argument<String>("mime") ?: "application/octet-stream"
                     )
                 }
-                "createDir" -> safCall("createDir", result) {
+                "createDir" -> safCall("createDir", result, prio, tok) {
                     safPlugin.createDir(
                         call.argument<String>("treeUri") ?: "",
                         call.argument<String>("parentDocId") ?: "",
                         call.argument<String>("name") ?: ""
                     )
                 }
-                "deleteDocument" -> safCall("deleteDocument", result) {
+                "deleteDocument" -> safCall("deleteDocument", result, prio, tok) {
                     safPlugin.deleteDocument(
                         call.argument<String>("treeUri") ?: "",
                         call.argument<String>("docId") ?: ""
                     )
                 }
-                "renameDocument" -> safCall("renameDocument", result) {
+                "renameDocument" -> safCall("renameDocument", result, prio, tok) {
                     safPlugin.renameDocument(
                         call.argument<String>("treeUri") ?: "",
                         call.argument<String>("docId") ?: "",
                         call.argument<String>("newName") ?: ""
                     )
                 }
-                "moveDocument" -> safCall("moveDocument", result) {
+                "moveDocument" -> safCall("moveDocument", result, prio, tok) {
                     safPlugin.moveDocument(
                         call.argument<String>("treeUri") ?: "",
                         call.argument<String>("docId") ?: "",
@@ -256,10 +299,10 @@ class MainActivity : FlutterActivity() {
                         result.error("E_IO", e.message, null)
                     }
                 }
-                "mediaStoreAudio" -> safCall("mediaStoreAudio", result) {
+                "mediaStoreAudio" -> safCall("mediaStoreAudio", result, prio, tok) {
                     safPlugin.mediaStoreAudio(call.argument<Int>("minDurationMs") ?: 0)
                 }
-                "copyMediaToCache" -> safCall("copyMediaToCache", result) {
+                "copyMediaToCache" -> safCall("copyMediaToCache", result, prio, tok) {
                     safPlugin.copyMediaToCache(
                         call.argument<String>("uri") ?: "",
                         call.argument<String>("cachePath") ?: ""
@@ -424,9 +467,22 @@ class MainActivity : FlutterActivity() {
      *
      * [method] 只用于慢调用日志（`adb logcat -s SafIo`），排查「哪一步慢」时有据可查。
      */
-    private fun safCall(method: String, result: MethodChannel.Result, block: () -> Any?) {
+    private fun safCall(
+        method: String,
+        result: MethodChannel.Result,
+        priority: Boolean = false,
+        token: String? = null,
+        block: () -> Any?,
+    ) {
         val started = SystemClock.uptimeMillis()
         val task = Runnable {
+            // 排队期间用户已经取消了这一批：直接返回，不碰磁盘/provider。
+            if (token != null && token.isNotEmpty() && cancelledTokens.contains(token)) {
+                mainHandler.post {
+                    runCatching { result.error("E_CANCELLED", "已取消", null) }
+                }
+                return@Runnable
+            }
             var value: Any? = null
             var code: String? = null
             var message: String? = null
@@ -457,8 +513,10 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
+        // 交互池 vs 批量池：小的、滚屏要用的走 UI 池，别被批量任务堵住。
+        val pool = if (priority) safIoUi else safIo
         try {
-            safIo.execute(task)
+            pool.execute(task)
         } catch (_: RejectedExecutionException) {
             // 引擎正在销毁、池子已关：这次调用没人等了，直接丢弃
         }
@@ -468,6 +526,7 @@ class MainActivity : FlutterActivity() {
         // 已经排队的任务让它跑完（结果发不出去由上面 runCatching 兜住），
         // 只关入口不再接收新调用。
         safIo.shutdown()
+        safIoUi.shutdown()
         super.cleanUpFlutterEngine(flutterEngine)
     }
 
@@ -476,8 +535,11 @@ class MainActivity : FlutterActivity() {
         private const val REQUEST_CODE_EXPORT_TEXT = 4402
         private const val REQUEST_CODE_AUDIO_PERMISSION = 4402
 
-        /// SAF 后台线程数（取值理由见 safIo 的注释）。
+        /// SAF 后台线程数（批量池；取值理由见 safIo 的注释）。
         private const val SAF_THREADS = 4
+
+        /// SAF 交互池线程数（滚屏读封面这类「要快」的调用）。
+        private const val SAF_UI_THREADS = 2
 
         /// 单次 SAF 调用超过这个耗时就记一条日志（真机上排查慢查询用）。
         private const val SLOW_CALL_MS = 200L

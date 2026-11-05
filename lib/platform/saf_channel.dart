@@ -39,7 +39,31 @@ FileStoreException _mapError(Object e) {
 }
 
 /// SAF 通道封装。
+///
+/// 0.2.68：每次调用可以标两类可选的调度提示——
+/// - [priority]：`true` 走平台的「交互池」（2 线程），适合滚屏时读封面 / stat
+///   这类要快的小调用，避免排在批量读标签的大请求后面；
+/// - [token]：所属批次令牌，[cancelBatch] 置位后平台上排队中的调用会直接
+///   返回 E_CANCELLED，不再白占 provider。
 class SafChannel {
+  /// 每次调用共用的调度参数（拼进 arguments）。
+  static Map<String, Object?> _sched(bool priority, String? token) {
+    final Map<String, Object?> m = <String, Object?>{};
+    if (priority) m['priority'] = true;
+    if (token != null && token.isNotEmpty) m['token'] = token;
+    return m;
+  }
+
+  /// 取消一批排队中的调用（0.2.68）。已经跑起来的那个会自然结束。
+  Future<void> cancelBatch(String token) async {
+    if (token.isEmpty) return;
+    try {
+      await safChannel.invokeMethod('cancelBatch', <String, Object?>{'token': token});
+    } catch (_) {
+      // 取消失败不影响主流程：最坏情况就是那几个调用照原样跑完
+    }
+  }
+
   /// 选树；用户取消返回 null。
   Future<Map<String, String>?> pickTree() async {
     try {
@@ -85,10 +109,14 @@ class SafChannel {
   }
 
   /// 单个文档信息；不存在返回 null。
-  Future<Map<String, Object?>?> stat(String treeUri, String docId) async {
+  Future<Map<String, Object?>?> stat(String treeUri, String docId,
+      {bool priority = false, String? token}) async {
     try {
-      final Object? r = await safChannel.invokeMethod(
-          'stat', <String, Object?>{'treeUri': treeUri, 'docId': docId});
+      final Object? r = await safChannel.invokeMethod('stat', <String, Object?>{
+        'treeUri': treeUri,
+        'docId': docId,
+        ..._sched(priority, token),
+      });
       if (r == null) return null;
       return Map<String, Object?>.from(r as Map);
     } catch (e) {
@@ -98,10 +126,15 @@ class SafChannel {
 
   /// 目录子项（Kotlin 侧已按名排序 + docId 去重）。
   Future<List<Map<String, Object?>>> listChildren(
-      String treeUri, String parentDocId) async {
+      String treeUri, String parentDocId,
+      {bool priority = false, String? token}) async {
     try {
       final Object? r = await safChannel.invokeMethod('listChildren',
-          <String, Object?>{'treeUri': treeUri, 'parentDocId': parentDocId});
+          <String, Object?>{
+            'treeUri': treeUri,
+            'parentDocId': parentDocId,
+            ..._sched(priority, token),
+          });
       if (r == null) return <Map<String, Object?>>[];
       return (r as List)
           .map((Object? e) => Map<String, Object?>.from(e as Map))
@@ -145,10 +178,15 @@ class SafChannel {
   }
 
   /// 读文件头。
-  Future<Uint8List?> readHead(String treeUri, String docId, int maxBytes) async {
+  Future<Uint8List?> readHead(String treeUri, String docId, int maxBytes,
+      {bool priority = false, String? token}) async {
     try {
-      final Object? r = await safChannel.invokeMethod('readHead',
-          <String, Object?>{'treeUri': treeUri, 'docId': docId, 'maxBytes': maxBytes});
+      final Object? r = await safChannel.invokeMethod('readHead', <String, Object?>{
+        'treeUri': treeUri,
+        'docId': docId,
+        'maxBytes': maxBytes,
+        ..._sched(priority, token),
+      });
       return r as Uint8List?;
     } catch (e) {
       throw _mapError(e);

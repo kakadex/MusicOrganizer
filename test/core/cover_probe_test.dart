@@ -28,6 +28,12 @@ class _MemStore implements FileStore {
   }
 
   @override
+  Future<T> runInteractive<T>(Future<T> Function() action) => action();
+
+  @override
+  Future<void> cancelPending(String token) async {}
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 

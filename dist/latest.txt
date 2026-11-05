@@ -1,11 +1,11 @@
-version=0.2.67
-tag=v0.2.67
+version=0.2.68
+tag=v0.2.68
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.67/MusicOrganizer-0.2.67-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.68/MusicOrganizer-0.2.68-android-arm64-v8a.apk
 size=19806081
-sha256=bc5b6b5f610459cc3c637bd99942ba4e3cca52b4563561bebe19534314b5c2fd
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.67/MusicOrganizer-0.2.67-windows-x64.zip
-zip_size=12656986
-zip_sha256=afe1433d02e25ea8c2931f8d21a4c621a9a26c54764979145fe9053ab693c0ef
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.67
-summary=批量删除标签/封面/歌词提速一倍以上
+sha256=84f4513c3a136fee2bc2ebd18a3335b6f2bb2d8189764f6547139b0607047912
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.68/MusicOrganizer-0.2.68-windows-x64.zip
+zip_size=12657873
+zip_sha256=dd261d7ff10b74dc869d975fce59519234cfc77fb8a843f1b4e4176d94218529
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.68
+summary=滑动时封面出现更均匀，停止任务后不再空转

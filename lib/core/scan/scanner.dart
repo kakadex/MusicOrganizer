@@ -289,9 +289,13 @@ abstract final class Scanner {
   static const int coverProbeBytes = 256 * 1024;
 
   /// 读出内嵌封面的字节；没有则返回 null。
+  ///
+  /// 0.2.68：读封面是「滚屏要立刻看到」的交互路径，用 [FileStore.runInteractive]
+  /// 标出来——安卓上会走独立的交互线程池，免得排在批量读标签的大请求后面
+  /// （表现为一片灰格子突然跳出来）。桌面实现直接执行，没有差异。
   static Future<Uint8List?> readCover(FileStore st, VFile f) async {
     if (f.dir || !TagIO.canRead(f.ext())) return null;
-    return _readCoverBytes(st, f, false);
+    return st.runInteractive(() => _readCoverBytes(st, f, false));
   }
 
   static Future<Uint8List?> _readCoverBytes(FileStore st, VFile f, bool probeOnly) async {

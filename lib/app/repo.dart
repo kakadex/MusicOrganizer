@@ -901,9 +901,18 @@ class Repo extends ChangeNotifier {
   List<VFile> audioFiles() =>
       files.where((VFile f) => !f.dir && f.audio()).toList();
 
+  /// 通知平台层「这一批取消了」：丢掉排队中尚未开跑的 SAF 调用（0.2.68）。
+  ///
+  /// 用户点停止 / 返回后，队列里那些还没开跑的跨进程调用原来会照跑完再丢结果，
+  /// 白白占着 provider 挡住别人的请求。已经开始执行的那个会自然完成。
+  Future<void> cancelPendingSaf(String token) async {
+    final FileStore? st = store;
+    if (st == null) return;
+    await st.cancelPending(token);
+  }
+
   /// 标签写盘之后必须调用：清掉内存缓存，下次才回源。
-  void invalidate(VFile f) {
-    Scanner.invalidate(f);
+  void invalidate(VFile f) {    Scanner.invalidate(f);
     // 磁盘缩略图也要删掉：这里不会重新 stat 文件，大小 / 修改时间还是旧值，
     // 缓存键不变就会一直读到「换封面之前」那张小图（0.2.59）。
     unawaited(CoverThumbCache.instance.remove(f));

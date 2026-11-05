@@ -23,6 +23,35 @@ class SafFileStore implements FileStore {
   /// 多根分派。
   final TreeLookup lookup;
 
+  /// 交互优先提示（0.2.68）。
+  ///
+  /// 打开时，[headBytes] / [stat] / [children] 会走平台的「交互池」（2 线程），
+  /// 不再排在批量读标签的大请求后面。由 [runInteractive] 在「界面正在等结果」
+  /// 的窗口里打开；批量任务不碰它，所以不会互相抢占。
+  bool _interactive = false;
+
+  @override
+  Future<T> runInteractive<T>(Future<T> Function() action) async {
+    // 嵌套调用只认最外层的开关：内层结束后不能把外层已经打开的标记关掉。
+    final bool prev = _interactive;
+    _interactive = true;
+    try {
+      return await action();
+    } finally {
+      _interactive = prev;
+    }
+  }
+
+  /// 批次取消钩子（0.2.68）。
+  ///
+  /// 批量任务被用户取消时调用：把令牌交给平台，让队列里还没开跑的 SAF 调用
+  /// 直接失败返回，不再白占 provider。**不影响已经开始执行的那一个**——
+  /// 它要么写完、要么走事务还原，中途打断反而可能留下半成品。
+  ///
+  /// 桌面实现是空操作（没有跨进程 provider 要保护）。
+  @override
+  Future<void> cancelPending(String token) => _channel.cancelBatch(token);
+
   @override
   Future<List<TreeRef>> roots() async {
     final List<Map<String, String>> roots = await _channel.listRoots();
@@ -85,15 +114,16 @@ class SafFileStore implements FileStore {
   @override
   Future<VFile?> stat(String id) async {
     final TreeRef t = _treeFor(id);
-    final Map<String, Object?>? m = await _channel.stat(t.treeUri, id);
+    final Map<String, Object?>? m =
+        await _channel.stat(t.treeUri, id, priority: _interactive);
     return m == null ? null : _vfile(m);
   }
 
   @override
   Future<List<VFile>> children(VFile dir) async {
     final TreeRef t = _treeFor(dir.docId);
-    final List<Map<String, Object?>> list =
-        await _channel.listChildren(t.treeUri, dir.docId);
+    final List<Map<String, Object?>> list = await _channel.listChildren(
+        t.treeUri, dir.docId, priority: _interactive);
     return list.map(_vfile).toList();
   }
 
@@ -103,7 +133,9 @@ class SafFileStore implements FileStore {
   @override
   Future<Uint8List> headBytes(VFile f, int maxBytes) async {
     final TreeRef t = _treeFor(f.docId);
-    return await _channel.readHead(t.treeUri, f.docId, maxBytes) ?? Uint8List(0);
+    return await _channel.readHead(t.treeUri, f.docId, maxBytes,
+            priority: _interactive) ??
+        Uint8List(0);
   }
 
   @override

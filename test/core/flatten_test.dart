@@ -144,6 +144,12 @@ class _FakeStore implements FileStore {
   final Map<String, String> files = <String, String>{};
   final Set<String> dirs = <String>{};
 
+  @override
+  Future<T> runInteractive<T>(Future<T> Function() action) => action();
+
+  @override
+  Future<void> cancelPending(String token) async {}
+
   static String _dirOf(String id) {
     final int slash = id.lastIndexOf('/');
     return slash <= 0 ? id : id.substring(0, slash);

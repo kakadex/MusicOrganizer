@@ -16,6 +16,12 @@ class MemoryFileStore implements FileStore {
   final Map<String, List<VFile>> kids = <String, List<VFile>>{};
   final Map<String, Uint8List> bytes = <String, Uint8List>{};
 
+  @override
+  Future<T> runInteractive<T>(Future<T> Function() action) => action();
+
+  @override
+  Future<void> cancelPending(String token) async {}
+
   /// 每次列目录都算一次 IO，用来验证缓存是否真的命中。
   int headCalls = 0;
 
