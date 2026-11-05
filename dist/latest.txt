@@ -1,11 +1,11 @@
-version=0.2.81
-tag=v0.2.81
+version=0.2.82
+tag=v0.2.82
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.81/MusicOrganizer-0.2.81-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.82/MusicOrganizer-0.2.82-android-arm64-v8a.apk
 size=19937765
-sha256=328a5c7d3bf12baecb33872406b8f6fa2f872b60899b43dd789bb977d404a316
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.81/MusicOrganizer-0.2.81-windows-x64.zip
-zip_size=12964868
-zip_sha256=0b2771bb3f2252a3a160c595af4f53fba51753dbc3965429a1a172d1b3f2c773
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.81
-summary=应用内迷你播放条：点播放就地试听
+sha256=f517914de08312fe4971e18d783b0f728e34a6bfb8e3eb07481d58bddf8d90db
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.82/MusicOrganizer-0.2.82-windows-x64.zip
+zip_size=12964877
+zip_sha256=7e689b5194186879cf7b0a09c365604475a85de82fec7a977e218c51005e69e2
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.82
+summary=修复应用内播放：部分机型打不开文件

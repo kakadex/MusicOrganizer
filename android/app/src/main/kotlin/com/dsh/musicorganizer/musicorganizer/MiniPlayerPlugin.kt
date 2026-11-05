@@ -1,5 +1,6 @@
 package com.dsh.musicorganizer.musicorganizer
 
+import android.content.ContentResolver
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import io.flutter.embedding.engine.FlutterEngine
@@ -8,11 +9,16 @@ import io.flutter.plugin.common.MethodChannel
 /**
  * 应用内迷你播放器（单曲试听）。
  *
- * 用系统 [MediaPlayer] 直接播 SAF content uri（已授权目录树内），
- * 不引第三方播放库。单实例：一次只播一首，播新的自动停旧的。
+ * 用系统 [MediaPlayer] 播 SAF 文档：**不能直接把 content uri 喂给
+ * setDataSource**（树内文档 uri 会报 0x80000000），必须先用
+ * ContentResolver 打开文件描述符再交给播放器——这个错误就是踩过 0x2.81
+ * 第一版之后修的。单实例：一次只播一首，播新的自动停旧的。
  * 事件（完成 / 出错）回推 Dart 侧刷新按钮状态。
  */
-class MiniPlayerPlugin(private val engine: FlutterEngine) {
+class MiniPlayerPlugin(
+    private val engine: FlutterEngine,
+    private val resolver: ContentResolver,
+) {
 
     private var player: MediaPlayer? = null
     private var channel: MethodChannel? = null
@@ -80,7 +86,13 @@ class MiniPlayerPlugin(private val engine: FlutterEngine) {
                     .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                     .build()
             )
-            p.setDataSource(uri)
+            // 树内文档 uri 直接 setDataSource 会报 0x80000000：
+            // 先开文件描述符（MediaPlayer 会复制一份 fd，用完即可关闭 pfd）
+            val pfd = resolver.openFileDescriptor(android.net.Uri.parse(uri), "r")
+                ?: return "打不开这个文件"
+            val dsOk = runCatching { p.setDataSource(pfd.fileDescriptor) }
+            pfd.close()
+            dsOk.recover { throw it }.getOrThrow()
             p.setOnCompletionListener {
                 preparedDocId = null
                 notify("completed")

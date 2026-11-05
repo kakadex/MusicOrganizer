@@ -94,7 +94,7 @@ class MainActivity : FlutterActivity() {
         )
         hostChannel = host
         // 应用内迷你播放器（单曲试听）：独立通道，生命周期跟引擎走
-        miniPlayer = MiniPlayerPlugin(flutterEngine).also {
+        miniPlayer = MiniPlayerPlugin(flutterEngine, contentResolver).also {
             it.attach(flutterEngine.dartExecutor.binaryMessenger)
         }
         host.setMethodCallHandler { call, result ->
