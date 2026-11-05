@@ -1,11 +1,11 @@
-version=0.2.82
-tag=v0.2.82
+version=0.2.83
+tag=v0.2.83
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.82/MusicOrganizer-0.2.82-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.83/MusicOrganizer-0.2.83-android-arm64-v8a.apk
 size=19937765
-sha256=f517914de08312fe4971e18d783b0f728e34a6bfb8e3eb07481d58bddf8d90db
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.82/MusicOrganizer-0.2.82-windows-x64.zip
-zip_size=12964877
-zip_sha256=7e689b5194186879cf7b0a09c365604475a85de82fec7a977e218c51005e69e2
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.82
-summary=修复应用内播放：部分机型打不开文件
+sha256=728a5222167997fe4a267e9e553fb953d38d7c734b04f16d67de40f5b76b36e2
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.83/MusicOrganizer-0.2.83-windows-x64.zip
+zip_size=12954313
+zip_sha256=6f6c7b36aa6b671f1f8d131172cd2ed1dca0f7e04e79802acdec7436631b6c7a
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.83
+summary=修复播放状态异常：移除多余事件通道

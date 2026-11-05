@@ -35,13 +35,13 @@ class MiniPlayer extends ChangeNotifier {
 
   static const MethodChannel _ch =
       MethodChannel('com.dsh.musicorganizer/player');
-  static const EventChannel _ev =
-      EventChannel('com.dsh.musicorganizer/playerEvent');
-  static bool _wired = false;
 
   PlayerState? state;
   Timer? _ticker;
   String? _error;
+
+  /// 连续两次轮询到「没在播」：判定播完（避免个别状态抖动误判）。
+  int _idleTicks = 0;
 
   /// 最近一次错误（界面上显示过就清）。
   String? get error => _error;
@@ -50,28 +50,9 @@ class MiniPlayer extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 挂上事件监听（main 里调一次；桌面无通道，静默失败）。
-  void wire() {
-    if (_wired) return;
-    _wired = true;
-    _ev.receiveBroadcastStream().listen((Object? event) {
-      if (event == 'completed' || event.toString().startsWith('error:')) {
-        // 播完 / 出错：停掉进度条，回到未播放态
-        if (event.toString().startsWith('error:')) {
-          _error = '播放出错，换一首试试';
-        }
-        state = state == null
-            ? null
-            : PlayerState(
-                file: state!.file,
-                playing: false,
-                durationMs: state!.durationMs,
-                positionMs: state!.positionMs);
-        _stopTicker();
-        notifyListeners();
-      }
-    }, onError: (Object _) {});
-  }
+  /// 预热（main/shell 里调一次）。本实现不依赖原生事件流——播完检测
+  /// 由进度轮询顺带完成（连续两次「没在播」即算播完），桌面端零开销。
+  void wire() {}
 
   /// 播一首。安卓应用内播放；桌面退回系统默认播放器。
   Future<void> play(VFile f, {SafFileStore? saf, Future<String?> Function(VFile)? openExternal}) async {
@@ -169,12 +150,32 @@ class MiniPlayer extends ChangeNotifier {
   }
 
   /// 250ms 轮询进度（MediaPlayer 没有进度流，这是最省事的稳态做法）。
+  /// 顺带做播完检测：播放中连续两次查到 isPlaying=false → 已播完。
   void _startTicker() {
     _stopTicker();
+    _idleTicks = 0;
     _ticker = Timer.periodic(const Duration(milliseconds: 250), (Timer t) async {
       final PlayerState? s = state;
       if (s == null || !s.playing) return;
       try {
+        final bool playing =
+            await _ch.invokeMethod<bool>('isPlaying') ?? false;
+        if (!playing) {
+          _idleTicks++;
+          if (_idleTicks >= 2) {
+            // 播完（或被系统停了）：停在当前进度，按钮变「继续」
+            final int pos = await _ch.invokeMethod<int>('position') ?? s.positionMs;
+            state = PlayerState(
+                file: s.file,
+                playing: false,
+                durationMs: s.durationMs,
+                positionMs: pos);
+            _stopTicker();
+            notifyListeners();
+          }
+          return;
+        }
+        _idleTicks = 0;
         final int pos = await _ch.invokeMethod<int>('position') ?? 0;
         final int dur = await _ch.invokeMethod<int>('duration') ?? s.durationMs;
         state = PlayerState(

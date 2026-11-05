@@ -26,7 +26,6 @@ class MiniPlayerPlugin(
 
     companion object {
         const val CHANNEL = "com.dsh.musicorganizer/player"
-        const val EVENT = "com.dsh.musicorganizer/playerEvent"
     }
 
     fun attach(messenger: io.flutter.plugin.common.BinaryMessenger) {
@@ -94,12 +93,12 @@ class MiniPlayerPlugin(
             pfd.close()
             dsOk.recover { throw it }.getOrThrow()
             p.setOnCompletionListener {
+                // 播完：只复位「已备好」标记，界面状态由 Dart 侧轮询检测
                 preparedDocId = null
-                notify("completed")
             }
             p.setOnErrorListener { _, what, extra ->
                 preparedDocId = null
-                notify("error:$what/$extra")
+                android.util.Log.d("MO", "player error what=$what extra=$extra")
                 true
             }
             // setDataSource 后 prepare() 对 content uri 是本地读取，一般毫秒级；
@@ -121,10 +120,5 @@ class MiniPlayerPlugin(
         player?.let { runCatching { it.stop(); it.release() } }
         player = null
         preparedDocId = null
-    }
-
-    private fun notify(event: String) {
-        MethodChannel(engine.dartExecutor.binaryMessenger, EVENT)
-            .invokeMethod("onEvent", event)
     }
 }
