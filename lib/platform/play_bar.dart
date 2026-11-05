@@ -49,36 +49,40 @@ class _Bar extends StatelessWidget {
       // 整体高度约三倍于初版：上 10 + 按钮行 56 + 进度区约 44 + 下 10 ≈ 120
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
       child: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
-        // 控制按钮行：快退 5s —— 播放/暂停 —— 快进 5s，居中
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            IconButton(
-              tooltip: '快退 5 秒',
-              onPressed: () => p.skip(-5),
-              icon: Icon(Icons.replay_5, size: 34, color: MoKit.text(context)),
+        // 控制按钮行：快退 5s —— 播放/暂停 —— 快进 5s，居中；右端关闭
+        Row(children: <Widget>[
+          const Spacer(),
+          IconButton(
+            tooltip: '快退 5 秒',
+            onPressed: () => p.skip(-5),
+            icon: Icon(Icons.replay_5, size: 34, color: MoKit.text(context)),
+          ),
+          const SizedBox(width: 24),
+          IconButton(
+            tooltip: state.playing ? '暂停' : '播放',
+            onPressed: p.toggle,
+            icon: Icon(
+              state.playing
+                  ? Icons.pause_circle_filled
+                  : Icons.play_circle_filled,
+              size: 52,
+              color: MoKit.primary(context),
             ),
-            const SizedBox(width: 28),
-            IconButton(
-              tooltip: state.playing ? '暂停' : '播放',
-              onPressed: p.toggle,
-              icon: Icon(
-                state.playing
-                    ? Icons.pause_circle_filled
-                    : Icons.play_circle_filled,
-                size: 52,
-                color: MoKit.primary(context),
-              ),
-            ),
-            const SizedBox(width: 28),
-            IconButton(
-              tooltip: '快进 5 秒',
-              onPressed: () => p.skip(5),
-              icon:
-                  Icon(Icons.forward_5, size: 34, color: MoKit.text(context)),
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 24),
+          IconButton(
+            tooltip: '快进 5 秒',
+            onPressed: () => p.skip(5),
+            icon:
+                Icon(Icons.forward_5, size: 34, color: MoKit.text(context)),
+          ),
+          const Spacer(),
+          IconButton(
+            tooltip: '关闭播放条',
+            onPressed: p.close,
+            icon: Icon(Icons.close, size: 24, color: MoKit.sub(context)),
+          ),
+        ]),
         // 进度条：轨道 19dp ≈ 0.5cm（含大拇指总触摸区更高，好拖不误触）
         SizedBox(
           height: 44,

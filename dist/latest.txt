@@ -1,11 +1,11 @@
-version=0.2.84
-tag=v0.2.84
+version=0.2.85
+tag=v0.2.85
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.84/MusicOrganizer-0.2.84-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.85/MusicOrganizer-0.2.85-android-arm64-v8a.apk
 size=19938069
-sha256=83b7fb99a287a2508fe517e89313fd8fcfd05a8c0e9dff7a8d921d173abc5cd2
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.84/MusicOrganizer-0.2.84-windows-x64.zip
-zip_size=12954381
-zip_sha256=9f241a3489fdd7c78e81b65f66107655973bb351fb0c8ef49d615e133ca96e20
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.84
-summary=播放条大改版：编辑页可见 + 控制放大
+sha256=1e18ce1c069a1183c019a24e2f109c6339a6112c3fd242d53d1054bcdafed431
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.85/MusicOrganizer-0.2.85-windows-x64.zip
+zip_size=12954367
+zip_sha256=00af82d21f954bb8926251d77eca33320c150fa0b645cd1cf4203daf65505134
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.85
+summary=播放条修正：关闭按钮 + 继续当前歌

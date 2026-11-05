@@ -57,6 +57,8 @@ class MiniPlayer extends ChangeNotifier {
   /// 播一首。安卓应用内播放；桌面退回系统默认播放器。
   Future<void> play(VFile f, {SafFileStore? saf, Future<String?> Function(VFile)? openExternal}) async {
     _error = null;
+    _saf = saf;
+    _openExternal = openExternal;
     if (saf != null) {
       try {
         final String? uri = await saf.playerUri(f);
@@ -94,32 +96,38 @@ class MiniPlayer extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 播放/暂停切换。**总是以当前登记的 [PlayerState.file] 为准**：
+  /// 继续播放也走 play 重新交付（原生侧同一首会秒续），避免「暂停了旧的
+  /// 又选了新的，点播放却把旧的续上」——resume 只认播放器里的旧实例。
   Future<void> toggle() async {
     final PlayerState? s = state;
     if (s == null) return;
-    try {
-      if (s.playing) {
+    if (s.playing) {
+      try {
         await _ch.invokeMethod<void>('pause');
         state = PlayerState(
             file: s.file,
             playing: false,
             durationMs: s.durationMs,
             positionMs: s.positionMs);
-      } else {
-        await _ch.invokeMethod<void>('resume');
-        state = PlayerState(
-            file: s.file,
-            playing: true,
-            durationMs: s.durationMs,
-            positionMs: s.positionMs);
+        notifyListeners();
+      } on Exception {
+        // 忽略
       }
-      notifyListeners();
-    } on MissingPluginException {
-      // 无通道（桌面）：忽略
-    } on PlatformException {
-      // 忽略
+    } else {
+      await playCurrent();
     }
   }
+
+  /// 重新交付当前登记的歌（原生侧同一首 docId 会快速续播不重头）。
+  Future<void> playCurrent() async {
+    final PlayerState? s = state;
+    if (s == null) return;
+    await play(s.file, saf: _saf, openExternal: _openExternal);
+  }
+
+  SafFileStore? _saf;
+  Future<String?> Function(VFile)? _openExternal;
 
   /// 快退 / 快进 [seconds] 秒（拖进度用，边界自动钳住）。
   Future<void> skip(int seconds) async {
