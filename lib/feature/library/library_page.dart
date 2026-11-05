@@ -534,7 +534,8 @@ class _LibraryPageState extends State<LibraryPage> {
     runner?.memory?.clear();
     Repo.instance.coverQueue?.clear();
     Repo.instance.lyricsQueue?.clear();
-    moSnack(context, '已清除标签 / 封面 / 歌词的全部缓存记忆');
+    Repo.instance.albumCovers?.clear();
+    moSnack(context, '已清除标签 / 封面 / 歌词的全部缓存记忆（含专辑图缓存）');
   }
 
   @override

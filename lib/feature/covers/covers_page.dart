@@ -23,6 +23,7 @@ import '../../core/net/http_client.dart';
 import '../../core/scan/scanner.dart';
 import '../../core/source/album_cover.dart';
 import '../../core/source/aggregator.dart';
+import '../../core/source/endpoints.dart';
 import '../../core/source/tag_source.dart';
 import '../../core/tag/tag_io.dart';
 import '../../core/task/task_center.dart';
@@ -55,6 +56,9 @@ class _CoversPageState extends State<CoversPage> {
   int _failed = 0;
   int _skipped = 0;
   int _noCover = 0;
+
+  /// 被限流 / 联网失败、可稍后重试的条数（不算「确实没图」）。
+  int _throttled = 0;
 
   /// 当前任务控制器：退出页面时取消，避免关页后还在后台跑。
   TaskControl? _control;
@@ -141,7 +145,8 @@ class _CoversPageState extends State<CoversPage> {
       return '继续上次 $_resumed/${_jobs.length} 首（已查到，待确认写入）';
     }
     if (!_done) return '${_jobs.length} 首 · 只补在线封面，不改标签';
-    return '写入 $_written · 无封面 $_noCover · 跳过 $_skipped · 失败 $_failed';
+    return '写入 $_written · 无封面 $_noCover · 限流暂缓 $_throttled · '
+        '跳过 $_skipped · 失败 $_failed';
   }
 
   Widget _body() {
@@ -242,84 +247,40 @@ class _CoversPageState extends State<CoversPage> {
     final running = TaskCenter.start('查找封面');
     _control = running?.control;
     final control = running?.control;
-    final int total = _jobs.length;
 
     // ① 先把所有封面抓到内存（这一步不动盘）。
     // 用文件级并发（默认 3）跑：500 首串行要 20-40 分钟，这里压到几分钟。
+    //
+    // 被限流（Deezer / iTunes 有调用频率上限）的条目不记成「没图」：等冷却
+    // 结束再补跑一轮。不加这一步时，同一批歌两轮能跑出 50 / 87 两种结果。
+    final List<CoverJob> throttled = <CoverJob>[];
     try {
-      await Net.mapIndexed<CoverJob, void>(
-          _jobs, Net.fileConcurrency(), control, (int i, CoverJob job) async {
-        if (control?.isCancelled() ?? false) return;
-        await _waitIfPaused(control);
-        control?.report(i, total, job.file.name);
-        if (!TagIO.canWrite(job.file.ext())) {
-          _skipped++;
-          _update(job, CoverPhase.skipped, '跳过：${job.file.ext()} 不支持写标签');
-          control?.report(i + 1, total, job.file.name);
-          return;
+      await _fetchPass(repo, control, _jobs, throttled);
+      if (throttled.isNotEmpty && !(control?.isCancelled() ?? false)) {
+        final int wait = AlbumCover.cooldownSecondsLeft();
+        if (wait > 0) {
+          control?.report(0, _jobs.length,
+              '联网被限流，等待 ${wait}s 后补跑 ${throttled.length} 首');
+          await _sleepInterruptible(wait, control);
         }
-        _update(job, CoverPhase.working, '查找在线封面…');
-        try {
-          // 上次已经查到过地址的：直接用，不再联网问一遍（省时间也省配额）
-          String url = job.resumeUrl;
-          if (url.isEmpty) {
-            final Tags tags = await Scanner.readTags(store, job.file);
-            final Query q = LocalQuery.forFile(job.file, tags);
-            final AggregateResult agg = await Aggregator.tagCandidates(
-                q, chinese: LocalQuery.chinese(q));
-            url = CoverPick.urlOf(agg.candidates);
-            // 第二跳：候选都不带封面时，用「专辑名 + 艺人」单独问专辑图
-            // （Deezer / iTunes）。冷门歌歌名搜不到图、专辑图往往还在。
-            if (url.isEmpty && agg.candidates.isNotEmpty) {
-              final String localArtist = TagQuery.artist(q);
-              final (String album, String artist) =
-                  AlbumCover.fromCandidates(agg.candidates, localArtist);
-              final AlbumCoverLookup hit = await AlbumCover.lookup(album, artist);
-              url = hit.url;
-            }
-            if (url.isNotEmpty) {
-              _queue?.put(
-                _keyOf(job.file),
-                job.file.size,
-                job.file.lastModified,
-                <String, String>{'url': url},
-              );
-            }
+        if (!(control?.isCancelled() ?? false)) {
+          final List<CoverJob> retry = List<CoverJob>.of(throttled);
+          throttled.clear();
+          for (final CoverJob j in retry) {
+            j.phase = CoverPhase.waiting;
+            j.note = '等待重试';
           }
-          if (url.isEmpty) {
-            _noCover++;
-            _update(job, CoverPhase.noCover, '没有带封面的候选');
-            control?.report(i + 1, total, job.file.name);
-            return;
-          }
-          _update(job, CoverPhase.working, '下载封面…');
-          final Uint8List? bytes = await Http.getBytes(
-              url, null, null, Http.readTimeoutOverseasMs, _maxDownloadBytes);
-          if (bytes == null || !CoverPick.looksLikeImage(bytes)) {
-            _failed++;
-            _update(job, CoverPhase.failed,
-                bytes == null ? '下载失败' : '返回的不是图片');
-            control?.report(i + 1, total, job.file.name);
-            return;
-          }
-          job.pendingBytes = bytes;
-          job.previousBytes = await Scanner.readCover(store, job.file);
-          _update(
-              job,
-              CoverPhase.ready,
-              '待确认：${(bytes.lengthInBytes / 1024).round()} KB'
-                  '${job.previousBytes == null ? '' : '（将覆盖已有封面）'}');
-        } catch (e) {
-          _failed++;
-          _update(job, CoverPhase.failed, '出错：$e');
+          await _fetchPass(repo, control, retry, throttled, retryPass: true);
         }
-        control?.report(i + 1, total, job.file.name);
-      });
+      }
     } finally {
       TaskCenter.finish();
     }
     if (!mounted) return;
-    setState(() => _busy = false);
+    setState(() {
+      _busy = false;
+      _throttled = throttled.length;
+    });
 
     // ② 预览：让用户逐首决定写不写
     final List<CoverJob> ready = _jobs
@@ -328,7 +289,8 @@ class _CoversPageState extends State<CoversPage> {
     if (ready.isEmpty) {
       setState(() => _done = true);
       moSnack(context,
-          '没有可写入的封面（无封面 $_noCover 首，跳过 $_skipped 首，失败 $_failed 首）');
+          '没有可写入的封面（无封面 $_noCover 首，限流暂缓 $_throttled 首，'
+          '跳过 $_skipped 首，失败 $_failed 首）');
       return;
     }
     final List<WriteTarget> targets = ready.map((CoverJob j) {
@@ -428,7 +390,7 @@ class _CoversPageState extends State<CoversPage> {
       _done = true;
     });
     final String summary = '写入 $_written 首，无封面 $_noCover 首，'
-        '跳过 $_skipped 首，失败 $_failed 首';
+        '限流暂缓 $_throttled 首，跳过 $_skipped 首，失败 $_failed 首';
     moSnack(context, summary,
         actionLabel: _written == 0 ? null : '撤销', onAction: _undoAll);
   }
@@ -472,6 +434,141 @@ class _CoversPageState extends State<CoversPage> {
       }
     });
     moSnack(context, '已恢复 $restored 首的封面');
+  }
+
+  /// 一轮抓取：逐首查地址 + 下载到内存。
+  ///
+  /// 被限流 / 断网的放进 [throttledOut]，由调用方等冷却后补跑。
+  Future<void> _fetchPass(
+    Repo repo,
+    TaskControl? control,
+    List<CoverJob> jobs,
+    List<CoverJob> throttledOut, {
+    bool retryPass = false,
+  }) async {
+    final int total = jobs.length;
+    await Net.mapIndexed<CoverJob, void>(
+        jobs, Net.fileConcurrency(), control, (int i, CoverJob job) async {
+      if (control?.isCancelled() ?? false) return;
+      await _waitIfPaused(control);
+      control?.report(i, total,
+          retryPass ? '重试：${job.file.name}' : job.file.name);
+      await _fetchOne(repo, control, job, throttledOut);
+      control?.report(i + 1, total, job.file.name);
+    });
+  }
+
+  /// 单首：查封面地址 → 下载字节到内存（不写盘）。
+  Future<void> _fetchOne(Repo repo, TaskControl? control, CoverJob job,
+      List<CoverJob> throttledOut) async {
+    final store = repo.store;
+    if (store == null) return;
+    if (!TagIO.canWrite(job.file.ext())) {
+      _skipped++;
+      _update(job, CoverPhase.skipped, '跳过：${job.file.ext()} 不支持写标签');
+      return;
+    }
+    _update(job, CoverPhase.working, '查找在线封面…');
+    try {
+      // 上次已经查到过地址的：直接用，不再联网问一遍（省时间也省配额）
+      String url = job.resumeUrl;
+      if (url.isEmpty) {
+        final Tags tags = await Scanner.readTags(store, job.file);
+        final Query q = LocalQuery.forFile(job.file, tags);
+        final AggregateResult agg = await Aggregator.tagCandidates(
+            q, chinese: LocalQuery.chinese(q));
+        url = CoverPick.urlOf(agg.candidates);
+        // 第二跳：候选都不带封面时，用「专辑名 + 艺人」单独问专辑图
+        // （Deezer / iTunes）。同一张专辑只查一次（repo.albumCovers 缓存）。
+        if (url.isEmpty && agg.candidates.isNotEmpty) {
+          final (String album, String artist) =
+              AlbumCover.fromCandidates(agg.candidates, TagQuery.artist(q));
+          final AlbumCoverLookup hit = await AlbumCover.lookup(
+              album, artist, cache: repo.albumCovers);
+          if (hit.url.isEmpty && hit.temporary) {
+            _markThrottled(job, throttledOut);
+            return;
+          }
+          url = hit.url;
+        }
+        if (url.isNotEmpty) {
+          _queue?.put(
+            _keyOf(job.file),
+            job.file.size,
+            job.file.lastModified,
+            <String, String>{'url': url},
+          );
+        }
+      }
+      if (url.isEmpty) {
+        // 「没图」只有在封面源都正常应答时才可信：某家正在限流冷却时，
+        // 空候选可能只是没查到，记成无封面会让用户白跑一轮。
+        if (_coverSourcesCoolingDown()) {
+          _markThrottled(job, throttledOut);
+        } else {
+          _noCover++;
+          _update(job, CoverPhase.noCover, '没有带封面的候选');
+        }
+        return;
+      }
+      _update(job, CoverPhase.working, '下载封面…');
+      final Uint8List? bytes = await Http.getBytes(
+          url, null, null, Http.readTimeoutOverseasMs, _maxDownloadBytes);
+      if (bytes == null || !CoverPick.looksLikeImage(bytes)) {
+        // 下载失败也可能只是被限流：先记为可补跑，冷却结束后再试一次。
+        if (bytes == null && _coverSourcesCoolingDown()) {
+          _markThrottled(job, throttledOut);
+          return;
+        }
+        _failed++;
+        _update(job, CoverPhase.failed,
+            bytes == null ? '下载失败' : '返回的不是图片');
+        return;
+      }
+      job.pendingBytes = bytes;
+      job.previousBytes = await Scanner.readCover(store, job.file);
+      _update(
+          job,
+          CoverPhase.ready,
+          '待确认：${(bytes.lengthInBytes / 1024).round()} KB'
+              '${job.previousBytes == null ? '' : '（将覆盖已有封面）'}');
+    } catch (e) {
+      _failed++;
+      _update(job, CoverPhase.failed, '出错：$e');
+    }
+  }
+
+  /// 记为「限流暂缓」：不进「无封面」计数，等冷却后补跑。
+  void _markThrottled(CoverJob job, List<CoverJob> out) {
+    _update(job, CoverPhase.throttled, '联网被限流，稍后自动补跑');
+    if (!out.contains(job)) out.add(job);
+  }
+
+  /// 有「能给封面」的源正在限流冷却 → 这首的空结果不可信。
+  bool _coverSourcesCoolingDown() {
+    const List<(String, int)> sources = <(String, int)>[
+      ('netease', 0),
+      ('qqmusic', 0),
+      ('deezer', 0),
+      ('deezer', 1),
+      ('itunes', 0),
+    ];
+    for (final (String key, int index) in sources) {
+      final String url = Endpoints.urlOf(key, index);
+      if (url.isEmpty) continue;
+      final String host = Uri.tryParse(url)?.host ?? '';
+      if (host.isNotEmpty && Http.breaker.isCoolingDown(host)) return true;
+    }
+    return false;
+  }
+
+  /// 等待 [seconds] 秒，每秒检查一次是否被停止 / 暂停。
+  Future<void> _sleepInterruptible(int seconds, TaskControl? control) async {
+    for (int i = 0; i < seconds; i++) {
+      if (control?.isCancelled() ?? false) return;
+      await _waitIfPaused(control);
+      await Future<void>.delayed(const Duration(seconds: 1));
+    }
   }
 
   Future<void> _waitIfPaused(TaskControl? control) async {

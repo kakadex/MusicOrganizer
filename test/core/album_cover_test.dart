@@ -1,23 +1,50 @@
-/// 专辑封面第二跳与酷狗 / 酷我封面地址拼装的离线回归。
+/// 专辑封面第二跳、缓存与限流标记的离线回归。
 ///
 /// 全部走注入的假 fetch，不联网；端点注册表用默认地址。
+/// 每个用例前重置串行闸门与节流状态，避免互相影响。
 library;
 
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
 import 'package:musicorganizer/core/model/candidate.dart';
 import 'package:musicorganizer/core/source/album_cover.dart';
+import 'package:musicorganizer/core/source/album_cover_cache.dart';
 import 'package:musicorganizer/core/source/kugou.dart';
 import 'package:musicorganizer/core/source/kuwo.dart';
-import 'package:flutter_test/flutter_test.dart';
+
+/// 所有主机都「不在冷却」。
+bool Function(String host) neverBlocked() => (String host) => false;
+
+/// 所有主机都「在冷却」（模拟被限流）。
+bool Function(String host) alwaysBlocked() => (String host) => true;
 
 void main() {
+  late Directory tmp;
+
+  setUp(() {
+    AlbumCover.resetLimiter();
+    tmp = Directory.systemTemp.createTempSync('album_cover_test');
+  });
+
+  tearDown(() {
+    try {
+      tmp.deleteSync(recursive: true);
+    } catch (_) {}
+  });
+
+  AlbumCoverCache newCache() =>
+      AlbumCoverCache(File('${tmp.path}/album_covers.json'));
+
   group('AlbumCover.lookup', () {
     test('专辑名为空不联网', () async {
       Object? asked;
       final AlbumCoverLookup r = await AlbumCover.lookup('', '周杰伦',
+          isBlocked: neverBlocked(),
           fetch: (String url, Map<String, String>? params) async {
-        asked = url;
-        return <String, Object?>{};
-      });
+            asked = url;
+            return <String, Object?>{};
+          });
       expect(r.url, '');
       expect(asked, isNull);
     });
@@ -27,6 +54,7 @@ void main() {
       final AlbumCoverLookup r = await AlbumCover.lookup(
         '新长征路上的摇滚',
         '崔健',
+        isBlocked: neverBlocked(),
         fetch: (String url, Map<String, String>? params) async {
           asked.add(url);
           if (url.contains('deezer')) {
@@ -34,7 +62,8 @@ void main() {
               'data': <Object?>[
                 <String, Object?>{
                   'title': '新长征路上的摇滚',
-                  'cover_xl': 'https://e-cdns-images.dzcdn.net/images/cover/a/1000x1000-000000-80-0-0.jpg',
+                  'cover_xl':
+                      'https://e-cdns-images.dzcdn.net/images/cover/a/1000x1000-000000-80-0-0.jpg',
                 },
               ],
             };
@@ -52,6 +81,7 @@ void main() {
       final AlbumCoverLookup r = await AlbumCover.lookup(
         'Xin Chang Zheng',
         'Cui Jian',
+        isBlocked: neverBlocked(),
         fetch: (String url, Map<String, String>? params) async {
           if (url.contains('deezer')) {
             return <String, Object?>{'data': <Object?>[]};
@@ -73,12 +103,147 @@ void main() {
       expect(r.source, 'itunes');
     });
 
-    test('两家都空返回空串', () async {
+    test('两家都正常应答但没有图 → 返回空且不是暂时性失败', () async {
       final AlbumCoverLookup r = await AlbumCover.lookup('不存在的专辑', '没有人',
+          isBlocked: neverBlocked(),
           fetch: (String url, Map<String, String>? params) async =>
               <String, Object?>{});
       expect(r.url, '');
       expect(r.source, '');
+      expect(r.temporary, isFalse);
+    });
+
+    test('主机在冷却 → 暂时性失败、不发请求、不写缓存', () async {
+      final AlbumCoverCache cache = newCache();
+      int calls = 0;
+      final AlbumCoverLookup r = await AlbumCover.lookup(
+        '某专辑',
+        '某人',
+        cache: cache,
+        isBlocked: alwaysBlocked(),
+        fetch: (String url, Map<String, String>? params) async {
+          calls++;
+          return <String, Object?>{};
+        },
+      );
+      expect(r.url, '');
+      expect(r.temporary, isTrue);
+      expect(calls, 0, reason: '冷却中的主机不该再耗一次超时');
+      expect(cache.size(), 0, reason: '限流不是「没图」，不能写负缓存');
+    });
+
+    test('并发查询串行执行，同一时刻最多一条在途', () async {
+      int inFlight = 0;
+      int maxInFlight = 0;
+      Future<Object?> fake(String url, Map<String, String>? params) async {
+        inFlight++;
+        if (inFlight > maxInFlight) maxInFlight = inFlight;
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        inFlight--;
+        return <String, Object?>{};
+      }
+
+      await Future.wait(<Future<AlbumCoverLookup>>[
+        AlbumCover.lookup('专辑一', '甲',
+            isBlocked: neverBlocked(), fetch: fake, minIntervalMs: 0),
+        AlbumCover.lookup('专辑二', '乙',
+            isBlocked: neverBlocked(), fetch: fake, minIntervalMs: 0),
+        AlbumCover.lookup('专辑三', '丙',
+            isBlocked: neverBlocked(), fetch: fake, minIntervalMs: 0),
+      ]);
+      expect(maxInFlight, 1, reason: '专辑查询必须全局串行，避免打穿限流');
+    });
+  });
+
+  group('AlbumCover.lookup 缓存', () {
+    test('命中缓存后不再联网', () async {
+      final AlbumCoverCache cache = newCache();
+      cache.remember('晴天', '周杰伦', 'https://img.example.com/a.jpg');
+      int calls = 0;
+      final AlbumCoverLookup r = await AlbumCover.lookup(
+        '晴天',
+        '周杰伦',
+        cache: cache,
+        isBlocked: neverBlocked(),
+        fetch: (String url, Map<String, String>? params) async {
+          calls++;
+          return <String, Object?>{};
+        },
+      );
+      expect(r.url, 'https://img.example.com/a.jpg');
+      expect(r.source, 'cache');
+      expect(calls, 0);
+    });
+
+    test('确认没图的负缓存也会跳过联网', () async {
+      final AlbumCoverCache cache = newCache();
+      cache.remember('冷门专辑', '无名氏', '');
+      int calls = 0;
+      final AlbumCoverLookup r = await AlbumCover.lookup(
+        '冷门专辑',
+        '无名氏',
+        cache: cache,
+        isBlocked: neverBlocked(),
+        fetch: (String url, Map<String, String>? params) async {
+          calls++;
+          return <String, Object?>{};
+        },
+      );
+      expect(r.url, '');
+      expect(r.source, 'cache');
+      expect(calls, 0);
+    });
+
+    test('一次查到图会写回缓存，同一专辑第二次直接命中', () async {
+      final AlbumCoverCache cache = newCache();
+      int calls = 0;
+      Future<Object?> fake(String url, Map<String, String>? params) async {
+        calls++;
+        if (url.contains('deezer')) {
+          return <String, Object?>{
+            'data': <Object?>[
+              <String, Object?>{'cover_xl': 'https://img.example.com/b.jpg'},
+            ],
+          };
+        }
+        return <String, Object?>{'results': <Object?>[]};
+      }
+
+      final AlbumCoverLookup first = await AlbumCover.lookup('同一张', '同一个人',
+          cache: cache, isBlocked: neverBlocked(), fetch: fake, minIntervalMs: 0);
+      expect(first.url, 'https://img.example.com/b.jpg');
+
+      final AlbumCoverLookup second = await AlbumCover.lookup('同一张', '同一个人',
+          cache: cache, isBlocked: neverBlocked(), fetch: fake, minIntervalMs: 0);
+      expect(second.source, 'cache');
+      expect(calls, 1, reason: '第二次不该再发请求');
+    });
+
+    test('同一专辑并发查询只发一次请求（进闸门后再查缓存）', () async {
+      final AlbumCoverCache cache = newCache();
+      int calls = 0;
+      Future<Object?> fake(String url, Map<String, String>? params) async {
+        calls++;
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        if (url.contains('deezer')) {
+          return <String, Object?>{
+            'data': <Object?>[
+              <String, Object?>{'cover_xl': 'https://img.example.com/c.jpg'},
+            ],
+          };
+        }
+        return <String, Object?>{'results': <Object?>[]};
+      }
+
+      final List<AlbumCoverLookup> both = await Future.wait(<Future<AlbumCoverLookup>>[
+        AlbumCover.lookup('同一张', '同一个人',
+            cache: cache, isBlocked: neverBlocked(), fetch: fake, minIntervalMs: 0),
+        AlbumCover.lookup('同一张', '同一个人',
+            cache: cache, isBlocked: neverBlocked(), fetch: fake, minIntervalMs: 0),
+      ]);
+      expect(both[0].url, 'https://img.example.com/c.jpg');
+      expect(both[1].url, 'https://img.example.com/c.jpg');
+      expect(calls, 1, reason: '第二个调用者应命中刚写入的缓存');
     });
   });
 
@@ -105,6 +270,60 @@ void main() {
           AlbumCover.fromCandidates(<Candidate>[Candidate()..title = 'x'], '谁');
       expect(album, '');
       expect(artist, '');
+    });
+  });
+
+  group('AlbumCoverCache', () {
+    test('缓存键忽略大小写与首尾空白', () {
+      expect(AlbumCoverCache.keyOf(' 晴天 ', '周杰伦'),
+          AlbumCoverCache.keyOf('晴天', ' 周杰伦 '));
+      expect(AlbumCoverCache.keyOf('ABBey Road', 'The Beatles'),
+          AlbumCoverCache.keyOf('abbey road', 'the beatles'));
+    });
+
+    test('命中图 90 天过期', () {
+      int now = 1000;
+      final AlbumCoverCache cache =
+          AlbumCoverCache(File('${tmp.path}/a.json'), clock: () => now);
+      cache.remember('晴天', '周杰伦', 'https://img.example.com/a.jpg');
+      now += albumHitTtlMs - 1;
+      expect(cache.lookup('晴天', '周杰伦'), 'https://img.example.com/a.jpg');
+      now += 2;
+      expect(cache.lookup('晴天', '周杰伦'), isNull);
+    });
+
+    test('「确认没图」14 天过期，过期后允许重查', () {
+      int now = 1000;
+      final AlbumCoverCache cache =
+          AlbumCoverCache(File('${tmp.path}/a.json'), clock: () => now);
+      cache.remember('冷门', '无名', '');
+      now += albumMissTtlMs - 1;
+      expect(cache.lookup('冷门', '无名'), '');
+      now += 2;
+      expect(cache.lookup('冷门', '无名'), isNull);
+    });
+
+    test('落盘后重新打开还能读到', () {
+      final AlbumCoverCache cache = newCache();
+      cache.remember('晴天', '周杰伦', 'https://img.example.com/a.jpg');
+      cache.remember('冷门', '无名', '');
+      expect(cache.save(), isTrue);
+
+      final AlbumCoverCache reopened = AlbumCoverCache.open(
+          File('${tmp.path}/album_covers.json'));
+      expect(reopened.size(), 2);
+      expect(reopened.lookup('晴天', '周杰伦'), 'https://img.example.com/a.jpg');
+      expect(reopened.lookup('冷门', '无名'), '');
+    });
+
+    test('清空后文件里的条目也没了', () {
+      final AlbumCoverCache cache = newCache();
+      cache.remember('晴天', '周杰伦', 'https://img.example.com/a.jpg');
+      cache.clear();
+      expect(cache.size(), 0);
+      final AlbumCoverCache reopened = AlbumCoverCache.open(
+          File('${tmp.path}/album_covers.json'));
+      expect(reopened.size(), 0);
     });
   });
 

@@ -12,7 +12,7 @@ import '../../core/model/vfile.dart';
 /// 单首的状态。
 ///
 /// [ready] 是两阶段写入的中点：封面已下载到内存、等用户在预览里确认后才真正落盘。
-enum CoverPhase { waiting, working, ready, written, skipped, noCover, failed }
+enum CoverPhase { waiting, working, ready, written, skipped, noCover, throttled, failed }
 
 /// 单首的进度。
 class CoverJob {
@@ -95,6 +95,8 @@ class CoverJobRow extends StatelessWidget {
         return '跳过';
       case CoverPhase.noCover:
         return '无封面';
+      case CoverPhase.throttled:
+        return '限流暂缓';
       case CoverPhase.failed:
         return '失败';
     }
@@ -111,6 +113,7 @@ class CoverJobRow extends StatelessWidget {
         return MoKit.primary(context);
       case CoverPhase.skipped:
       case CoverPhase.noCover:
+      case CoverPhase.throttled:
         return MoKit.warn(context);
       default:
         return MoKit.sub(context);

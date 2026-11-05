@@ -33,6 +33,7 @@ import '../core/scan/scanner.dart';
 import '../core/tag/tag_io.dart';
 import '../core/scan/search_index.dart';
 import '../core/settings/settings.dart';
+import '../core/source/album_cover_cache.dart';
 import '../core/source/endpoints.dart';
 import '../core/task/match_runner.dart';
 import '../core/tx/journal.dart';
@@ -119,6 +120,10 @@ class Repo extends ChangeNotifier {
   /// 封面批处理的续跑队列（同上，存封面地址而不是字节）。
   MatchQueue? coverQueue;
 
+  /// 专辑封面查询缓存（「专辑+艺人 → 图地址」）：同一张专辑只问一次外网，
+  /// 避免 907 首里重复几十次请求 Deezer / iTunes 被限流。
+  AlbumCoverCache? albumCovers;
+
   /// 设置。
   final SettingsStore settings = SettingsStore();
 
@@ -176,6 +181,7 @@ class Repo extends ChangeNotifier {
     // 停掉）就得从头再查一遍，白烧时间和配额。这里给两条链路各配一个队列。
     lyricsQueue = MatchQueue.open(dir, 'lyrics');
     coverQueue = MatchQueue.open(dir, 'covers');
+    albumCovers = AlbumCoverCache.open(File('${dir.path}/album_covers.json'));
     await _loadSettings();
     Endpoints.install(_RepoEndpoints(this));
     applyProxy();
