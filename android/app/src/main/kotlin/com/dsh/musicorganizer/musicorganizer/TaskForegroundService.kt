@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.os.SystemClock
 
 /**
@@ -34,6 +35,34 @@ class TaskForegroundService : Service() {
 
     /// 本次实例是否收到过启动命令（用来识别「服务是被停止命令唤醒的」）。
     private var sawStart = false
+
+    /// 任务期间的唤醒锁：息屏后 CPU 继续跑，批量任务不再「解锁后又接着跑」。
+    ///
+    /// 前台服务只防进程被杀，挡不住 CPU 休眠——息屏几分钟后 SoC 打盹，
+    /// Dart 事件循环停摆，进度就冻在息屏前。唤醒锁要在 startForeground 之后
+    /// 拿（进前台才算任务真正开始），onDestroy 里必须释放。
+    private var wakeLock: PowerManager.WakeLock? = null
+
+    private fun acquireWakeLock() {
+        if (wakeLock?.isHeld == true) return
+        val pm = getSystemService(PowerManager::class.java) ?: return
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "mo:task").apply {
+            setReferenceCounted(false)
+            // 兜底上限 2 小时：哪怕 Dart 侧异常没发停止，也不会锁死整夜
+            acquire(2 * 60 * 60 * 1000L)
+        }
+        trace("wakeLock acquired")
+    }
+
+    private fun releaseWakeLock() {
+        wakeLock?.let {
+            if (it.isHeld) {
+                it.release()
+                trace("wakeLock released")
+            }
+        }
+        wakeLock = null
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -74,6 +103,8 @@ class TaskForegroundService : Service() {
         if (started.isSuccess) {
             foregroundStarted = true
             trace("startForeground ok")
+            // 进前台 = 任务真正开始跑：此时拿唤醒锁，息屏后 CPU 不休眠
+            acquireWakeLock()
             // 契约必须已经满足，否则后面的「只刷通知」分支永远进不了前台
             assertState(foregroundStarted, "ACTION_START 处理完但未标记已进前台")
             // 停止命令可能比这次启动排得更早：契约已经满足，现在可以收尾了
@@ -186,6 +217,7 @@ class TaskForegroundService : Service() {
         // 先改状态再撤前台：调用方看到「不在前台」会重新走启动流程，
         // 服务能再次进前台，不会撞 5 秒超时。实例级状态随之复位。
         trace("onDestroy")
+        releaseWakeLock()
         foregroundStarted = false
         pendingStop = false
         sawStart = false

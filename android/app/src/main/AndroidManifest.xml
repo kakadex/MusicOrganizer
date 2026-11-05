@@ -10,6 +10,8 @@
     <!-- 长任务（批量匹配 / 写入 / 补封面）挂前台服务，退后台才不会被系统回收 -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- 任务期间持唤醒锁：息屏后 CPU 继续跑，批量匹配不再「解锁后又接着跑」 -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- 安卓 13+ 要显式申请才能显示任务通知 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- 应用内更新：下载完 APK 后拉起系统安装器。用户首次会看到「允许从此来源安装」

@@ -24,12 +24,16 @@ abstract final class TaskService {
   /// 节流器也就不用再兼顾「任务边界标记」这个职责。
   static int _seq = 0;
 
+  /// 通知权限是否已经申请过（每个进程生命周期只弹一次，拒绝过不纠缠）。
+  static bool _notifAsked = false;
+
   /// 把任务中心的生命周期接到通知栏上（main 里调一次）。
   static void attach() {
     if (_attached) return;
     _attached = true;
     TaskCenter.onStart = (String title) {
       _seq++;
+      _ensureNotificationPermission();
       update(title, 0, 0, '');
     };
     TaskCenter.onFinish = () => unawaited(_finishAndVerify());
@@ -38,6 +42,23 @@ abstract final class TaskService {
       if (t == null) return;
       update(t.title, done, total, message);
     };
+  }
+
+  /// 安卓 13+ 任务通知权限运行时申请（清单声明不算数，通知栏不会显示）。
+  ///
+  /// 申请是异步的：第一次任务开始时弹系统对话框，本次任务的通知可能迟到，
+  /// 之后所有任务都能正常显示。拒绝过就不再弹（[_notifAsked] 记一次），
+  /// 任务照跑，只是没通知。
+  static Future<void> _ensureNotificationPermission() async {
+    if (_notifAsked || kIsWeb) return;
+    _notifAsked = true;
+    try {
+      await _ch.invokeMethod<void>('requestNotificationPermission');
+    } on MissingPluginException {
+      // 桌面 / 测试环境没有这个通道
+    } on PlatformException {
+      // 权限对话框打不开（极端情况）：任务照跑
+    }
   }
 
   /// 上次推送时间与文案：进度回调是「每首一次」，全推过去会刷爆通道。

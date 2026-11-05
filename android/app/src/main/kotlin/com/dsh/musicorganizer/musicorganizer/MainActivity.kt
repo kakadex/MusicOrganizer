@@ -23,6 +23,7 @@ class MainActivity : FlutterActivity() {
 
     private var pendingPickResult: MethodChannel.Result? = null
     private var pendingPermissionResult: MethodChannel.Result? = null
+    private var pendingNotificationResult: MethodChannel.Result? = null
     private lateinit var safPlugin: SafPlugin
     private var hostChannel: MethodChannel? = null
 
@@ -321,6 +322,9 @@ class MainActivity : FlutterActivity() {
                     )
                 }
                 "requestAudioPermission" -> requestAudioPermission(result)
+                // 安卓 13+ 通知权限必须运行时申请：只在清单里声明，通知栏永远不显示
+                // 任务进度通知，用户切后台也看不到「匹配到第几首」。
+                "requestNotificationPermission" -> requestNotificationPermission(result)
                 // 给 Dart 侧一个可查的前台服务状态，任务结束后不必靠猜
                 "serviceState" -> result.success(TaskForegroundService.state())
                 else -> result.notImplemented()
@@ -439,8 +443,23 @@ class MainActivity : FlutterActivity() {
      *
      * 安卓 13+ 要 READ_MEDIA_AUDIO，更早的版本要 READ_EXTERNAL_STORAGE。
      */
-    private fun requestAudioPermission(result: MethodChannel.Result) {
-        val permission = if (android.os.Build.VERSION.SDK_INT >= 33) {
+    /// 安卓 13+ 通知权限运行时申请。13 以下清单声明即生效，直接返回 true。
+    /// 用户拒绝过也不纠缠：返回 false，Dart 侧任务照跑，只是没通知。
+    private fun requestNotificationPermission(result: MethodChannel.Result) {
+        if (android.os.Build.VERSION.SDK_INT < 33) {
+            result.success(true)
+            return
+        }
+        val permission = "android.permission.POST_NOTIFICATIONS"
+        if (checkSelfPermission(permission) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            result.success(true)
+            return
+        }
+        pendingNotificationResult = result
+        requestPermissions(arrayOf(permission), REQUEST_CODE_NOTIFICATION_PERMISSION)
+    }
+
+    private fun requestAudioPermission(result: MethodChannel.Result) {        val permission = if (android.os.Build.VERSION.SDK_INT >= 33) {
             "android.permission.READ_MEDIA_AUDIO"
         } else {
             "android.permission.READ_EXTERNAL_STORAGE"
@@ -459,6 +478,14 @@ class MainActivity : FlutterActivity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_CODE_NOTIFICATION_PERMISSION) {
+            val result = pendingNotificationResult
+            pendingNotificationResult = null
+            val granted = grantResults.isNotEmpty() &&
+                grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED
+            result?.success(granted)
+            return
+        }
         if (requestCode != REQUEST_CODE_AUDIO_PERMISSION) return
         val result = pendingPermissionResult
         pendingPermissionResult = null
@@ -587,6 +614,7 @@ class MainActivity : FlutterActivity() {
         private const val REQUEST_CODE_OPEN_TREE = 4401
         private const val REQUEST_CODE_EXPORT_TEXT = 4402
         private const val REQUEST_CODE_AUDIO_PERMISSION = 4402
+        private const val REQUEST_CODE_NOTIFICATION_PERMISSION = 4403
 
         /// SAF 后台线程数（批量池；取值理由见 safIo 的注释）。
         private const val SAF_THREADS = 4
