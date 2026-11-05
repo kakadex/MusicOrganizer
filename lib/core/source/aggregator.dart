@@ -109,7 +109,9 @@ abstract final class Aggregator {
 
     // 冷却中的源会瞬间返回空、不抛异常：先记下，结果里标出来，
     // 调用方（批量流程）据此判断「是真的没有」还是「被掐了」。
-    bool throttled = _anyCoolingDown(sources.map((TagSource s) => s.key));
+    final List<String> sourceKeys =
+        sources.map((TagSource s) => s.key).toList(growable: false);
+    bool throttled = _enoughCooling(sourceKeys);
 
     final List<Future<SourceResult>> tasks = <Future<SourceResult>>[];
     for (final TagSource s in sources) {
@@ -195,7 +197,7 @@ abstract final class Aggregator {
         merged.length > maxCandidates ? merged.sublist(0, maxCandidates) : merged;
     // 查询过程中才被限流的也要算（开始时还正常、跑到一半被掐）。
     if (!throttled) {
-      throttled = _anyCoolingDown(sources.map((TagSource s) => s.key));
+      throttled = _enoughCooling(sourceKeys);
     }
     return AggregateResult(out, errors, before, throttled: throttled);
   }
@@ -221,8 +223,9 @@ abstract final class Aggregator {
     final List<LyricSource> sources = SourceRegistry.lyrics(only: only)
         .where((LyricSource s) => Endpoints.enabled(s.key))
         .toList();
-    bool throttled =
-        _anyCoolingDown(sources.map((LyricSource s) => s.key));
+    final List<String> sourceKeys =
+        sources.map((LyricSource s) => s.key).toList(growable: false);
+    bool throttled = _enoughCooling(sourceKeys);
     for (final LyricSource s in sources) {
       tasks.add(() async {
         try {
@@ -239,7 +242,7 @@ abstract final class Aggregator {
       out.addAll(g);
     }
     if (!throttled) {
-      throttled = _anyCoolingDown(sources.map((LyricSource s) => s.key));
+      throttled = _enoughCooling(sourceKeys);
     }
     return LyricAggregateResult(out, errors, throttled: throttled);
   }
@@ -268,12 +271,27 @@ abstract final class Aggregator {
     return max;
   }
 
-  /// 这些源里有没有主机还在熔断冷却。
-  static bool _anyCoolingDown(Iterable<String> keys) {
+  /// 冷却中的源个数。
+  static int _coolingCount(List<String> keys) {
+    int n = 0;
     for (final String key in keys) {
-      if (Http.maxCooldownSeconds(_endpointUrls(key)) > 0) return true;
+      if (Http.maxCooldownSeconds(_endpointUrls(key)) > 0) n++;
     }
-    return false;
+    return n;
+  }
+
+  /// 掉几个源才把「没有结果」归咎于联网。
+  ///
+  /// 只掉一家不算：最常见的是某个海外源被墙或超时，其余源照常应答。
+  /// 早先「任意一个在冷却就算」的口径，会让 93 首里 85 首都被标成暂缓，
+  /// 而且 Deezer 只是连不上、根本不是被限流。
+  static const int minCoolingToBlame = 2;
+
+  static bool _enoughCooling(List<String> keys) {
+    if (keys.isEmpty) return false;
+    final int cooling = _coolingCount(keys);
+    if (cooling <= 0) return false;
+    return cooling >= minCoolingToBlame || cooling >= keys.length;
   }
 
   /// 一个源注册的所有端点地址（熔断按主机算，所以要把端点都列出来）。

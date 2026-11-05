@@ -189,7 +189,7 @@ class MatchRunner {
       if (throttled) {
         throttledIds.add(f.docId);
         return TagPlan.buildFor(file: f, before: before, modes: modes, overwrite: overwrite)
-          ..note = '联网被限流，稍后可重试';
+          ..note = '联网暂不可用，稍后可重试';
       }
       if (memory != null) {
         memory!.record(f.docId, f.size, f.lastModified, BatchMemory.noHit);

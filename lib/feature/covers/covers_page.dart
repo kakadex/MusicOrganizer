@@ -145,7 +145,7 @@ class _CoversPageState extends State<CoversPage> {
       return '继续上次 $_resumed/${_jobs.length} 首（已查到，待确认写入）';
     }
     if (!_done) return '${_jobs.length} 首 · 只补在线封面，不改标签';
-    return '写入 $_written · 无封面 $_noCover · 限流暂缓 $_throttled · '
+    return '写入 $_written · 无封面 $_noCover · 联网暂缓 $_throttled · '
         '跳过 $_skipped · 失败 $_failed';
   }
 
@@ -260,7 +260,7 @@ class _CoversPageState extends State<CoversPage> {
         final int wait = AlbumCover.cooldownSecondsLeft();
         if (wait > 0) {
           control?.report(0, _jobs.length,
-              '联网被限流，等待 ${wait}s 后补跑 ${throttled.length} 首');
+              '部分源不可用，等待 ${wait}s 后补跑 ${throttled.length} 首');
           await _sleepInterruptible(wait, control);
         }
         if (!(control?.isCancelled() ?? false)) {
@@ -289,7 +289,7 @@ class _CoversPageState extends State<CoversPage> {
     if (ready.isEmpty) {
       setState(() => _done = true);
       moSnack(context,
-          '没有可写入的封面（无封面 $_noCover 首，限流暂缓 $_throttled 首，'
+          '没有可写入的封面（无封面 $_noCover 首，联网暂缓 $_throttled 首，'
           '跳过 $_skipped 首，失败 $_failed 首）');
       return;
     }
@@ -390,7 +390,7 @@ class _CoversPageState extends State<CoversPage> {
       _done = true;
     });
     final String summary = '写入 $_written 首，无封面 $_noCover 首，'
-        '限流暂缓 $_throttled 首，跳过 $_skipped 首，失败 $_failed 首';
+        '联网暂缓 $_throttled 首，跳过 $_skipped 首，失败 $_failed 首';
     moSnack(context, summary,
         actionLabel: _written == 0 ? null : '撤销', onAction: _undoAll);
   }
@@ -538,13 +538,16 @@ class _CoversPageState extends State<CoversPage> {
     }
   }
 
-  /// 记为「限流暂缓」：不进「无封面」计数，等冷却后补跑。
+  /// 记为「联网暂缓」：不进「无封面」计数，等冷却后补跑。
   void _markThrottled(CoverJob job, List<CoverJob> out) {
-    _update(job, CoverPhase.throttled, '联网被限流，稍后自动补跑');
+    _update(job, CoverPhase.throttled, '联网暂不可用，稍后自动补跑');
     if (!out.contains(job)) out.add(job);
   }
 
   /// 有「能给封面」的源正在限流冷却 → 这首的空结果不可信。
+  ///
+  /// 只掉一家不算（最常见是某个海外源被墙/超时，其余源照常应答）；至少
+  /// [minCoolingToBlame] 家不可用才把「没图」改判成「联网暂缓」。
   bool _coverSourcesCoolingDown() {
     const List<(String, int)> sources = <(String, int)>[
       ('netease', 0),
@@ -553,13 +556,20 @@ class _CoversPageState extends State<CoversPage> {
       ('deezer', 1),
       ('itunes', 0),
     ];
+    // 按主机去重：deezer 有「搜索」「专辑搜索」两个端点，但同一台主机，
+    // 不能算成两家——否则只掉 Deezer 一家就会被当成两家不可用。
+    final Set<String> hosts = <String>{};
     for (final (String key, int index) in sources) {
       final String url = Endpoints.urlOf(key, index);
       if (url.isEmpty) continue;
       final String host = Uri.tryParse(url)?.host ?? '';
-      if (host.isNotEmpty && Http.breaker.isCoolingDown(host)) return true;
+      if (host.isNotEmpty) hosts.add(host);
     }
-    return false;
+    int cooling = 0;
+    for (final String host in hosts) {
+      if (Http.breaker.isCoolingDown(host)) cooling++;
+    }
+    return cooling >= 2;
   }
 
   /// 等待 [seconds] 秒，每秒检查一次是否被停止 / 暂停。

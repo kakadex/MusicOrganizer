@@ -41,6 +41,7 @@ void main() {
 
   const List<String> touchedHosts = <String>[
     'music.163.com',
+    'u.y.qq.com',
     'lrclib.net',
   ];
 
@@ -67,8 +68,18 @@ void main() {
     ];
 
   group('Aggregator 限流标记', () {
-    test('标签：有源在冷却时 throttled=true', () async {
+    test('标签：只掉一家不算（常见是某个海外源超时，其余源照常）', () async {
       trip('music.163.com');
+      final AggregateResult r =
+          await Aggregator.tagCandidates(tagQuery(), fetch: emptyJson);
+      expect(r.candidates, isEmpty);
+      expect(r.throttled, isFalse,
+          reason: '只掉一家就把「没有结果」归咎联网，会让大批歌被误标暂缓');
+    });
+
+    test('标签：两家以上不可用时 throttled=true', () async {
+      trip('music.163.com');
+      trip('u.y.qq.com');
       final AggregateResult r =
           await Aggregator.tagCandidates(tagQuery(), fetch: emptyJson);
       expect(r.candidates, isEmpty);
@@ -81,8 +92,19 @@ void main() {
       expect(r.throttled, isFalse);
     });
 
-    test('歌词：有源在冷却时 throttled=true', () async {
+    test('歌词：只掉一家不算', () async {
       trip('lrclib.net');
+      final LyricAggregateResult r = await Aggregator.lyricCandidates(
+        LyricQuery(title: '晴天', artist: '周杰伦'),
+        json: (String url, Map<String, String>? params) async =>
+            <String, Object?>{},
+      );
+      expect(r.throttled, isFalse);
+    });
+
+    test('歌词：两家不可用时 throttled=true', () async {
+      trip('lrclib.net');
+      trip('music.163.com');
       final LyricAggregateResult r = await Aggregator.lyricCandidates(
         LyricQuery(title: '晴天', artist: '周杰伦'),
         json: (String url, Map<String, String>? params) async =>
@@ -116,9 +138,10 @@ void main() {
       final (MatchRunner runner, BatchMemory memory, VFile a) =
           await makeRunner();
       trip('music.163.com');
+      trip('u.y.qq.com');
       final List<FilePlan> plans =
           await runner.match(<VFile>[a], fetch: emptyJson);
-      expect(plans.single.note, contains('限流'));
+      expect(plans.single.note, contains('暂不可用'));
       expect(runner.throttledIds, contains(a.docId));
       expect(memory.statusOf(a.docId, a.size, a.lastModified),
           isNot(BatchMemory.noHit),

@@ -96,7 +96,7 @@ class CoverJobRow extends StatelessWidget {
       case CoverPhase.noCover:
         return '无封面';
       case CoverPhase.throttled:
-        return '限流暂缓';
+        return '联网暂缓';
       case CoverPhase.failed:
         return '失败';
     }

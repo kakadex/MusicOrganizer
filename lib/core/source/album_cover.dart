@@ -117,65 +117,89 @@ abstract final class AlbumCover {
             Http.getJson(url, params, null, Http.readTimeoutOverseasMs);
 
     final String term = artist.isEmpty ? album : '$artist $album';
-    bool answered = false; // 至少有一家正常应答（不是被掐/断网）
+    int tried = 0; // 尝试过的源数（含「因冷却跳过」）
+    int answered = 0; // 正常应答的源数（返回了 JSON）
 
     // ① Deezer 专辑搜索。
     final String deezerUrl = Endpoints.urlOf('deezer', 1);
     if (deezerUrl.isNotEmpty) {
+      tried++;
       final String host = _hostOf(deezerUrl);
-      if (blocked(host)) return _temp();
-      await _waitTurn(minIntervalMs);
-      final Object? payload =
-          await get(deezerUrl, <String, String>{'q': term, 'limit': '5'});
-      if (payload is Map) {
-        answered = true;
-        for (final dynamic item in JsonPick.list(payload, 'data')) {
-          if (item is! Map) continue;
-          final String cover = JsonPick.firstNonEmpty(
-              JsonPick.str(item, 'cover_xl'), JsonPick.str(item, 'cover_big'));
+      // 冷却中的源跳过，但**继续问下一家**——Deezer 连不上时 iTunes 往往
+      // 是好的（实测：Deezer 超时、iTunes 200）。早先版本在这里直接返回
+      // 「暂时失败」，一次都不问 iTunes，整批歌因此被误判成拿不到封面。
+      if (!blocked(host)) {
+        await _waitTurn(minIntervalMs);
+        final Object? payload =
+            await get(deezerUrl, <String, String>{'q': term, 'limit': '5'});
+        if (payload is Map) {
+          answered++;
+          final String cover = _pickDeezer(payload);
           if (cover.isNotEmpty) {
             cache?.remember(album, artist, cover);
             return AlbumCoverLookup(cover, 'deezer');
           }
         }
-      } else if (blocked(host)) {
-        return _temp(); // 被限流：别记成「没图」
       }
     }
 
     // ② iTunes 兜底：entity=album 只回专辑条目，artworkUrl100 升到 600。
     final String itunesUrl = Endpoints.urlOf('itunes', 0);
     if (itunesUrl.isNotEmpty) {
+      tried++;
       final String host = _hostOf(itunesUrl);
-      if (blocked(host)) return _temp();
-      await _waitTurn(minIntervalMs);
-      final Object? payload = await get(itunesUrl, <String, String>{
-        'term': term,
-        'media': 'music',
-        'entity': 'album',
-        'limit': '5',
-        'country': _looksChinese(album, artist) ? 'TW' : 'US',
-      });
-      if (payload is Map) {
-        answered = true;
-        for (final dynamic item in JsonPick.list(payload, 'results')) {
-          if (item is! Map) continue;
-          final String cover =
-              ItunesSource.coverUrl(JsonPick.str(item, 'artworkUrl100'));
+      if (!blocked(host)) {
+        await _waitTurn(minIntervalMs);
+        final Object? payload = await get(itunesUrl, <String, String>{
+          'term': term,
+          'media': 'music',
+          'entity': 'album',
+          'limit': '5',
+          'country': _looksChinese(album, artist) ? 'TW' : 'US',
+        });
+        if (payload is Map) {
+          answered++;
+          final String cover = _pickItunes(payload);
           if (cover.isNotEmpty) {
             cache?.remember(album, artist, cover);
             return AlbumCoverLookup(cover, 'itunes');
           }
         }
-      } else if (blocked(host)) {
-        return _temp();
       }
     }
 
-    // 两家都没能正常应答（断网 / 被限流）→ 暂时性失败，不写「没图」缓存。
-    if (!answered) return _temp();
+    // 一家都没正常应答（全在冷却 / 全超时）→ 暂时性失败，**不写负缓存**：
+    // 明天网络好了还得再查。
+    if (answered == 0) {
+      return tried == 0 ? const AlbumCoverLookup('', '') : _temp();
+    }
+    // 部分源没应答：结论不完整，返回「没找到」但不缓存，避免把
+    // 「Deezer 当时连不上」记成「这张专辑没图」14 天。
+    if (answered < tried) return const AlbumCoverLookup('', '');
     cache?.remember(album, artist, '');
     return const AlbumCoverLookup('', '');
+  }
+
+  /// Deezer 响应里挑第一条封面地址。
+  static String _pickDeezer(Map<dynamic, dynamic> payload) {
+    for (final dynamic item in JsonPick.list(payload, 'data')) {
+      if (item is! Map) continue;
+      final String cover = JsonPick.firstNonEmpty(
+          JsonPick.str(item, 'cover_xl'), JsonPick.str(item, 'cover_big'));
+      if (cover.isNotEmpty) return cover;
+    }
+    return '';
+  }
+
+  /// iTunes 响应里挑第一条封面地址。
+  static String _pickItunes(Map<dynamic, dynamic> payload) {
+    for (final dynamic item in JsonPick.list(payload, 'results')) {
+      if (item is! Map) continue;
+      final String cover =
+          ItunesSource.coverUrl(JsonPick.str(item, 'artworkUrl100'));
+      if (cover.isNotEmpty) return cover;
+    }
+    return '';
   }
 
   /// 专辑查询涉及的两家主机，当前冷却剩余秒数的最大值（0 = 没在冷却）。

@@ -352,7 +352,7 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
         final int wait = Aggregator.lyricCooldownSecondsLeft();
         if (wait > 0) {
           control?.report(0, total,
-              '联网被限流，等 ${wait}s 后补跑 ${limited.length} 首');
+              '部分源暂不可用，等 ${wait}s 后补跑 ${limited.length} 首');
           await _sleepInterruptible(wait, control);
         }
         if (!(control?.isCancelled() ?? false)) {
@@ -383,13 +383,13 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
           '联网取词失败：$why。请检查网络连接或代理设置（设置 → 网络与并发）');
     } else if (found == 0 && stillLimited > 0) {
       moSnack(context,
-          '联网被限流，$stillLimited 首暂未取到；稍后再点一次「重新获取」即可');
+          '联网暂不可用，$stillLimited 首暂未取到；稍后再点一次「重新获取」即可');
     } else if (found == 0 && netErrors.isNotEmpty) {
       moSnack(context,
           '没有找到合格歌词（${netErrors.length}/$enabled 个源不可用，其余源没返回结果）');
     } else if (stillLimited > 0) {
       moSnack(context,
-          '找到 $found 首歌词（另有 $stillLimited 首被限流，稍后可再取），确认后再写入');
+          '找到 $found 首歌词（另有 $stillLimited 首联网暂不可用，稍后可再取），确认后再写入');
     } else {
       moSnack(context, '找到 $found 首歌词，确认后再写入');
     }
@@ -448,7 +448,7 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
         // 源在冷却时「没有结果」不可信：标成暂缓，冷却后补跑，别让用户
         // 以为这首歌真的没词。
         if (agg.throttled) {
-          row.status = '联网被限流，稍后自动补跑';
+          row.status = '联网暂不可用，稍后自动补跑';
           if (!throttledOut.contains(row)) throttledOut.add(row);
           return false;
         }

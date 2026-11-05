@@ -103,6 +103,46 @@ void main() {
       expect(r.source, 'itunes');
     });
 
+    test('Deezer 冷却时跳过它、继续问 iTunes（不能直接放弃）', () async {
+      final List<String> asked = <String>[];
+      final AlbumCoverLookup r = await AlbumCover.lookup(
+        '晴天',
+        '周杰伦',
+        isBlocked: (String host) => host == 'api.deezer.com',
+        fetch: (String url, Map<String, String>? params) async {
+          asked.add(url);
+          return <String, Object?>{
+            'results': <Object?>[
+              <String, Object?>{
+                'artworkUrl100':
+                    'https://is1-ssl.mzstatic.com/image/thumb/Music/100x100bb.jpg',
+              },
+            ],
+          };
+        },
+      );
+      expect(asked.length, 1, reason: 'Deezer 在冷却，不该再发请求');
+      expect(asked.single, contains('itunes.apple.com'));
+      expect(r.source, 'itunes');
+      expect(r.url, contains('600x600'));
+    });
+
+    test('Deezer 冷却 + iTunes 正常但没图 → 不算暂时性失败、不写负缓存', () async {
+      final AlbumCoverCache cache = newCache();
+      final AlbumCoverLookup r = await AlbumCover.lookup(
+        '冷门专辑',
+        '无名氏',
+        cache: cache,
+        isBlocked: (String host) => host == 'api.deezer.com',
+        fetch: (String url, Map<String, String>? params) async =>
+            <String, Object?>{'results': <Object?>[]},
+      );
+      expect(r.url, '');
+      expect(r.temporary, isFalse, reason: 'iTunes 已正常应答，结论可信');
+      expect(cache.size(), 0,
+          reason: '还有源没应答，不能把「当时查不到」记 14 天');
+    });
+
     test('两家都正常应答但没有图 → 返回空且不是暂时性失败', () async {
       final AlbumCoverLookup r = await AlbumCover.lookup('不存在的专辑', '没有人',
           isBlocked: neverBlocked(),
@@ -113,8 +153,7 @@ void main() {
       expect(r.temporary, isFalse);
     });
 
-    test('主机在冷却 → 暂时性失败、不发请求、不写缓存', () async {
-      final AlbumCoverCache cache = newCache();
+    test('主机在冷却 → 暂时性失败、不发请求、不写缓存', () async {      final AlbumCoverCache cache = newCache();
       int calls = 0;
       final AlbumCoverLookup r = await AlbumCover.lookup(
         '某专辑',
