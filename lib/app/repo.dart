@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/cover/cover_thumb_hook.dart';
 import '../core/cover/folder_cover.dart';
 import '../core/cover/sidecar_cover.dart';
 import '../core/fs/desktop_file_store.dart';
@@ -160,6 +161,13 @@ class Repo extends ChangeNotifier {
     if (st0 is DesktopFileStore) {
       st0.directoryPicker = Repo.desktopDirectoryPicker;
     }
+    // 旁挂图 / 目录封面也走磁盘缩略图缓存（0.2.87）：整专辑曲库每个目录都有
+    // 一张几 MB 的 cover.jpg，旧版每次滚动都重读原图；挂上钩子后命中小图。
+    CoverThumbHook.peek = (VFile f) => CoverThumbCache.instance.peek(f);
+    CoverThumbHook.save = (VFile f, Uint8List art) =>
+        CoverThumbCache.instance.save(f, art);
+    CoverThumbHook.shrink = (Uint8List art) =>
+        CoverThumbCache.instance.encodeSmall(art);
     final Directory dir = await _dataDir();
     // 上次进程被杀 / 断电留下的临时副本：启动时顺手清掉（只认本 app 的前缀、
     // 只清 6 小时前的），不然缓存目录会一天天涨。失败不影响启动。

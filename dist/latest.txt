@@ -1,11 +1,11 @@
-version=0.2.86
-tag=v0.2.86
+version=0.2.87
+tag=v0.2.87
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.86/MusicOrganizer-0.2.86-android-arm64-v8a.apk
-size=19938065
-sha256=b889d794b8e31eb0f65edab1475403a4092df901aae347b6e9193a01ea43b70f
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.86/MusicOrganizer-0.2.86-windows-x64.zip
-zip_size=12954360
-zip_sha256=ae06a248cb6f427d2b00c948081c11666dc9f6e54d43b8e5d3ef93d8760245c4
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.86
-summary=播放窗圆角悬浮卡；关闭按钮移右上角
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.87/MusicOrganizer-0.2.87-android-arm64-v8a.apk
+size=19938069
+sha256=46bb98a17c48d0d52dc79773ff20a537a8b51054767b717592a1ef4dd7813710
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.87/MusicOrganizer-0.2.87-windows-x64.zip
+zip_size=12955678
+zip_sha256=62f7e186cb7feddb6c5c0d72c7f0690663d12ffa4e8f9e7450aad9a5b86f5902
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.87
+summary=列表封面缓存补齐：旁挂图也走磁盘小图

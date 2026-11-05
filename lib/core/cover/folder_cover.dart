@@ -4,11 +4,13 @@
 /// 曲库列表里没有自己封面的曲目就用它兜底。
 library;
 
+import 'dart:async';
 import 'dart:typed_data';
 
 import '../fs/file_store.dart';
 import '../model/vfile.dart';
 import 'cover_mem_cache.dart';
+import 'cover_thumb_hook.dart';
 
 /// 文件夹封面查找（按目录缓存，避免每行都去列目录）。
 ///
@@ -37,10 +39,17 @@ abstract final class FolderCover {
   static int get cachedBytes => _cache.bytes;
 
   /// 找某个目录的封面；没有返回 null。
+  ///
+  /// 0.2.87：先问磁盘小图缓存（[CoverThumbHook]，键是「这张封面图自己的
+  /// docId+size+mtime」）。整专辑曲库每个目录都有一张几 MB 的图，旧版每次
+  /// 都要列一遍目录再读 4MB 原图；现在命中小图（20–40KB）直接返回。
+  /// 内存里也只存缩过的小图，24MB 预算能放几百张而不是 6 张。
   static Future<Uint8List?> find(FileStore st, VFile dir) async {
     final String key = dir.docId;
     if (_cache.contains(key)) return _cache.get(key);
     Uint8List? art;
+    VFile? source;
+    bool fromDisk = false;
     try {
       final List<VFile> kids = await st.children(dir);
       final Map<String, String> byName = <String, String>{};
@@ -54,14 +63,28 @@ abstract final class FolderCover {
           if (real == null) continue;
           final VFile? file = await st.stat('${dir.docId}/$real');
           if (file == null) continue;
-          final Uint8List bytes = await st.headBytes(file, maxBytes);
-          art = bytes.isEmpty ? null : bytes;
+          // 先问磁盘小图：上次缩好的直接用，省掉读 4MB 原图与解码
+          final Uint8List? small = await CoverThumbHook.peek?.call(file);
+          if (small != null) {
+            art = small;
+            fromDisk = true;
+          } else {
+            final Uint8List bytes = await st.headBytes(file, maxBytes);
+            art = bytes.isEmpty ? null : bytes;
+          }
+          source = file;
           break;
         }
         if (art != null) break;
       }
     } catch (_) {
       art = null;
+    }
+    if (art != null && source != null && !fromDisk) {
+      // 原图才需要缩一次（内存只存小图）并落盘（后台，不 await）
+      unawaited(CoverThumbHook.save?.call(source, art));
+      final Uint8List? small = await CoverThumbHook.shrink?.call(art);
+      if (small != null) art = small;
     }
     _cache.put(key, art);
     return art;

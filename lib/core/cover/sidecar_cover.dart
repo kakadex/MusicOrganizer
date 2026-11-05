@@ -4,11 +4,13 @@
 /// `歌名.jpg`（与 `歌名.mp3` 同名）。认得它，曲库列表才有封面。
 library;
 
+import 'dart:async';
 import 'dart:typed_data';
 
 import '../fs/file_store.dart';
 import '../model/vfile.dart';
 import 'cover_mem_cache.dart';
+import 'cover_thumb_hook.dart';
 
 /// 同名图片封面查找（按文件缓存，同样走有界 + 过期，见 [CoverMemCache]）。
 abstract final class SidecarCover {
@@ -28,10 +30,15 @@ abstract final class SidecarCover {
   static int get cachedBytes => _cache.bytes;
 
   /// 找某个音频旁边的同名图片；没有返回 null。
+  ///
+  /// 0.2.87：和目录封面一样，先问磁盘小图（[CoverThumbHook]），命中就不必
+  /// 读 4MB 原图；内存里也只存缩过的小图。旧版存原图，24MB 预算约 6 张。
   static Future<Uint8List?> find(FileStore st, VFile audio) async {
     final String key = audio.docId;
     if (_cache.contains(key)) return _cache.get(key);
     Uint8List? art;
+    bool fromDisk = false;
+    VFile? source;
     try {
       final String? parentId = audio.parentId;
       if (parentId != null && parentId.isNotEmpty) {
@@ -39,15 +46,25 @@ abstract final class SidecarCover {
         for (final String ext in exts) {
           final VFile? file = await st.stat('$parentId/$stem.$ext');
           if (file == null) continue;
-          final Uint8List bytes = await st.headBytes(file, maxBytes);
-          if (bytes.isNotEmpty) {
-            art = bytes;
-            break;
+          final Uint8List? small = await CoverThumbHook.peek?.call(file);
+          if (small != null) {
+            art = small;
+            fromDisk = true;
+          } else {
+            final Uint8List bytes = await st.headBytes(file, maxBytes);
+            art = bytes.isEmpty ? null : bytes;
           }
+          source = file;
+          if (art != null) break;
         }
       }
     } catch (_) {
       art = null;
+    }
+    if (art != null && source != null && !fromDisk) {
+      unawaited(CoverThumbHook.save?.call(source, art));
+      final Uint8List? small = await CoverThumbHook.shrink?.call(art);
+      if (small != null) art = small;
     }
     _cache.put(key, art);
     return art;
