@@ -1,11 +1,11 @@
-version=0.2.85
-tag=v0.2.85
+version=0.2.86
+tag=v0.2.86
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.85/MusicOrganizer-0.2.85-android-arm64-v8a.apk
-size=19938069
-sha256=1e18ce1c069a1183c019a24e2f109c6339a6112c3fd242d53d1054bcdafed431
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.85/MusicOrganizer-0.2.85-windows-x64.zip
-zip_size=12954367
-zip_sha256=00af82d21f954bb8926251d77eca33320c150fa0b645cd1cf4203daf65505134
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.85
-summary=播放条修正：关闭按钮 + 继续当前歌
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.86/MusicOrganizer-0.2.86-android-arm64-v8a.apk
+size=19938065
+sha256=b889d794b8e31eb0f65edab1475403a4092df901aae347b6e9193a01ea43b70f
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.86/MusicOrganizer-0.2.86-windows-x64.zip
+zip_size=12954360
+zip_sha256=ae06a248cb6f427d2b00c948081c11666dc9f6e54d43b8e5d3ef93d8760245c4
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.86
+summary=播放窗圆角悬浮卡；关闭按钮移右上角
