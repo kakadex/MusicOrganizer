@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/repo.dart';
 import '../../app/ui_kit.dart';
+import '../../core/fs/file_store.dart';
 import '../../core/match/local_query.dart';
 import '../../core/match/match_queue.dart';
 import '../../core/model/query.dart';
@@ -326,84 +327,43 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
     // 累计各源失败原因（去重），用于「一首都没拿到」时判断是不是联网挂了。
     final Map<String, String> netErrors = <String, String>{};
 
-    try {
-      // 文件级并发取词：500 首串行要半小时以上，这里按 Net.fileConcurrency 压到几分钟
+    final List<LyricRow> limited = <LyricRow>[];
+
+    Future<void> pass(List<LyricRow> rows, {bool retryPass = false}) async {
       await Net.mapIndexed<LyricRow, void>(
-          _rows, Net.fileConcurrency(), control, (int i, LyricRow row) async {
+          rows, Net.fileConcurrency(), control, (int i, LyricRow row) async {
         if (control?.isCancelled() ?? false) return;
         await _waitIfPaused(control);
-        control?.report(i, total, row.file.name);
-        if (!TagIO.canWriteLyrics(row.file.ext())) {
-          row.status = '跳过：${row.file.ext()} 不支持内嵌歌词';
-          control?.report(i + 1, total, row.file.name);
-          if (mounted) setState(() {});
-          return;
-        }
-        // 上次已经查到过的：直接用，不再联网（省时间也省源的配额）
-        if (row.resumed && row.choice != null) {
-          found++;
-          control?.report(i + 1, total, row.file.name);
-          if (mounted) setState(() {});
-          return;
-        }
-        row.status = '搜索歌词…';
-        // 页面可能已经被返回键关掉：此时 setState 会因 State 已卸载而崩
-        if (mounted) setState(() {});
-        try {
-          final Tags tags = await Scanner.readTags(store, row.file);
-          // 读到的标签写回文件对象：预览要拿它显示「原歌词 → 新歌词」，
-          // 否则 cachedTags 一直是 null，旧值永远显示为空
-          // cacheMeta 会把封面/歌词标记一起重置，这里显式把原值带上
-          row.file.cacheMeta(tags,
-              cover: row.file.cachedHasCover,
-              lyrics: row.file.cachedHasLyrics ||
-                  tags.get(Tags.lyrics).trim().isNotEmpty,
-              durationMs: row.file.cachedDurationMs,
-              bitrateKbps: row.file.cachedBitrateKbps);
-          final Query q = LocalQuery.forFile(row.file, tags);
-          final lq = LocalQuery.lyric(q, album: tags.get('album'));
-          final LyricAggregateResult agg =
-              LyricsBatchPage.debugLyricFetcher != null
-                  ? await LyricsBatchPage.debugLyricFetcher!(lq)
-              : await Aggregator.lyricCandidates(lq);
-          netErrors.addAll(agg.errors);
-          // 保留全部候选：机器只按「像不像同一首歌」打分，同名不同版本
-          // （现场版 / remix / 翻唱）经常挨在一起，让用户自己挑更靠谱。
-          final List<LyricChoice> ranked = LyricPick.rank(q, agg.hits);
-          for (final LyricChoice c in ranked) {
-            c.simplify = _simplify;
-            c.bilingual = _bilingual;
-          }
-          final LyricChoice? best = ranked.isEmpty ? null : ranked.first;
-          row.candidates = ranked;
-          row.choice = best;
-          row.selected = best != null && !best.low;
-          row.status = best == null
-              ? '没有合格歌词'
-              : (best.low ? '低置信，默认不勾选' : '已选中');
-          if (best != null) {
-            found++;
-            // 记进度：这一首「查到什么、还没写」。下次进来可以直接接着写，
-            // 不用再查一遍（进程被杀、用户点停止都靠它续上）。
-            _queue?.put(
-              _keyOf(row.file),
-              row.file.size,
-              row.file.lastModified,
-              <String, String>{
-                'text': best.text,
-                'title': best.hit.title,
-                'artist': best.hit.artist,
-                'source': best.hit.source,
-                'score': '${best.score}',
-              },
-            );
-          }
-        } catch (e) {
-          row.status = '搜索失败：$e';
-        }
-        control?.report(i + 1, total, row.file.name);
+        control?.report(i, rows.length,
+            retryPass ? '重试：${row.file.name}' : row.file.name);
+        final bool ok = await _fetchOne(store, control, row, netErrors, limited);
+        if (ok) found++;
+        control?.report(i + 1, rows.length, row.file.name);
         if (mounted) setState(() {});
       });
+    }
+
+    try {
+      // 文件级并发取词：500 首串行要半小时以上，这里按 Net.fileConcurrency 压到几分钟
+      await pass(_rows);
+      // 被限流的：等冷却结束补跑这批。限流不是「没有歌词」，不写续跑队列，
+      // 也不该让用户以为这首歌真没词。
+      if (limited.isNotEmpty && !(control?.isCancelled() ?? false)) {
+        final int wait = Aggregator.lyricCooldownSecondsLeft();
+        if (wait > 0) {
+          control?.report(0, total,
+              '联网被限流，等 ${wait}s 后补跑 ${limited.length} 首');
+          await _sleepInterruptible(wait, control);
+        }
+        if (!(control?.isCancelled() ?? false)) {
+          final List<LyricRow> retry = List<LyricRow>.of(limited);
+          limited.clear();
+          for (final LyricRow r in retry) {
+            r.status = '等待重试';
+          }
+          await pass(retry, retryPass: true);
+        }
+      }
     } finally {
       TaskCenter.finish();
     }
@@ -415,16 +375,114 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
     });
     final int enabled = SourceRegistry.lyrics().length;
     final bool allDown = enabled > 0 && netErrors.length >= enabled;
+    final int stillLimited = limited.length;
     if (found == 0 && allDown) {
       // 所有启用的源都报错，才能说是网络问题；只有一家挂了别让用户去改代理
       final String why = netErrors.values.first;
       moSnack(context,
           '联网取词失败：$why。请检查网络连接或代理设置（设置 → 网络与并发）');
+    } else if (found == 0 && stillLimited > 0) {
+      moSnack(context,
+          '联网被限流，$stillLimited 首暂未取到；稍后再点一次「重新获取」即可');
     } else if (found == 0 && netErrors.isNotEmpty) {
       moSnack(context,
           '没有找到合格歌词（${netErrors.length}/$enabled 个源不可用，其余源没返回结果）');
+    } else if (stillLimited > 0) {
+      moSnack(context,
+          '找到 $found 首歌词（另有 $stillLimited 首被限流，稍后可再取），确认后再写入');
     } else {
       moSnack(context, '找到 $found 首歌词，确认后再写入');
+    }
+  }
+
+  /// 单首取词：查到候选写进 [row]，并记续跑队列。
+  ///
+  /// 返回 true 表示这首有可写歌词（续跑命中也算）。被限流（源在冷却）
+  /// 且没有结果时塞进 [throttledOut]，由调用方等冷却后补跑。
+  Future<bool> _fetchOne(
+    FileStore store,
+    TaskControl? control,
+    LyricRow row,
+    Map<String, String> netErrors,
+    List<LyricRow> throttledOut,
+  ) async {
+    if (!TagIO.canWriteLyrics(row.file.ext())) {
+      row.status = '跳过：${row.file.ext()} 不支持内嵌歌词';
+      return false;
+    }
+    // 上次已经查到过的：直接用，不再联网（省时间也省源的配额）
+    if (row.resumed && row.choice != null) return true;
+    row.status = '搜索歌词…';
+    // 页面可能已经被返回键关掉：此时 setState 会因 State 已卸载而崩
+    if (mounted) setState(() {});
+    try {
+      final Tags tags = await Scanner.readTags(store, row.file);
+      // 读到的标签写回文件对象：预览要拿它显示「原歌词 → 新歌词」，
+      // 否则 cachedTags 一直是 null，旧值永远显示为空
+      // cacheMeta 会把封面/歌词标记一起重置，这里显式把原值带上
+      row.file.cacheMeta(tags,
+          cover: row.file.cachedHasCover,
+          lyrics: row.file.cachedHasLyrics ||
+              tags.get(Tags.lyrics).trim().isNotEmpty,
+          durationMs: row.file.cachedDurationMs,
+          bitrateKbps: row.file.cachedBitrateKbps);
+      final Query q = LocalQuery.forFile(row.file, tags);
+      final lq = LocalQuery.lyric(q, album: tags.get('album'));
+      final LyricAggregateResult agg =
+          LyricsBatchPage.debugLyricFetcher != null
+              ? await LyricsBatchPage.debugLyricFetcher!(lq)
+              : await Aggregator.lyricCandidates(lq);
+      netErrors.addAll(agg.errors);
+      // 保留全部候选：机器只按「像不像同一首歌」打分，同名不同版本
+      // （现场版 / remix / 翻唱）经常挨在一起，让用户自己挑更靠谱。
+      final List<LyricChoice> ranked = LyricPick.rank(q, agg.hits);
+      for (final LyricChoice c in ranked) {
+        c.simplify = _simplify;
+        c.bilingual = _bilingual;
+      }
+      final LyricChoice? best = ranked.isEmpty ? null : ranked.first;
+      row.candidates = ranked;
+      row.choice = best;
+      row.selected = best != null && !best.low;
+      if (best == null) {
+        // 源在冷却时「没有结果」不可信：标成暂缓，冷却后补跑，别让用户
+        // 以为这首歌真的没词。
+        if (agg.throttled) {
+          row.status = '联网被限流，稍后自动补跑';
+          if (!throttledOut.contains(row)) throttledOut.add(row);
+          return false;
+        }
+        row.status = '没有合格歌词';
+        return false;
+      }
+      row.status = best.low ? '低置信，默认不勾选' : '已选中';
+      // 记进度：这一首「查到什么、还没写」。下次进来可以直接接着写，
+      // 不用再查一遍（进程被杀、用户点停止都靠它续上）。
+      _queue?.put(
+        _keyOf(row.file),
+        row.file.size,
+        row.file.lastModified,
+        <String, String>{
+          'text': best.text,
+          'title': best.hit.title,
+          'artist': best.hit.artist,
+          'source': best.hit.source,
+          'score': '${best.score}',
+        },
+      );
+      return true;
+    } catch (e) {
+      row.status = '搜索失败：$e';
+      return false;
+    }
+  }
+
+  /// 等 [seconds] 秒，每秒检查一次是否被停止；暂停时原地等。
+  Future<void> _sleepInterruptible(int seconds, TaskControl? control) async {
+    for (int i = 0; i < seconds; i++) {
+      if (control?.isCancelled() ?? false) return;
+      await _waitIfPaused(control);
+      await Future<void>.delayed(const Duration(seconds: 1));
     }
   }
 

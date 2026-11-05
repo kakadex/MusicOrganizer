@@ -1,4 +1,4 @@
-a38e409613c4916ffd82d3c298fd0bab5ff04507fe8acc4524ab1d6085e4d38c *MusicOrganizer-0.2.75-android-arm64-v8a.apk
-e6af2a290f8e1e42827fe02bce38aa54954ff7fb5d936de5984be09d54788bf3 *MusicOrganizer-0.2.75-android-armeabi-v7a.apk
-cbc9f914c1f51e2cc8ee9e7e1dfba911635e36995753947dbb5f5d271a22e590 *MusicOrganizer-0.2.75-android-x86_64.apk
-43e005792891b5fe64efc42b44e7790252512a34d995d73d88f98bf2b45b858d *MusicOrganizer-0.2.75-windows-x64.zip
+0cad058f4680d4ff147618f6d3d537aceea5fad50b1ec4b888d530d8cc6bc8a5 *MusicOrganizer-0.2.76-android-arm64-v8a.apk
+5e9351a83a80ebf0c30cf94a22df6188115a324964c84ae01485236aaa8b636c *MusicOrganizer-0.2.76-android-armeabi-v7a.apk
+49fd5c90675be516ce96e3b2bd03a5f83fbe17ffb17feecaf3bb815f9ab8ce4f *MusicOrganizer-0.2.76-android-x86_64.apk
+c650ad0f1f672c479e44e1e52d3b8dd22126d4f00c0b8708fa12cdb5032c5181 *MusicOrganizer-0.2.76-windows-x64.zip

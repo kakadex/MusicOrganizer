@@ -11,6 +11,7 @@ import '../../app/repo_changes.dart';
 import '../../app/ui_kit.dart';
 import '../../core/match/match_queue.dart';
 import '../../core/task/match_runner.dart';
+import '../../core/source/aggregator.dart';
 import '../../core/match/tag_plan.dart';
 import '../../core/model/tags.dart';
 import '../../core/model/task_control.dart';
@@ -449,7 +450,7 @@ class _LibraryPageState extends State<LibraryPage> {
       }
       runner.queue?.clearFinished();
     }
-    final List<FilePlan> plans;
+    List<FilePlan> plans;
     try {
       plans = await runner.match(
         files,
@@ -461,6 +462,40 @@ class _LibraryPageState extends State<LibraryPage> {
           control?.report(done, total, plan.file.name);
         },
       );
+      // 被限流的（源在冷却、瞬间返回空）：不写「无命中」记忆，等冷却结束
+      // 补跑这一批。不补的话用户看到的是「没有命中」，下一轮还会被记忆跳过。
+      if (runner.throttledIds.isNotEmpty && !(control?.isCancelled() ?? false)) {
+        final int wait = Aggregator.cooldownSecondsLeft();
+        if (wait > 0) {
+          control?.report(0, files.length,
+              '联网被限流，等 ${wait}s 后补跑 ${runner.throttledIds.length} 首');
+          await _sleepInterruptible(wait, control);
+        }
+        if (!(control?.isCancelled() ?? false)) {
+          final Set<String> ids = Set<String>.of(runner.throttledIds);
+          final List<VFile> retry = files
+              .where((VFile f) => ids.contains(f.docId))
+              .toList(growable: false);
+          if (retry.isNotEmpty) {
+            final List<FilePlan> again = await runner.match(
+              retry,
+              control: control,
+              modes: repo.tagModes(),
+              ignoreMemory: true,
+              onPlan: (int done, int total, FilePlan plan) {
+                partial.addAt(indexOf[plan.file.docId] ?? done, plan);
+                control?.report(done, total, '重试：${plan.file.name}');
+              },
+            );
+            final Map<String, FilePlan> fixed = <String, FilePlan>{
+              for (final FilePlan p in again) p.file.docId: p,
+            };
+            plans = plans
+                .map((FilePlan p) => fixed[p.file.docId] ?? p)
+                .toList(growable: false);
+          }
+        }
+      }
     } finally {
       TaskCenter.finish();
     }
@@ -1007,6 +1042,17 @@ class _LibraryPageState extends State<LibraryPage> {
         ),
       ],
     );
+  }
+
+  /// 等 [seconds] 秒，每秒检查一次是否被停止；暂停时原地等。
+  Future<void> _sleepInterruptible(int seconds, TaskControl? control) async {
+    for (int i = 0; i < seconds; i++) {
+      if (control?.isCancelled() ?? false) return;
+      while (control != null && control.isPaused() && !control.isCancelled()) {
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+      }
+      await Future<void>.delayed(const Duration(seconds: 1));
+    }
   }
 
   void _push(Widget page) {

@@ -224,6 +224,20 @@ abstract final class Http {
     }
   }
 
+  /// 这批地址对应的主机里，冷却剩余秒数的最大值（0 = 都没有在冷却）。
+  ///
+  /// 批量任务据此决定「补跑前要等多久」：被限流后的空结果不能当成
+  /// 「真的没有」，等冷却结束补跑一轮往往就能拿到。
+  static int maxCooldownSeconds(Iterable<String> urls) {
+    int max = 0;
+    for (final String url in urls) {
+      if (url.isEmpty) continue;
+      final int left = breaker.cooldownSecondsLeft(_hostOf(url));
+      if (left > max) max = left;
+    }
+    return max;
+  }
+
   static Future<Uint8List> _readAll(
       HttpClientResponse resp, int maxBytes) async {
     final BytesBuilder builder = BytesBuilder();

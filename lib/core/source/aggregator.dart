@@ -14,6 +14,7 @@ import '../model/lyric_hit.dart';
 import '../model/query.dart';
 import '../match/artist_rules.dart';
 import '../match/text_util.dart';
+import '../net/http_client.dart';
 import 'endpoints.dart';
 import 'mb_client.dart';
 import 'offer_score.dart';
@@ -35,7 +36,8 @@ class SourceResult {
 
 /// 聚合产出。
 class AggregateResult {
-  AggregateResult(this.candidates, this.errors, this.totalBeforeDedupe);
+  AggregateResult(this.candidates, this.errors, this.totalBeforeDedupe,
+      {this.throttled = false});
 
   final List<Candidate> candidates;
   /// 源 key → 错误原因。
@@ -43,16 +45,25 @@ class AggregateResult {
 
   /// 去重前的候选总数（日志里用来说明「合并掉多少」）。
   final int totalBeforeDedupe;
+
+  /// 查询期间有源处于熔断冷却（被限流 / 连续失败）。
+  ///
+  /// 冷却中的源会瞬间返回空、且**不抛异常**，看起来和「真的没有」一模一样。
+  /// 批量任务必须靠这个标记区分，否则会把「今天被限流」记成「这首歌没有」。
+  final bool throttled;
 }
 
 /// 歌词聚合产出：命中 + 每家失败原因（界面据此提示「是不是没联网」）。
 class LyricAggregateResult {
-  LyricAggregateResult(this.hits, this.errors);
+  LyricAggregateResult(this.hits, this.errors, {this.throttled = false});
 
   final List<LyricHit> hits;
 
   /// 源 key → 失败原因；空串条目不会出现。
   final Map<String, String> errors;
+
+  /// 查询期间有源处于熔断冷却（同 [AggregateResult.throttled]）。
+  final bool throttled;
 }
 
 /// 多源聚合（纯编排，不含网络细节）。
@@ -95,6 +106,10 @@ abstract final class Aggregator {
     if (sources.isEmpty) {
       return AggregateResult(<Candidate>[], <String, String>{}, 0);
     }
+
+    // 冷却中的源会瞬间返回空、不抛异常：先记下，结果里标出来，
+    // 调用方（批量流程）据此判断「是真的没有」还是「被掐了」。
+    bool throttled = _anyCoolingDown(sources.map((TagSource s) => s.key));
 
     final List<Future<SourceResult>> tasks = <Future<SourceResult>>[];
     for (final TagSource s in sources) {
@@ -178,7 +193,11 @@ abstract final class Aggregator {
     });
     final List<Candidate> out =
         merged.length > maxCandidates ? merged.sublist(0, maxCandidates) : merged;
-    return AggregateResult(out, errors, before);
+    // 查询过程中才被限流的也要算（开始时还正常、跑到一半被掐）。
+    if (!throttled) {
+      throttled = _anyCoolingDown(sources.map((TagSource s) => s.key));
+    }
+    return AggregateResult(out, errors, before, throttled: throttled);
   }
 
   /// 候选有没有可下载的封面地址（1 有 / 0 没有；纯排序用，不算业务判定）。
@@ -202,6 +221,8 @@ abstract final class Aggregator {
     final List<LyricSource> sources = SourceRegistry.lyrics(only: only)
         .where((LyricSource s) => Endpoints.enabled(s.key))
         .toList();
+    bool throttled =
+        _anyCoolingDown(sources.map((LyricSource s) => s.key));
     for (final LyricSource s in sources) {
       tasks.add(() async {
         try {
@@ -217,7 +238,48 @@ abstract final class Aggregator {
     for (final List<LyricHit> g in groups) {
       out.addAll(g);
     }
-    return LyricAggregateResult(out, errors);
+    if (!throttled) {
+      throttled = _anyCoolingDown(sources.map((LyricSource s) => s.key));
+    }
+    return LyricAggregateResult(out, errors, throttled: throttled);
+  }
+
+  /// 标签源当前冷却剩余秒数的最大值（0 = 都没在冷却）。
+  ///
+  /// 批量任务用它决定「被限流的那批要等多久再补跑」。
+  static int cooldownSecondsLeft() {
+    int max = 0;
+    for (final String key in SourceRank.order) {
+      if (!Endpoints.enabled(key) || SourceRegistry.get(key) == null) continue;
+      final int left = Http.maxCooldownSeconds(_endpointUrls(key));
+      if (left > max) max = left;
+    }
+    return max;
+  }
+
+  /// 歌词源当前冷却剩余秒数的最大值（0 = 都没在冷却）。
+  static int lyricCooldownSecondsLeft() {
+    int max = 0;
+    for (final LyricSource s in SourceRegistry.lyrics()) {
+      if (!Endpoints.enabled(s.key)) continue;
+      final int left = Http.maxCooldownSeconds(_endpointUrls(s.key));
+      if (left > max) max = left;
+    }
+    return max;
+  }
+
+  /// 这些源里有没有主机还在熔断冷却。
+  static bool _anyCoolingDown(Iterable<String> keys) {
+    for (final String key in keys) {
+      if (Http.maxCooldownSeconds(_endpointUrls(key)) > 0) return true;
+    }
+    return false;
+  }
+
+  /// 一个源注册的所有端点地址（熔断按主机算，所以要把端点都列出来）。
+  static Iterable<String> _endpointUrls(String key) {
+    final int n = Endpoints.find(key)?.count ?? 0;
+    return List<String>.generate(n, (int i) => Endpoints.urlOf(key, i));
   }
 
   static Future<SourceResult> _ask(TagSource s, Query q, JsonFetcher? fetch) async {

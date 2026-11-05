@@ -74,6 +74,12 @@ class MatchRunner {
   /// 本次匹配各源失败原因（源 key → 原因）；用于「一首都没命中」时判断是不是联网挂了。
   final Map<String, String> errors = <String, String>{};
 
+  /// 本轮因「源被限流」而没有结论的文件（docId）。
+  ///
+  /// 这类结果**不写「无命中」记忆**（否则下一轮会被永久跳过），调用方应等
+  /// 冷却结束后拿这批重新匹配一次。
+  final Set<String> throttledIds = <String>{};
+
   /// 一个批次共用一个 id，撤销时按整批回滚。
   String newBatchId() => 'match-${DateTime.now().millisecondsSinceEpoch}';
 
@@ -92,6 +98,7 @@ class MatchRunner {
     final int total = files.length;
     if (total == 0) return <FilePlan>[];
 
+    throttledIds.clear();
     int done = 0;
     final List<FilePlan?> slots = await Net.map<VFile, FilePlan>(
       files,
@@ -157,6 +164,7 @@ class MatchRunner {
     if (agg.errors.isNotEmpty) errors.addAll(agg.errors);
 
     Candidate? best = agg.candidates.isEmpty ? null : agg.candidates.first;
+    bool throttled = agg.throttled;
     String looseNote = '';
     bool loose = false;
     if (best == null) {
@@ -167,6 +175,7 @@ class MatchRunner {
       final AggregateResult alt =
           await Aggregator.tagCandidates(q, chinese: chinese, fetch: fetch, verify: false);
       if (alt.errors.isNotEmpty) errors.addAll(alt.errors);
+      throttled = throttled || alt.throttled;
       best = _looseBest(alt.candidates);
       if (best != null) {
         loose = true;
@@ -175,6 +184,13 @@ class MatchRunner {
     }
 
     if (best == null) {
+      // 有源在冷却时，「没有候选」可能只是被限流掐掉了：不能记成「无命中」，
+      // 否则下一批会永远跳过这首歌。交给调用方等冷却后补跑。
+      if (throttled) {
+        throttledIds.add(f.docId);
+        return TagPlan.buildFor(file: f, before: before, modes: modes, overwrite: overwrite)
+          ..note = '联网被限流，稍后可重试';
+      }
       if (memory != null) {
         memory!.record(f.docId, f.size, f.lastModified, BatchMemory.noHit);
       }
