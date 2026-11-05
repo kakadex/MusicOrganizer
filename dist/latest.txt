@@ -1,11 +1,11 @@
-version=0.2.76
-tag=v0.2.76
+version=0.2.77
+tag=v0.2.77
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.76/MusicOrganizer-0.2.76-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.77/MusicOrganizer-0.2.77-android-arm64-v8a.apk
 size=19937605
-sha256=0cad058f4680d4ff147618f6d3d537aceea5fad50b1ec4b888d530d8cc6bc8a5
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.76/MusicOrganizer-0.2.76-windows-x64.zip
-zip_size=12951414
-zip_sha256=c650ad0f1f672c479e44e1e52d3b8dd22126d4f00c0b8708fa12cdb5032c5181
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.76
-summary=批量补封面/标签/歌词：限流不再误判，冷却后自动补跑
+sha256=f064a52ed0bec3fcfa94df4c42b67a78921e2c13a1de6fe068765983dfd72cde
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.77/MusicOrganizer-0.2.77-windows-x64.zip
+zip_size=12955857
+zip_sha256=7e8af22cf6268ac5b50a8b3f0ba25125a3f1c969b586418c0858c8959e84a31f
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.77
+summary=专辑封面来源扩到4家+多家对比选图；标签预览标多家一致
