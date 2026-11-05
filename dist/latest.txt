@@ -1,11 +1,11 @@
-version=0.2.79
-tag=v0.2.79
+version=0.2.80
+tag=v0.2.80
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.79/MusicOrganizer-0.2.79-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.80/MusicOrganizer-0.2.80-android-arm64-v8a.apk
 size=19937689
-sha256=ab69b4a46ffffde0665f69c58c8ae13c5ff3a8e2aef556be1298af57609ebe2c
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.79/MusicOrganizer-0.2.79-windows-x64.zip
-zip_size=12956962
-zip_sha256=c01fbd635d4c1b31cc477e67ffe167742b95310d3179cd441bc4d90e21539fee
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.79
-summary=系统播放器试听：单曲识别边听边定字段
+sha256=b35abd1735096937e203dd2e2170d11e4efabcdea40350a04743553e7f5f6817
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.80/MusicOrganizer-0.2.80-windows-x64.zip
+zip_size=12957421
+zip_sha256=ab37a94b0e84213e2a97faca11ddf9bf2e3514d6ccaa7d3b5e4a5179aa456601
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.80
+summary=修复外部打开音频时闪退
