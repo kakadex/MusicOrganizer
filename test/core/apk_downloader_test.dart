@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -52,7 +51,6 @@ class _FakeServer {
     final String? range = req.headers.value(HttpHeaders.rangeHeader);
     rangeHeaders.add(range ?? '');
     rangeByPath[req.uri.path] = range ?? '';
-    print('HIT path= hits= range=');
     if (range != null && !ignoreRange) {
       final int from =
           int.tryParse(RegExp(r'bytes=(\d+)-').firstMatch(range)?.group(1) ?? '0') ?? 0;

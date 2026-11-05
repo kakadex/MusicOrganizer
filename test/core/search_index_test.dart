@@ -197,8 +197,53 @@ void main() {
   // 才算一次并缓存。这里守住三件事：①确实不预先算 ②按需算出来的结果
   // 与"每条都预先算"完全一致 ③字段变化后缓存正确失效。
   // ------------------------------------------------------------------
-  group('歌词归一化惰性计算', () {
-    final String longLyric = '我們說好的幸福呢 后来 眼淚 電話 時間\n' * 400;
+    test('脏检查：只变一个字段，其它字段的归一串结果仍正确', () {
+      // 0.2.71 给 renormalize 加了「字段没变就不重算」。
+      // 风险：脏检查写错会出现「字段变了但归一串还是旧的」——搜索就漏词了。
+      // 本用例锁住：改一个字段后，所有字段的归一串都必须正确。
+      final SearchIndex idx = SearchIndex();
+      final Entry e = audio('x', 'x.mp3');
+      e.applyTags(Tags()
+        ..put('title', '晴天')
+        ..put('artist', '周杰伦')
+        ..put('album', '叶惠美'), false);
+      idx.add(e);
+      expect(idx.search(SearchQuery.parse('晴天')), isNotEmpty);
+      expect(idx.search(SearchQuery.parse('周杰伦')), isNotEmpty);
+
+      // 只改标题
+      e.applyTags(Tags()
+        ..put('title', '七里香')
+        ..put('artist', '周杰伦')
+        ..put('album', '叶惠美'), false);
+      expect(idx.search(SearchQuery.parse('七里香')), isNotEmpty,
+          reason: '改过的字段必须重算');
+      expect(idx.search(SearchQuery.parse('晴天')), isEmpty,
+          reason: '旧标题必须失效');
+      expect(idx.search(SearchQuery.parse('周杰伦')), isNotEmpty,
+          reason: '没变的字段结果不能错');
+    });
+
+    test('脏检查：歌词变了必须失效缓存，没变则保留', () {
+      final SearchIndex idx = SearchIndex();
+      final Entry e = audio('y', 'y.mp3');
+      e.applyLyrics('天空一片蔚蓝');
+      idx.add(e);
+      expect(idx.search(SearchQuery.parse('蔚蓝')), isNotEmpty);
+
+      // 歌词没变：再搜一次仍命中（缓存被保留）
+      expect(idx.search(SearchQuery.parse('蔚蓝')), isNotEmpty);
+
+      // 歌词变了：旧词搜不到，新词搜到
+      e.applyLyrics('清水湾傍晚sunset');
+      expect(idx.search(SearchQuery.parse('蔚蓝')), isEmpty,
+          reason: '旧歌词必须失效');
+      expect(idx.search(SearchQuery.parse('sunset')), isNotEmpty,
+          reason: '新歌词必须能搜到');
+    });
+
+    group('歌词归一化惰性计算', () {
+      final String longLyric = '我們說好的幸福呢 后来 眼淚 電話 時間\n' * 400;
 
     Entry withLyrics(String docId, String title, String lyric) {
       final Entry e = audio(docId, '$docId.mp3');

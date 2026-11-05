@@ -70,6 +70,18 @@ class Entry {
   late String _nGenre;
   late String _nComment;
 
+  /// [renormalize] 是否已经跑过第一次（0.2.71 脏检查用）。
+  ///
+  /// 构造函数里首次调用时 `_n*` 还是 late 未初始化，必须全算；
+  /// 之后才能安全地做「字段没变就不重算」的比较。
+  bool _initialized = false;
+
+  /// 上次归一化时的歌词原文（0.2.71 脏检查用）。
+  ///
+  /// 歌词串是惰性计算的，必须知道「原文变没变」才能正确置空缓存——
+  /// 只比较归一串不行（缓存可能是 null）。
+  String _nLyricsSource = '';
+
   /// 歌词的归一串（**惰性计算**）。
   ///
   /// 为什么不像其它字段那样在 [renormalize] 里直接算：歌词是唯一的长文本
@@ -150,7 +162,38 @@ class Entry {
   /// 预计算归一串；任何字段变化后都要调一次。
   ///
   /// 歌词不在这里算，只把惰性缓存置空（见 [_nLyrics] 的说明）。
+  ///
+  /// 0.2.71：加脏检查。原来 10 个字段无条件全算，而 `norm()` 是 O(长度) 的——
+  /// 批量场景（`loadMeta` 读标签、批量写盘后逐首 `applyTags`）里，绝大多数歌
+  /// 的 `path` / `year` / `comment` 根本没变，却每次都重算。性能排查报告 §5.1
+  /// 的「替代方案」就是这条：改动小、风险低，先做它。
+  ///
+  /// 注意：脏检查**只对「已有归一串」的条目生效**。构造函数里首次调用时
+  /// `_n*` 还没初始化（late），必须全算；歌词缓存永远置空——它不是「变了才算」
+  /// 而是「任何字段变化都可能影响它」吗？不，歌词串只依赖 `lyrics` 字段，
+  /// 所以只有歌词真的变了才置空。
   void renormalize() {
+    final bool first = !_initialized;
+    if (!first) {
+      // 已初始化：只重算真正变化的字段
+      if (_nName != name) _nName = SearchQuery.norm(name);
+      if (_nPath != relPath) _nPath = SearchQuery.norm(relPath);
+      if (_nTitle != title) _nTitle = SearchQuery.norm(title);
+      if (_nArtist != artist) _nArtist = SearchQuery.norm(artist);
+      if (_nAlbumArtist != albumArtist) {
+        _nAlbumArtist = SearchQuery.norm(albumArtist);
+      }
+      if (_nAlbum != album) _nAlbum = SearchQuery.norm(album);
+      if (_nGenre != genre) _nGenre = SearchQuery.norm(genre);
+      if (_nComment != comment) _nComment = SearchQuery.norm(comment);
+      if (_nYear != year) _nYear = SearchQuery.norm(year);
+      if (_nLyricsSource != lyrics) {
+        _nLyricsSource = lyrics;
+        _nLyricsCache = null;
+      }
+      return;
+    }
+    // 首次：全算
     _nName = SearchQuery.norm(name);
     _nPath = SearchQuery.norm(relPath);
     _nTitle = SearchQuery.norm(title);
@@ -159,8 +202,10 @@ class Entry {
     _nAlbum = SearchQuery.norm(album);
     _nGenre = SearchQuery.norm(genre);
     _nComment = SearchQuery.norm(comment);
-    _nLyricsCache = null;
     _nYear = SearchQuery.norm(year);
+    _nLyricsSource = lyrics;
+    _nLyricsCache = null;
+    _initialized = true;
   }
 
   static String _clip(String text) =>

@@ -289,7 +289,7 @@ class _UpdateSheetState extends State<UpdateSheet> {
     }
     final RunningTask? task = TaskCenter.start('下载更新');
     if (task == null) return;
-    final TaskControl? ctl = task.control;
+    final TaskControl ctl = task.control;
     setState(() {
       _busy = true;
       _error = '';
@@ -310,7 +310,7 @@ class _UpdateSheetState extends State<UpdateSheet> {
         target: target,
         expectedSha256: r.sha256,
         expectedSize: r.apkSize,
-        cancel: () => ctl?.isCancelled() ?? false,
+        cancel: () => ctl.isCancelled(),
         onProgress: (ApkProgress p) {
           if (!mounted) return;
           // 只在百分比变化时重建界面（字节级刷新会每帧重绘）
