@@ -1005,16 +1005,6 @@ class _LibraryPageState extends State<LibraryPage> {
             _deleteSelected(files);
           },
         ),
-        MoTile(
-          title: '全选当前筛选结果',
-          icon: Icons.select_all,
-          onTap: () {
-            Navigator.of(context).pop();
-            setState(() => _selected
-              ..clear()
-              ..addAll(_shown.map((Entry e) => e.docId)));
-          },
-        ),
       ],
     );
   }
