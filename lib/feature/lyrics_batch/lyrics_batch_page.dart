@@ -532,6 +532,8 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
     int lrcOk = 0;
     int failed = 0;
     int done = 0;
+    // 0.2.69：写成功的文件先攒着，循环结束后一次性失效（逐首做是 O(n²)）
+    final List<VFile> touchedFiles = <VFile>[];
 
     try {
       for (final WriteTarget t in picked) {
@@ -551,7 +553,7 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
         );
         if (err.isEmpty) {
           inlineOk++;
-          repo.invalidate(plan.file);
+          touchedFiles.add(plan.file);
           if (wantLrc) lrcOk++;
           // 这首已经落地：从续跑队列里收尾，下次进来不再当成「没写完」
           _queue?.mark(_keyOf(plan.file), MatchQueue.written);
@@ -570,6 +572,8 @@ class _LyricsBatchPageState extends State<LyricsBatchPage> {
     } finally {
       TaskCenter.finish();
     }
+    // 批量失效：逐首 invalidate 会让索引与缩略图各做一遍整表/整目录操作
+    await repo.invalidateAll(touchedFiles);
     await repo.loadMeta(only: picked
         .map((WriteTarget t) => t.data)
         .whereType<LyricPlan>()

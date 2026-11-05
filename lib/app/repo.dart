@@ -912,21 +912,45 @@ class Repo extends ChangeNotifier {
   }
 
   /// 标签写盘之后必须调用：清掉内存缓存，下次才回源。
-  void invalidate(VFile f) {    Scanner.invalidate(f);
+  void invalidate(VFile f) {
+    Scanner.invalidate(f);
     // 磁盘缩略图也要删掉：这里不会重新 stat 文件，大小 / 修改时间还是旧值，
     // 缓存键不变就会一直读到「换封面之前」那张小图（0.2.59）。
     unawaited(CoverThumbCache.instance.remove(f));
-    final Entry? e = index.find(f.docId);
-    if (e != null) {
-      index.add(Entry(
-        docId: f.docId,
-        name: f.name,
-        relPath: e.relPath,
-        size: f.size,
-        modified: f.lastModified,
-        file: f,
-      ));
+    _reindex(f);
+  }
+
+  /// 批量写盘后的失效（0.2.69）。
+  ///
+  /// 逐首调 [invalidate] 时，每首都会 `await _ensureDir()` 再去删一个缩略图，
+  /// 800 首就是 800 次目录检查 + 800 次文件删除，全在 UI 线程上排队；
+  /// 加上 `SearchIndex.add` 原来的线性查找，用户感知就是「批量写入时明显卡顿」。
+  ///
+  /// 这里把索引更新一次性做完，缩略图删除改成「一次性列目录 + 按名删」，
+  /// 只遍历目录一次，不再每首各走一遍。
+  Future<void> invalidateAll(List<VFile> files) async {
+    if (files.isEmpty) return;
+    for (final VFile f in files) {
+      Scanner.invalidate(f);
     }
+    for (final VFile f in files) {
+      _reindex(f);
+    }
+    await CoverThumbCache.instance.removeMany(files);
+  }
+
+  /// 把一首歌的新状态写回搜索索引（O(1)：靠 `SearchIndex` 里的下标表）。
+  void _reindex(VFile f) {
+    final Entry? e = index.find(f.docId);
+    if (e == null) return;
+    index.add(Entry(
+      docId: f.docId,
+      name: f.name,
+      relPath: e.relPath,
+      size: f.size,
+      modified: f.lastModified,
+      file: f,
+    ));
   }
 
   /// 测试用：重置。

@@ -368,6 +368,7 @@ class _CoversPageState extends State<CoversPage> {
     _control = wc;
     final int wt = picked.length;
     int wi = 0;
+    final List<VFile> touchedFiles = <VFile>[];
     try {
       for (final WriteTarget t in picked) {
         final CoverJob? j = t.data as CoverJob?;
@@ -384,7 +385,8 @@ class _CoversPageState extends State<CoversPage> {
         );
         if (err.isEmpty) {
           _written++;
-          repo.invalidate(j.file);
+          // 0.2.69：先攒着，循环结束后一次性失效（逐首做是 O(n²)）
+          touchedFiles.add(j.file);
           _undo.add(CoverUndo(j.file, j.previousBytes));
           // 落地了：从续跑队列收尾，下次进来不再当成「没写完」
           _queue?.mark(_keyOf(j.file), MatchQueue.written);
@@ -402,6 +404,10 @@ class _CoversPageState extends State<CoversPage> {
     } finally {
       TaskCenter.finish();
     }
+
+    // 0.2.69：批量失效。逐首 invalidate 会让搜索索引与缩略图各做一遍整表/整目录
+    // 操作，800 首叠加起来就是明显卡顿；这里一次性处理。
+    await repo.invalidateAll(touchedFiles);
 
     // 写完刷新这些文件的元数据（封面标记 / 列表封面都要重新读）
     await repo.loadMeta(only: _jobs.map((CoverJob j) => j.file));

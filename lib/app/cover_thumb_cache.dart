@@ -164,6 +164,29 @@ class CoverThumbCache {
     }
   }
 
+  /// 批量删缩略图（0.2.69）。
+  ///
+  /// 逐首 [remove] 时每首都要 `_ensureDir()` 再去删一个文件；800 首就是
+  /// 800 次目录检查。这里只进一次目录，按文件名集合逐个删。
+  ///
+  /// 找不到的（本来就没缓存过）直接跳过，不算错误。
+  Future<void> removeMany(List<VFile> files) async {
+    if (files.isEmpty) return;
+    final Directory? dir = await _ensureDir();
+    if (dir == null) return;
+    final Set<String> names = <String>{
+      for (final VFile f in files)
+        ThumbPolicy.fileName(ThumbPolicy.keyOf(f)),
+    };
+    for (final String name in names) {
+      try {
+        await File('${dir.path}${Platform.pathSeparator}$name').delete();
+      } catch (_) {
+        // 本来就没有
+      }
+    }
+  }
+
   /// 清空整个缩略图目录（设置里的「清理缓存」或换曲库时用）。
   Future<void> clear() async {
     final Directory? dir = await _ensureDir();

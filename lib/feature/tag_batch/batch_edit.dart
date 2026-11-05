@@ -11,6 +11,8 @@ import '../../core/match/batch_edit.dart';
 import '../../core/model/tags.dart';
 import '../../core/model/vfile.dart';
 import '../../core/tag/tag_io.dart';
+import '../../core/model/task_control.dart';
+import '../../core/task/task_center.dart';
 import '../../core/tx/write_preview.dart';
 import '../common/write_confirm_sheet.dart';
 
@@ -192,24 +194,43 @@ Future<void> runBatchEdit(BuildContext context, List<VFile> files) async {
   // 整批事务：批内每首写之前留一份备份，中途失败可以「要么全成、要么全退」。
   // 单文件事务只保证一首不出半成品，200 首里第 137 首失败时前 136 首已经落盘了。
   tx.beginBatch(batchId);
+
+  // 0.2.69：挂任务中心。原来这个循环既没挂任务也没报进度，800 首写下去
+  // 界面完全没反馈，看起来就是「点了没反应、卡死了」。
+  final RunningTask? task = TaskCenter.start('批量写入标签');
+  final TaskControl? taskCtl = task?.control;
   int done = 0;
   int failed = 0;
+  bool stopped = false;
   final List<VFile> touched = <VFile>[];
-  for (final WriteTarget t in picked) {
-    final VFile? f = t.file as VFile?;
-    if (f == null) continue;
-    // 只写用户勾中的字段（音轨号用的是原始顺序算出来的值，取消勾选不影响其余文件）
-    final Map<String, String> updates = t.toUpdates();
-    if (updates.isEmpty) continue;
-    final String err = await tx.apply(f, updates, batchId: batchId);
-    if (err.isEmpty) {
-      done++;
-      repo.invalidate(f);
-      touched.add(f);
-    } else {
-      failed++;
+  try {
+    for (int i = 0; i < picked.length; i++) {
+      if (taskCtl?.isCancelled() ?? false) {
+        stopped = true;
+        await repo.cancelPendingSaf(batchId);
+        break;
+      }
+      final WriteTarget t = picked[i];
+      final VFile? f = t.file as VFile?;
+      if (f == null) continue;
+      taskCtl?.report(i, picked.length, '正在写入 ${t.name}');
+      // 只写用户勾中的字段（音轨号用的是原始顺序算出来的值，取消勾选不影响其余文件）
+      final Map<String, String> updates = t.toUpdates();
+      if (updates.isEmpty) continue;
+      final String err = await tx.apply(f, updates, batchId: batchId);
+      if (err.isEmpty) {
+        done++;
+        touched.add(f);
+      } else {
+        failed++;
+      }
     }
+  } finally {
+    TaskCenter.finish();
   }
+  // 0.2.69：批量失效。逐首 invalidate 会让索引与缩略图各做一遍整表/整目录操作，
+  // 800 首叠加起来就是明显卡顿；这里一次性处理。
+  await repo.invalidateAll(touched);
   // 退回时也要走同一个补读出口：退回把标签还原成写之前的字节，但 invalidate
   // 已经把缓存清了，不补读列表里这些歌的标题与封面又会变空。
   bool rolledBack = false;
@@ -258,7 +279,8 @@ Future<void> runBatchEdit(BuildContext context, List<VFile> files) async {
         '已退回 $rolledBackOk 首${rolledBackBad > 0 ? '，退回失败 $rolledBackBad 首' : ''}');
     return;
   }
-  moSnack(context, '已写入 $done 首${failed > 0 ? '，失败 $failed 首' : ''}');
+  moSnack(context,
+      '${stopped ? '已停止，' : ''}已写入 $done 首${failed > 0 ? '，失败 $failed 首' : ''}');
 }
 
 String _label(String key) {

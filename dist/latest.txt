@@ -1,11 +1,11 @@
-version=0.2.68
-tag=v0.2.68
+version=0.2.69
+tag=v0.2.69
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.68/MusicOrganizer-0.2.68-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.69/MusicOrganizer-0.2.69-android-arm64-v8a.apk
 size=19806081
-sha256=84f4513c3a136fee2bc2ebd18a3335b6f2bb2d8189764f6547139b0607047912
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.68/MusicOrganizer-0.2.68-windows-x64.zip
-zip_size=12657873
-zip_sha256=dd261d7ff10b74dc869d975fce59519234cfc77fb8a843f1b4e4176d94218529
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.68
-summary=滑动时封面出现更均匀，停止任务后不再空转
+sha256=829372d5a1aca1f7c0a3e14856755ede99bda07e1e13b30952c118d491446bb3
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.69/MusicOrganizer-0.2.69-windows-x64.zip
+zip_size=12660988
+zip_sha256=9562b971fdc98c382363a64b496167cf4d8fa64b522ddc6d063cb4c57d2bfa6b
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.69
+summary=批量改标签有进度了，可暂停可停止

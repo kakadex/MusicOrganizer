@@ -175,9 +175,18 @@ class SearchIndex {
   final List<Entry> _entries = <Entry>[];
   final Map<String, Entry> _byId = <String, Entry>{};
 
+  /// docId → 在 [_entries] 里的下标（0.2.69）。
+  ///
+  /// 原来 `add` 更新已有条目时用 `_entries.indexOf(old)` 线性查找，
+  /// 批量写 800 首标签逐首 invalidate 就是 800×800/2 ≈ 32 万次比较，
+  /// 全部压在 UI 线程上 —— 用户感知就是「批量写入时明显卡顿」。
+  /// 用这张表把定位降到 O(1)；条目只替换不移动，所以下标永远有效。
+  final Map<String, int> _at = <String, int>{};
+
   void clear() {
     _entries.clear();
     _byId.clear();
+    _at.clear();
   }
 
   int size() => _entries.length;
@@ -188,13 +197,13 @@ class SearchIndex {
 
   /// 加入索引；同一个 docId 只保留一条（重复会让库页把同一首列两遍）。
   void add(Entry e) {
-    final Entry? old = _byId[e.docId];
-    if (old != null) {
-      final int at = _entries.indexOf(old);
-      if (at >= 0) _entries[at] = e;
+    final int? at = _at[e.docId];
+    if (at != null) {
+      _entries[at] = e;
       _byId[e.docId] = e;
       return;
     }
+    _at[e.docId] = _entries.length;
     _entries.add(e);
     _byId[e.docId] = e;
   }

@@ -87,6 +87,39 @@ void main() {
       expect(idx.find('b'), isNull);
     });
 
+    test('反复更新同一条不会改变顺序，也不会丢别的条目', () {
+      // 0.2.69 把「按 docId 定位下标」从线性查找改成下标表。
+      // 下标表如果在替换时算错，会出现「新条目挤掉别人」或「顺序错乱」。
+      final SearchIndex idx = SearchIndex();
+      idx.add(audio('a', '01.mp3'));
+      idx.add(audio('b', '02.mp3'));
+      idx.add(audio('c', '03.mp3'));
+      for (int i = 0; i < 5; i++) {
+        idx.add(audio('b', '02.mp3'));
+      }
+      expect(idx.size(), 3);
+      expect(idx.all().map((Entry e) => e.docId).toList(),
+          <String>['a', 'b', 'c']);
+    });
+
+    test('800 首逐条更新：不丢条目、顺序不变', () {
+      // 0.2.69 把「按 docId 定位下标」从线性查找改成下标表。实测这个改动
+      // 对速度几乎没影响（800 条 × 5 轮：4.8ms → 11ms，新实现还要多构造
+      // Entry），所以这里**不测时间**，只锁住语义：更新不能挤掉别人、
+      // 不能打乱顺序。卡顿的真因是每首歌的整文件跨进程读写，不是这里。
+      final SearchIndex idx = SearchIndex();
+      for (int i = 0; i < 800; i++) {
+        idx.add(audio('id$i', '$i.mp3'));
+      }
+      for (int i = 0; i < 800; i++) {
+        idx.add(audio('id$i', '$i.mp3'));
+      }
+      expect(idx.size(), 800);
+      expect(idx.all().first.docId, 'id0');
+      expect(idx.all().last.docId, 'id799');
+      expect(idx.find('id400'), isNotNull);
+    });
+
     test('空查询返回全部且保持插入顺序', () {
       final SearchIndex idx = SearchIndex();
       idx.add(audio('b', '02.mp3'));
