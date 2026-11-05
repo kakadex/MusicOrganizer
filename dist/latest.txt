@@ -1,11 +1,11 @@
-version=0.2.78
-tag=v0.2.78
+version=0.2.79
+tag=v0.2.79
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.78/MusicOrganizer-0.2.78-android-arm64-v8a.apk
-size=19937641
-sha256=36165f88463d3c0bc30f2c1c553ddc557c56d6430b6a093f2ad4c3a44cde7dd8
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.78/MusicOrganizer-0.2.78-windows-x64.zip
-zip_size=12956199
-zip_sha256=32fbcc4cb65a07c646c50209695848f8bfb5087769b4dcf4618bcd28d739d0fe
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.78
-summary=批量任务后台更可靠：息屏不停、进度通知真正显示
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.79/MusicOrganizer-0.2.79-android-arm64-v8a.apk
+size=19937689
+sha256=ab69b4a46ffffde0665f69c58c8ae13c5ff3a8e2aef556be1298af57609ebe2c
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.79/MusicOrganizer-0.2.79-windows-x64.zip
+zip_size=12956962
+zip_sha256=c01fbd635d4c1b31cc477e67ffe167742b95310d3179cd441bc4d90e21539fee
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.79
+summary=系统播放器试听：单曲识别边听边定字段

@@ -1170,6 +1170,20 @@ class _LibraryPageState extends State<LibraryPage> {
             const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
+              child: MoButton('播放（系统播放器）', primary: false,
+                  icon: Icons.play_arrow_outlined,
+                  onPressed: () async {
+                    final VFile? f = e.file;
+                    final store = Repo.instance.store;
+                    if (f == null || store == null) return;
+                    Navigator.of(fctx).pop();
+                    final String? err = await store.openWithPlayer(f);
+                    if (err != null && mounted) moSnack(context, err);
+                  }),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
               child: MoButton('归类到歌手目录', primary: false,
                   icon: Icons.drive_file_move_outline,
                   onPressed: () async {

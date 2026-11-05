@@ -325,6 +325,14 @@ class MainActivity : FlutterActivity() {
                 // 安卓 13+ 通知权限必须运行时申请：只在清单里声明，通知栏永远不显示
                 // 任务进度通知，用户切后台也看不到「匹配到第几首」。
                 "requestNotificationPermission" -> requestNotificationPermission(result)
+                // 用系统播放器打开一首歌（单曲试听）。URI 必须来自 SAF 已授权的
+                // 目录树，临时读权限用 FLAG_GRANT_READ 挂在 intent 上。
+                "openWithPlayer" -> {
+                    val treeUri = call.argument<String>("treeUri") ?: ""
+                    val docId = call.argument<String>("docId") ?: ""
+                    val mime = call.argument<String>("mime") ?: "audio/*"
+                    result.success(openWithPlayer(treeUri, docId, mime))
+                }
                 // 给 Dart 侧一个可查的前台服务状态，任务结束后不必靠猜
                 "serviceState" -> result.success(TaskForegroundService.state())
                 else -> result.notImplemented()
@@ -443,10 +451,37 @@ class MainActivity : FlutterActivity() {
      *
      * 安卓 13+ 要 READ_MEDIA_AUDIO，更早的版本要 READ_EXTERNAL_STORAGE。
      */
+    /**
+     * 用系统播放器打开一首歌。返回 null=成功，否则为失败原因（给 Dart 侧提示用）。
+     *
+     * 校验：docId 必须经 [SafPlugin] 构建出合法的 DocumentsContract URI（也就是
+     * 必须落在已授权目录树里），拒绝任意传入的字符串 URI 被外部拉起。
+     */
+    private fun openWithPlayer(treeUri: String, docId: String, mime: String): String? {
+        return try {
+            val uri = safPlugin.documentUriFor(treeUri, docId)
+                ?: return "无效的文件位置"
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, mime.ifBlank { "audio/*" })
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            runCatching { startActivity(intent) }
+                .onFailure {
+                    Log.d("MO", "openWithPlayer failed: ${it.message}")
+                }
+                .exceptionOrNull()?.let { e ->
+                    return if (e is android.content.ActivityNotFoundException) "没有可播放的应用"
+                    else "打不开：${e.javaClass.simpleName}"
+                }
+            null
+        } catch (e: Exception) {
+            "打不开：${e.message ?: e.javaClass.simpleName}"
+        }
+    }
+
     /// 安卓 13+ 通知权限运行时申请。13 以下清单声明即生效，直接返回 true。
     /// 用户拒绝过也不纠缠：返回 false，Dart 侧任务照跑，只是没通知。
-    private fun requestNotificationPermission(result: MethodChannel.Result) {
-        if (android.os.Build.VERSION.SDK_INT < 33) {
+    private fun requestNotificationPermission(result: MethodChannel.Result) {        if (android.os.Build.VERSION.SDK_INT < 33) {
             result.success(true)
             return
         }

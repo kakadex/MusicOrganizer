@@ -150,6 +150,9 @@ class _FakeStore implements FileStore {
   @override
   Future<void> cancelPending(String token) async {}
 
+  @override
+  Future<String?> openWithPlayer(VFile f) async => null;
+
   static String _dirOf(String id) {
     final int slash = id.lastIndexOf('/');
     return slash <= 0 ? id : id.substring(0, slash);

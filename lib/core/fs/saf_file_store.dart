@@ -130,6 +130,13 @@ class SafFileStore implements FileStore {
   @override
   Uri documentUri(String id) => Uri.parse('saf:$id');
 
+  /// 用系统播放器打开一首歌；返回 null=成功，否则为失败原因。
+  @override
+  Future<String?> openWithPlayer(VFile f) async {
+    final TreeRef t = _treeFor(f.docId);
+    return await _channel.openWithPlayer(t.treeUri, f.docId, f.mime);
+  }
+
   @override
   Future<Uint8List> headBytes(VFile f, int maxBytes) async {
     final TreeRef t = _treeFor(f.docId);

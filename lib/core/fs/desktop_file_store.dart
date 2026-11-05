@@ -10,6 +10,7 @@
 /// 配置问题，不在应用层做递归解析。
 library;
 
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -113,6 +114,19 @@ class DesktopFileStore implements FileStore {
 
   @override
   Uri documentUri(String id) => Uri.file(id);
+
+  /// 用系统默认播放器打开一首歌（Windows：shell start）。
+  /// 返回 null=成功，否则为失败原因。
+  @override
+  Future<String?> openWithPlayer(VFile f) async {
+    _assertWithinRoots(f.docId);
+    final ProcessResult r = await Process.run(
+        'cmd', <String>['/c', 'start', '', f.docId],
+        stdoutEncoding: utf8, stderrEncoding: utf8);
+    if (r.exitCode == 0) return null;
+    final String err = '${r.stderr}'.trim();
+    return err.isEmpty ? '打不开（退出码 ${r.exitCode}）' : '打不开：$err';
+  }
 
   @override
   Future<Uint8List> headBytes(VFile f, int maxBytes) async {

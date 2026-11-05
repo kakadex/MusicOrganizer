@@ -20,6 +20,9 @@ class MemStore implements FileStore {
   @override
   Future<void> cancelPending(String token) async {}
 
+  @override
+  Future<String?> openWithPlayer(VFile f) async => null;
+
   /// 新建目录次数（复用已有目录不应增加）。
   int createdDirs = 0;
 

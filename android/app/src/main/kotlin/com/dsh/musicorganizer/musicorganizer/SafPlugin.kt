@@ -334,6 +334,15 @@ class SafPlugin(private val resolver: ContentResolver) {
     private fun documentUri(treeUri: String, docId: String): Uri =
         DocumentsContract.buildDocumentUriUsingTree(Uri.parse(treeUri), docId)
 
+    /// 供宿主层（openWithPlayer）构建文档 URI；参数不合法返回 null。
+    fun documentUriFor(treeUri: String, docId: String): Uri? =
+        try {
+            if (treeUri.isBlank() || docId.isBlank()) null
+            else documentUri(treeUri, docId)
+        } catch (_: Exception) {
+            null
+        }
+
     private fun queryOne(uri: Uri, parentId: String?): Map<String, Any>? {
         resolver.query(uri, PROJECTION, null, null, null)?.use { cursor ->
             if (cursor.moveToFirst()) {

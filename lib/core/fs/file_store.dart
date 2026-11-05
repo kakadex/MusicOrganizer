@@ -54,6 +54,14 @@ abstract class FileStore {
   /// 文档的 content uri（安卓）；桌面为 file uri。
   Uri documentUri(String id);
 
+  /// 用系统播放器打开一首歌（单曲试听）。
+  ///
+  /// 返回 null = 成功拉起；否则为失败原因文案。桌面用系统默认播放器打开，
+  /// 安卓用 ACTION_VIEW + FLAG_GRANT_READ 拉起系统播放器（URI 必须来自
+  /// 已授权目录树，由平台实现校验）。
+  Future<String?> openWithPlayer(VFile f) async =>
+      '当前平台不支持播放';
+
   /// 读文件头 [maxBytes] 字节。
   Future<Uint8List> headBytes(VFile f, int maxBytes);
 

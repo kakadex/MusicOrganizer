@@ -22,6 +22,9 @@ class MemoryFileStore implements FileStore {
   @override
   Future<void> cancelPending(String token) async {}
 
+  @override
+  Future<String?> openWithPlayer(VFile f) async => null;
+
   /// 每次列目录都算一次 IO，用来验证缓存是否真的命中。
   int headCalls = 0;
 

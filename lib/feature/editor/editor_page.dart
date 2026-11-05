@@ -304,9 +304,28 @@ class _EditorPageState extends State<EditorPage> {
       title: '在线匹配',
       subtitle: '多源查候选，只填你勾中的字段',
       children: <Widget>[
-        MoButton('在线匹配', primary: false, onPressed: _runOnlineMatch),
+        Row(children: <Widget>[
+          Expanded(
+            child: MoButton('在线匹配', primary: false, onPressed: _runOnlineMatch),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: MoButton('播放', primary: false, onPressed: _playWithSystem),
+          ),
+        ]),
       ],
     );
+  }
+
+  /// 用系统播放器试听当前这首：手动识别时先听一听再定字段。
+  Future<void> _playWithSystem() async {
+    final store = Repo.instance.store;
+    if (store == null) {
+      moSnack(context, '还没有准备好文件访问');
+      return;
+    }
+    final String? err = await store.openWithPlayer(widget.file);
+    if (err != null && mounted) moSnack(context, err);
   }
 
   Future<void> _runOnlineMatch() async {

@@ -329,4 +329,17 @@ class SafChannel {
       // 媒体库刷新失败不影响主流程
     }
   }
+
+  /// 用系统播放器打开一首歌（单曲试听）。
+  ///
+  /// 返回 null = 成功拉起；否则为失败原因（「没有可播放的应用」等），
+  /// 由调用方展示给用户。桌面端不会走到这里（入口在 UI 层分叉）。
+  Future<String?> openWithPlayer(String treeUri, String docId, String mime) async {
+    try {
+      return await safChannel.invokeMethod<String>('openWithPlayer',
+          <String, Object?>{'treeUri': treeUri, 'docId': docId, 'mime': mime});
+    } catch (e) {
+      return '打不开：$e';
+    }
+  }
 }
