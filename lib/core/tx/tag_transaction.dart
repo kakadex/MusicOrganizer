@@ -245,6 +245,9 @@ class TagTransaction {
     };
 
     final bool touchLrc = lrcText != null || removeLrc;
+    // 写入前先记下「原来有没有封面」：成功后要用它填缓存（cover == null 时
+    // 表示这次没动封面，沿用旧值）。必须在 clearMeta 之前取。
+    final bool hadCover = f.cachedHasCover;
 
     File? tmp;
     File? backup;
@@ -399,6 +402,17 @@ class TagTransaction {
       }
 
       f.clearMeta();
+      // 0.2.70：写入后我们已经拿到了**新标签的解析结果**（上面的 verify）和
+      // 封面是否存在，直接把缓存填上，调用方就不必再把整份文件读一遍来补元数据。
+      //
+      // 为什么值得做：批量写 800 首时，调用方写完后会 loadMeta(only: touched)
+      // ——那是 800 次额外的跨进程整文件读取，占总耗时相当可观，而这份信息
+      // 明明就在手里。cover 为 null 表示这次没动封面，沿用写入前记录的 hadCover。
+      f.cacheMeta(
+        verify,
+        cover: cover == null ? hadCover : cover.isNotEmpty,
+        lyrics: verify.get(Tags.lyrics).trim().isNotEmpty,
+      );
       await onRefresh?.call(f);
       batchItem?.entryId = entryId;
       return '';

@@ -169,6 +169,39 @@ void main() {
         reason: '读两次就是批量删除慢的根因，必须只读一次');
   });
 
+  test('写入成功后缓存已填好，调用方不必再读一遍文件', () async {
+    // 0.2.70：批量写 800 首时，调用方写完后会 loadMeta(only: touched)，
+    // 而 loadMeta 只处理 metaCached()==false 的文件。以前 apply 结束会
+    // clearMeta()，于是这 800 首全被重新读一遍（每首一次跨进程整文件读）。
+    // 现在写入后直接用已解析出的新标签填缓存，这段重读就省掉了。
+    final _CountingStore counting = _CountingStore();
+    counting.addRoot(dir.path);
+    final TagTransaction t =
+        TagTransaction(store: counting, journal: journal, tempDir: dir);
+    final File f = mp3('cached.mp3');
+    final VFile v = (await counting.stat(f.path))!;
+
+    expect(await t.apply(v, <String, String>{'title': '新标题', 'artist': '新歌手'}), '');
+    expect(v.metaCached(), isTrue, reason: '写盘后应该已经有元数据缓存');
+    expect(v.cachedTags!.get('title'), '新标题');
+    expect(v.cachedTags!.get('artist'), '新歌手');
+  });
+
+  test('cover 为 null 时沿用写入前的封面标记', () async {
+    // 只改标签不动封面时，缓存里的「有没有封面」不能被误清成 false，
+    // 否则列表封面会消失、体检页会误报「缺封面」。
+    final _CountingStore counting = _CountingStore();
+    counting.addRoot(dir.path);
+    final TagTransaction t =
+        TagTransaction(store: counting, journal: journal, tempDir: dir);
+    final File f = mp3('coverkeep.mp3');
+    final VFile v = (await counting.stat(f.path))!;
+    v.cacheMeta(Tags()..put('title', '旧的'), cover: true);
+
+    expect(await t.apply(v, <String, String>{'title': '新的'}), '');
+    expect(v.cachedHasCover, isTrue, reason: '没动封面就必须保留原封面标记');
+  });
+
   test('批量删除：传入已定位的 .lrc 后不再逐首探测目录', () async {
     // 计划阶段已经用 mapSidecar 列过一次目录了；写盘阶段再 locate 就是
     // 每首多两次 stat + 列目录（读旧内容一次、删除一次）。

@@ -8,6 +8,8 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
+import androidx.core.content.FileProvider
+import java.io.File
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -154,6 +156,16 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 "takeInitialIntent" -> result.success(initialFileUri)
+                // 应用内更新：返回下载目录的绝对路径（Android 15 起不能写死外部路径）
+                "updateDir" -> {
+                    result.success(File(cacheDir, "updates").absolutePath)
+                }
+                // 拉起系统安装器。路径必须是上面 updateDir 返回的目录里的文件，
+                // 通过 FileProvider 授权读权限——Android 8+ 不允许直接给 file://
+                "installApk" -> {
+                    val path = call.argument<String>("path") ?: ""
+                    result.success(installApkFromUpdateDir(path))
+                }
                 "exportText" -> {
                     // 让用户自己挑保存位置（下载 / 文档 / 网盘），返回 true=已保存
                     pendingExportText = call.argument<String>("text") ?: ""
@@ -522,8 +534,46 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
-        // 已经排队的任务让它跑完（结果发不出去由上面 runCatching 兜住），
+    /**
+     * 拉起系统安装器安装下载好的 APK（0.2.70）。
+     *
+     * 三道必要措施，缺一不可：
+     * 1. **只允许安装 [updateDir] 里的文件**——Dart 侧传来的是绝对路径，
+     *    若不加校验，等于开放了「安装任意路径 APK」的能力。
+     * 2. **FileProvider 授权**——Android 8+ 禁止 `file://` 直传，
+     *    必须用 content:// + FLAG_GRANT_READ_URI_PERMISSION，
+     *    且路径必须落在 file_paths.xml 声明的范围内，否则安装器打不开。
+     * 3. **FLAG_ACTIVITY_NEW_TASK**——从非 Activity 上下文调起需要它。
+     *
+     * 返回 true 表示已拉起安装界面；false 表示文件不存在或系统拒绝。
+     */
+    private fun installApkFromUpdateDir(path: String): Boolean {
+        if (path.isEmpty()) return false
+        val allowedDir = File(cacheDir, "updates").canonicalFile
+        val apk = runCatching { File(path).canonicalFile }.getOrNull() ?: return false
+        if (!apk.exists() || !apk.isFile) return false
+        // 必须真的在下载目录里（防止 ../ 穿越到别处）
+        if (!apk.path.startsWith(allowedDir.path + File.separator)) return false
+        return try {
+            val uri = FileProvider.getUriForFile(
+                this,
+                "$packageName.updates",
+                apk,
+            )
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "拉起安装器失败：${e.message}")
+            false
+        }
+    }
+
+    override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {        // 已经排队的任务让它跑完（结果发不出去由上面 runCatching 兜住），
         // 只关入口不再接收新调用。
         safIo.shutdown()
         safIoUi.shutdown()

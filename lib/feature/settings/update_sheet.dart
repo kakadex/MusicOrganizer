@@ -9,10 +9,13 @@ import '../../core/log/log.dart';
 import '../../core/net/http_client.dart';
 import '../../core/source/endpoints.dart';
 import '../../core/task/task_center.dart';
+import '../../core/model/task_control.dart';
+import '../../core/update/apk_downloader.dart';
 import '../../core/update/app_update.dart';
 import '../../core/update/desktop_updater.dart';
 import '../../core/update/update_check.dart';
 import '../../core/version.dart';
+import '../../platform/host_channel.dart';
 
 /// 检查更新面板：Gitee 清单 → GitHub 清单 → GitHub Release 接口，任一成功即用。
 ///
@@ -165,11 +168,15 @@ class _UpdateSheetState extends State<UpdateSheet> {
               children: <Widget>[
                 Expanded(
                   child: MoButton(
-                      _canSelfUpdate ? '下载并更新' : '去下载',
+                      _canSelfUpdate
+                          ? '下载并更新'
+                          : (_canApkInstall ? '下载并安装' : '去下载'),
                       icon: Icons.download,
                       onPressed: _canSelfUpdate
                           ? () => _updateNow(r)
-                          : () => _open(_downloadUrl(r))),
+                          : (_canApkInstall
+                              ? () => _installApk(r)
+                              : () => _open(_downloadUrl(r)))),
                 ),
                 const SizedBox(width: 10),
                 MoButton('发布页',
@@ -259,6 +266,107 @@ class _UpdateSheetState extends State<UpdateSheet> {
 
   /// 桌面端能不能就地更新（有 zip、且是桌面平台）。
   bool get _canSelfUpdate => DesktopUpdater.supported && (_release?.hasZip ?? false);
+
+  /// 安卓端能不能应用内下载安装（有 apk 直链）。
+  ///
+  /// 0.2.70 新增：以前安卓只能跳浏览器，用户要自己去通知栏找安装包。
+  bool get _canApkInstall => !DesktopUpdater.supported && (_release?.hasApk ?? false);
+
+  /// 安卓端「下载 → 校验 → 拉起系统安装器」。
+  ///
+  /// 断点续传与「该源不支持续传时进度归零」的策略都在 [ApkDownloader] 里，
+  /// 这里只负责：找目录、驱动进度、把结果翻译成人话。
+  Future<void> _installApk(Release r) async {
+    if (TaskCenter.isBusy()) {
+      moSnack(context, '另一个任务正在运行，等它结束再更新');
+      return;
+    }
+    final String dirPath = await updateDownloadDir();
+    if (dirPath.isEmpty) {
+      // 宿主通道不可用（桌面端或引擎未就绪）：退回浏览器，别让用户没路走
+      await _open(_downloadUrl(r));
+      return;
+    }
+    final RunningTask? task = TaskCenter.start('下载更新');
+    if (task == null) return;
+    final TaskControl? ctl = task.control;
+    setState(() {
+      _busy = true;
+      _error = '';
+      _step = '正在下载安装包…';
+    });
+    try {
+      final String name = r.apkName.isNotEmpty
+          ? r.apkName
+          : 'MusicOrganizer-${r.version}.apk';
+      final File target = File('$dirPath${Platform.pathSeparator}$name');
+      int lastPercent = -1;
+      final ApkDownloader dl = ApkDownloader(
+        openConnection: openHttpConnection,
+        now: (Duration d) => Future<void>.delayed(d),
+      );
+      final ApkDownloadResult res = await dl.download(
+        url: r.apkUrl,
+        target: target,
+        expectedSha256: r.sha256,
+        expectedSize: r.apkSize,
+        cancel: () => ctl?.isCancelled() ?? false,
+        onProgress: (ApkProgress p) {
+          if (!mounted) return;
+          // 只在百分比变化时重建界面（字节级刷新会每帧重绘）
+          if (p.percent == lastPercent) return;
+          lastPercent = p.percent;
+          setState(() {
+            _step = p.percent < 0
+                ? '正在下载…（已下 ${AppUpdate.humanSize(p.received)}）'
+                : '正在下载… ${p.percent}%';
+          });
+        },
+      );
+      if (!mounted) return;
+      if (res.cancelled) {
+        setState(() {
+          _busy = false;
+          _error = '已取消下载';
+        });
+        return;
+      }
+      if (!res.ok) {
+        setState(() {
+          _busy = false;
+          _error = res.error;
+        });
+        return;
+      }
+      setState(() => _step = '正在打开安装界面…');
+      final bool opened = await installApk(res.path);
+      if (!mounted) return;
+      if (opened) {
+        setState(() {
+          _busy = false;
+          _step = '';
+          _error = '';
+        });
+        TaskCenter.finish();
+        // 系统安装界面已经盖上来，收起面板免得回来还停在这
+        if (mounted) Navigator.of(context).maybePop();
+        return;
+      }
+      setState(() {
+        _busy = false;
+        _error = '安装包已下载，但打不开安装界面。'
+            '请在文件管理器里安装：${res.path}';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = '更新失败：$e';
+      });
+    } finally {
+      TaskCenter.finish();
+    }
+  }
 
   /// 桌面端「下载 → 解压 → 替换 → 重启」。
   ///

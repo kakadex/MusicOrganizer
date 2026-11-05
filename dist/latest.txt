@@ -1,11 +1,11 @@
-version=0.2.69
-tag=v0.2.69
+version=0.2.70
+tag=v0.2.70
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.69/MusicOrganizer-0.2.69-android-arm64-v8a.apk
-size=19806081
-sha256=829372d5a1aca1f7c0a3e14856755ede99bda07e1e13b30952c118d491446bb3
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.69/MusicOrganizer-0.2.69-windows-x64.zip
-zip_size=12660988
-zip_sha256=9562b971fdc98c382363a64b496167cf4d8fa64b522ddc6d063cb4c57d2bfa6b
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.69
-summary=批量改标签有进度了，可暂停可停止
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.70/MusicOrganizer-0.2.70-android-arm64-v8a.apk
+size=19872197
+sha256=d718340706fc3a5e55d0dbc4b713ed9134e6956cb893e604e268a1e36724ae77
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.70/MusicOrganizer-0.2.70-windows-x64.zip
+zip_size=12667495
+zip_sha256=77eb15429c5f927fd1979c4e7b3677ed20575fec76ac27ceb82bac4e9c330a91
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.70
+summary=应用内下载安装，断点续传 + SHA-256 校验

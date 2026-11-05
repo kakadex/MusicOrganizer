@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  应用内更新的 FileProvider 路径白名单（0.2.70）。
+
+  只开放「下载目录」这一个子目录，不开放整个内部存储：
+  Dart 侧传来的是绝对路径，主进程会用 canonicalPath 校验它确实在这个目录里，
+  双重保险防止「安装任意路径的 APK」。
+
+  ⚠️ 这里必须与 MainActivity 里用的目录一致：
+     MainActivity 用 File(cacheDir, "updates")，所以这里用 <cache-path>。
+     如果哪天改成 filesDir / getExternalFilesDir，这里也要同步改，
+     否则 FileProvider.getUriForFile 会抛 IllegalArgumentException，
+     表现为「点安装没反应」。
+-->
+<paths>
+    <cache-path name="updates" path="updates/" />
+</paths>
