@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../../app/app_focus.dart';
 import '../../app/cover_cache.dart';
+import '../../app/cover_thumb_cache.dart';
 import '../../app/repo.dart';
 import '../../app/repo_changes.dart';
 import '../../app/ui_kit.dart';
@@ -210,8 +211,17 @@ class _LibraryPageState extends State<LibraryPage> {
       _status.value = '';
     });
     _applyFilter();
+    // 扫完之后把磁盘上已有的封面缩略图批量灌进内存（0.2.89）：之后滚动全程
+    // 命中内存，不再「翻到哪加载到哪」。只读小图、不读音频文件头，后台跑。
+    unawaited(_preloadCovers());
     // 扫完不弹任何提示：列表与顶部副标题就在眼前，数字变了自然看得到，
     // 每次都弹一条「多少首 / 待整理多少」只会挡视线。
+  }
+
+  /// 后台把磁盘缩略图预热进内存；有更新时轻刷列表让已预热的行直接出图。
+  Future<void> _preloadCovers() async {
+    final int n = await CoverThumbCache.instance.preloadInto(Repo.instance.files);
+    if (n > 0 && mounted) setState(() {});
   }
 
   Future<void> _pickRoot() async {
@@ -824,8 +834,9 @@ class _LibraryPageState extends State<LibraryPage> {
             itemExtent: _rowExtent,
             // 快速滑动优化：离屏行不再保活，避免一次性为大量行保留状态、触发过多封面 I/O。
             addAutomaticKeepAlives: false,
-            // 下滑时少建几屏预备行，白耗封面 I/O
-            scrollCacheExtent: const ScrollCacheExtent.pixels(240),
+            // 预建范围（0.2.89）：240px 约 4 行，等于没有预取，滚到边上才开始
+            // 加载，观感就是「翻到哪加载到哪」。放到约两屏，滚到之前封面已在内存。
+            scrollCacheExtent: const ScrollCacheExtent.pixels(1200),
             itemCount: _shown.length,
             itemBuilder: (BuildContext c, int i) => _row(_shown[i]),
           ),
@@ -1275,14 +1286,19 @@ class _CoverRowState extends State<_CoverRow> {
   @override
   void didUpdateWidget(covariant _CoverRow old) {
     super.didUpdateWidget(old);
-    // 停止滚动后由页面重建，这里把还没封面、之前被暂停的行补上
-    if (old.paused && !widget.paused && _cover == null) _load();
+    // 同一行的文件换了（重扫后 docId 不变但内容变了）：重新取封面
+    if (old.entry.file?.docId != widget.entry.file?.docId) {
+      _cover = CoverCache.instance.peek(widget.entry.file ?? _never);
+      _load();
+    }
   }
 
   Future<void> _load() async {
     final file = widget.entry.file;
     if (file == null) return;
-    if (widget.paused) return;
+    // 0.2.89：滚动中不再暂停加载——之前 paused 时直接 return，导致滚动经过的
+    // 行全是空白，停下才开跑（用户感知就是「翻到哪加载到哪」）。现在内存里有
+    // 就立刻显示，没有就照常异步补（有并发闸门，不会打爆 IO）。
     final Uint8List? hit = CoverCache.instance.peek(file);
     if (hit != null) {
       // 已有内存缓存：只在还没显示时才 setState（initState 已经同步取过一次）

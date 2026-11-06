@@ -1,11 +1,11 @@
-version=0.2.88
-tag=v0.2.88
+version=0.2.89
+tag=v0.2.89
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.88/MusicOrganizer-0.2.88-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.89/MusicOrganizer-0.2.89-android-arm64-v8a.apk
 size=19938069
-sha256=13c29a832addaf7e5a3ff14e42b06d5b5e364682d5f6141888cad94d653cd5b4
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.88/MusicOrganizer-0.2.88-windows-x64.zip
-zip_size=12955624
-zip_sha256=01139eeb859e1604de98a6496065a0c792f9140a59a146e2a61b7fa68801a5e4
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.88
-summary=列表封面常驻内存，翻页不再重新加载
+sha256=39819acd863c7354af548557c34337829fb040811d3d8c607d0538fb536612d8
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.89/MusicOrganizer-0.2.89-windows-x64.zip
+zip_size=12957719
+zip_sha256=82268e234d9b1f966afff043054688d05bf2d7f119f3d13aea355dc2370a416f
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.89
+summary=修复翻到哪加载到哪：封面启动预热+滚动不暂停

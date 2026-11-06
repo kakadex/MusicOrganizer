@@ -24,6 +24,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../core/cover/thumb_policy.dart';
 import '../core/model/vfile.dart';
+import 'cover_cache.dart';
 
 /// 封面缩略图磁盘缓存（单例）。
 class CoverThumbCache {
@@ -228,6 +229,36 @@ class CoverThumbCache {
     } catch (_) {
       // 清理失败不影响读缓存
     }
+  }
+
+  /// 批量预热：把曲库里**已经在磁盘缓存里**的缩略图全部读进内存。
+  ///
+  /// 为什么需要（0.2.89）：列表滚动时每一行的封面都靠异步回调，内存没命中
+  /// 就要等一次读盘，表现就是「翻到哪里加载到哪里」。启动扫描完成后调一次
+  /// 这里，900 首约 27MB、每张 20–40KB，全部灌进内存后滚动全程零 IO。
+  ///
+  /// - 只读已经在磁盘上的小图，**不会**去读音频文件头（那是几十 MB 的活）；
+  /// - 逐张串行读，避免启动瞬间打满磁盘；命中就塞进 [CoverCache]；
+  /// - 磁盘上没有的（第一轮还没缩过）自然跳过，等列表按需加载时再补。
+  /// 返回预热成功的张数。
+  Future<int> preloadInto(List<VFile> files) async {
+    final Directory? dir = await _ensureDir();
+    if (dir == null || files.isEmpty) return 0;
+    int n = 0;
+    for (final VFile f in files) {
+      try {
+        final File file = File(
+            '${dir.path}${Platform.pathSeparator}${ThumbPolicy.fileName(ThumbPolicy.keyOf(f))}');
+        if (!await file.exists()) continue;
+        final Uint8List bytes = await file.readAsBytes();
+        if (bytes.length < _minBytes) continue;
+        CoverCache.instance.put(f, bytes);
+        n++;
+      } catch (_) {
+        // 单张失败跳过，不影响其余
+      }
+    }
+    return n;
   }
 
   /// 解码 + 缩放到 [width] + 编 PNG。
