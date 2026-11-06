@@ -1,16 +1,16 @@
-MusicOrganizer v0.3.3 分发包（本地直发，非官方发布页）
+MusicOrganizer v0.3.4 分发包（本地直发，非官方发布页）
 ====================================================
 
 构建时间：2026-11-06
-版本：0.3.3（build 217，版本戳 0.3.3-9RCGT2）
+版本：0.3.4（build 218，版本戳 0.3.4-6B98AF）
 说明：本目录用于直接发给他人使用，官方发布以 Gitee / GitHub Releases 为准。
 
 文件
 ----
-MusicOrganizer-0.3.3-windows-x64.zip           Windows 桌面版（解压后运行 musicorganizer.exe）
-MusicOrganizer-0.3.3-android-arm64-v8a.apk     安卓 64 位（绝大多数现代手机）
-MusicOrganizer-0.3.3-android-x86_64.apk        安卓 x86_64（少数 Intel 平板 / 模拟器）
-MusicOrganizer-0.3.3-android-armeabi-v7a.apk   安卓 32 位（老旧设备）
+MusicOrganizer-0.3.4-windows-x64.zip           Windows 桌面版（解压后运行 musicorganizer.exe）
+MusicOrganizer-0.3.4-android-arm64-v8a.apk     安卓 64 位（绝大多数现代手机）
+MusicOrganizer-0.3.4-android-x86_64.apk        安卓 x86_64（少数 Intel 平板 / 模拟器）
+MusicOrganizer-0.3.4-android-armeabi-v7a.apk   安卓 32 位（老旧设备）
 SHA256SUMS.txt                                 以上文件的 SHA-256 校验和
 
 安装 / 使用
@@ -26,7 +26,7 @@ Android：允许「未知来源」后安装对应 ABI 的 APK。
 
 本版变化
 --------
-修复通知卡拖动进度后歌名和封面消失
+检查更新改为双站同时查询取更高版本
 
 校验（可选）
 ----------

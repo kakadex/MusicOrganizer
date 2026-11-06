@@ -105,7 +105,7 @@ class _UpdateSheetState extends State<UpdateSheet> {
       _source = out.source;
       _release = out.release;
       if (out.release == null) {
-        _error = '四个来源都没拿到版本信息';
+        _error = 'Gitee 和 GitHub 都没拿到版本信息';
       }
     });
   }
