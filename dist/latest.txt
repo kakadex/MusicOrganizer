@@ -1,11 +1,11 @@
-version=0.2.97
-tag=v0.2.97
+version=0.2.98
+tag=v0.2.98
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.97/MusicOrganizer-0.2.97-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.98/MusicOrganizer-0.2.98-android-arm64-v8a.apk
 size=20003605
-sha256=0bead211c9be9917ad87bb8a2db73cbdfc22a39ebee36dd56e988e60fd9ec872
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.97/MusicOrganizer-0.2.97-windows-x64.zip
-zip_size=12977133
-zip_sha256=fa40fe06d8123d4ce540b85bee093e4e6078d4fc00586bb4fd0010eec458138b
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.97
-summary=诊断版：封面读取失败详细日志
+sha256=a49ce8561a206f55b353ed6be3a4442aff960b91a5eeb55d976b3ffe9883cfc5
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.98/MusicOrganizer-0.2.98-windows-x64.zip
+zip_size=12975060
+zip_sha256=17d10952d07f126e153746420a1fc57bb1d2695ef65248b24ed6d71eb498f944
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.98
+summary=修复歌词混入列表+旁挂封面未保存

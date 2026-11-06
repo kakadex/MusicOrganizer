@@ -768,7 +768,13 @@ class Repo extends ChangeNotifier {
       }
       FolderCover.invalidate();
       SidecarCover.invalidate();
-      files = merge.files;
+      // 0.2.98：**只收音频**。`walkMusic` 按设计同时收音频与歌词（`.lrc` 等），
+      // 但 `Repo.files` 是「曲库列表」的数据源，歌词单独一首一行是错的：
+      // 真机日志里 247 首「缺封面」全是 `.lrc`——它们当然没有封面，
+      // 却一直占用补图名额、反复重试。
+      files = merge.files
+          .where((VFile f) => !f.dir && f.audio())
+          .toList(growable: false);
       _rebuildIndex();
       _emit(RepoDomain.root);
       _emit(RepoDomain.library);

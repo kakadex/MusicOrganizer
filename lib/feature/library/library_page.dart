@@ -289,7 +289,28 @@ class _LibraryPageState extends State<LibraryPage> {
       for (final VFile f in missing) {
         if (!mounted) break;
         try {
-          final Uint8List? art = await Scanner.readCover(store, f);
+          // 0.2.98：走**完整兜底链**——内嵌封面 → 同名图片 → 目录 cover.jpg。
+          // 旧版这里只调 `Scanner.readCover`（只读内嵌），真机日志里 37 首
+          // 永远 `no-cover-after-full`，而它们其实有旁挂图，慢滑时能看到。
+          Uint8List? art = await Scanner.readCover(store, f);
+          if (art == null || art.isEmpty) {
+            try {
+              art = await SidecarCover.find(store, f);
+            } catch (_) {
+              art = null;
+            }
+          }
+          if (art == null || art.isEmpty) {
+            final String? parentId = f.parentId;
+            if (parentId != null && parentId.isNotEmpty) {
+              try {
+                art = await FolderCover.find(
+                    store, VFile(docId: parentId, name: parentId, dir: true));
+              } catch (_) {
+                art = null;
+              }
+            }
+          }
           if (art == null || art.isEmpty) {
             readNull++;
           } else {
@@ -1452,6 +1473,15 @@ class _CoverRowState extends State<_CoverRow> {
     if (art != null) {
       // 统一进内存缓存（已是缩图；旁挂缓存里的也保证是缩过的或可缩）
       CoverCache.instance.put(file, art);
+      // 0.2.98：**旁挂封面（同名图 / 目录 cover.jpg）也要写进打包存储**。
+      // 真机日志证实这是「重启后空白、慢滑一遍才恢复」的根因：
+      // 这条兜底链以前只进内存，重启就丢，于是每次都得重新走一遍。
+      unawaited(CoverThumbCache.instance.encodeSmall(art).then(
+        (Uint8List? small) {
+          if (small != null) CoverPackStore.instance.put(file, small);
+        },
+        onError: (Object _) {},
+      ));
     }
     if (mounted && art != null) setState(() => _cover = art);
   }
