@@ -10,6 +10,8 @@
     <!-- 长任务（批量匹配 / 写入 / 补封面）挂前台服务，退后台才不会被系统回收 -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- 试听播放的前台服务（通知栏媒体控制卡） -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <!-- 任务期间持唤醒锁：息屏后 CPU 继续跑，批量匹配不再「解锁后又接着跑」 -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- 安卓 13+ 要显式申请才能显示任务通知 -->
@@ -61,6 +63,14 @@
             android:name=".TaskForegroundService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+        <!-- 试听播放的通知栏媒体控制（MediaSession） -->
+        <service
+            android:name=".PlaybackNotificationService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+        <receiver
+            android:name=".PlaybackControlReceiver"
+            android:exported="false" />
         <!-- 应用内更新：把 cache/updates/ 里下载好的 APK 临时授权给系统安装器。
              Android 8+ 不允许直接传 file:// 路径，必须走 FileProvider。 -->
         <provider

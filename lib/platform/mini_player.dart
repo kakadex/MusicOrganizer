@@ -36,6 +36,13 @@ class MiniPlayer extends ChangeNotifier {
   static const MethodChannel _ch =
       MethodChannel('com.dsh.musicorganizer/player');
 
+  /// 通知栏控制按钮的回调（原生 → Dart）：next/prev 由页面层注册处理。
+  /// 0.2.96 起通知栏有媒体控制卡，上一首/下一首要由 Dart 选曲。
+  static void Function(String cmd)? onCommand;
+
+  /// 最近一次播放的封面字节（通知卡显示用；由调用方在 play 时带上）。
+  Uint8List? lastCover;
+
   PlayerState? state;
   Timer? _ticker;
   String? _error;
@@ -50,9 +57,15 @@ class MiniPlayer extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 预热（main/shell 里调一次）。本实现不依赖原生事件流——播完检测
-  /// 由进度轮询顺带完成（连续两次「没在播」即算播完），桌面端零开销。
-  void wire() {}
+  /// 预热（main/shell 里调一次）。监听通知栏按钮命令（next/prev 等选曲类）。
+  void wire() {
+    _ch.setMethodCallHandler((MethodCall call) async {
+      if (call.method == 'onCommand') {
+        onCommand?.call(call.arguments as String? ?? '');
+      }
+      return null;
+    });
+  }
 
   /// 播一首。安卓应用内播放；桌面退回系统默认播放器。
   Future<void> play(VFile f, {SafFileStore? saf, Future<String?> Function(VFile)? openExternal}) async {
@@ -78,6 +91,15 @@ class MiniPlayer extends ChangeNotifier {
             await _ch.invokeMethod<int>('duration') ?? 0;
         state = PlayerState(file: f, playing: true, durationMs: duration);
         _startTicker();
+        // 0.2.96：通知栏媒体控制卡（切到其它应用也能看到/控制）
+        await _ch.invokeMethod<void>('updateNotification', <String, Object?>{
+          'title': f.stem(),
+          'artist': '音乐整理',
+          'playing': true,
+          'position': 0,
+          'duration': duration,
+          if (lastCover != null) 'cover': lastCover,
+        });
         notifyListeners();
         return;
       } on MissingPluginException {
@@ -110,12 +132,30 @@ class MiniPlayer extends ChangeNotifier {
             playing: false,
             durationMs: s.durationMs,
             positionMs: s.positionMs);
+        await _syncNotification(s.file, false, s.positionMs, s.durationMs);
         notifyListeners();
       } on Exception {
         // 忽略
       }
     } else {
       await playCurrent();
+    }
+  }
+
+  /// 同步通知栏控制卡状态（播放/暂停/进度）。
+  Future<void> _syncNotification(
+      VFile f, bool playing, int positionMs, int durationMs) async {
+    try {
+      await _ch.invokeMethod<void>('updateNotification', <String, Object?>{
+        'title': f.stem(),
+        'artist': '音乐整理',
+        'playing': playing,
+        'position': positionMs,
+        'duration': durationMs,
+        if (lastCover != null) 'cover': lastCover,
+      });
+    } on Exception {
+      // 桌面无通道
     }
   }
 
@@ -148,6 +188,7 @@ class MiniPlayer extends ChangeNotifier {
             playing: s.playing,
             durationMs: s.durationMs,
             positionMs: ms);
+        unawaited(_syncNotification(s.file, s.playing, ms, s.durationMs));
         notifyListeners();
       }
     } on Exception {
@@ -158,6 +199,7 @@ class MiniPlayer extends ChangeNotifier {
   Future<void> close() async {
     try {
       await _ch.invokeMethod<void>('stop');
+      await _ch.invokeMethod<void>('stopService');
     } on Exception {
       // 桌面无通道
     }

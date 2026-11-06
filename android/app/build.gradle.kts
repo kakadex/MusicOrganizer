@@ -85,3 +85,8 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // MediaSessionCompat / MediaStyle 通知（试听播放的系统控制卡，0.3.1）
+    implementation("androidx.media:media:1.7.0")
+}

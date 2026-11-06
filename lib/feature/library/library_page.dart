@@ -51,8 +51,21 @@ import 'preview_sheet.dart';
 class LibraryPage extends StatefulWidget {
   const LibraryPage({super.key});
 
+  /// 通知栏「上一首/下一首」的选曲回调（shell 在 wire 时注册）。
+  /// 由 [LibraryPageStateGuard.setCommandHandler] 注入，参数是命令名。
+  static void Function(String cmd)? onPlayerCommand;
+
   @override
   State<LibraryPage> createState() => _LibraryPageState();
+}
+
+/// 给 shell 一个不依赖私有 State 的挂载点（0.2.96 通知栏选曲用）。
+class LibraryPageStateGuard {
+  /// 通知栏按钮 → 按当前筛选结果选上一首/下一首。
+  static void handlePlayerCommand(String cmd) {
+    final handler = LibraryPage.onPlayerCommand;
+    if (handler != null) handler(cmd);
+  }
 }
 
 class _LibraryPageState extends State<LibraryPage> {
@@ -134,7 +147,35 @@ class _LibraryPageState extends State<LibraryPage> {
     _repoChanges = Repo.instance.changes
         .of(<RepoDomain>[RepoDomain.library, RepoDomain.meta]);
     _repoChanges.addListener(_onRepoChanged);
+    // 通知栏「上一首/下一首」：按当前筛选结果选曲（0.2.96）
+    LibraryPage.onPlayerCommand = _handlePlayerCommand;
     WidgetsBinding.instance.addPostFrameCallback((_) => _autoScan());
+  }
+
+  /// 通知栏媒体卡的上/下一首：在当前筛选列表里移动一格。
+  void _handlePlayerCommand(String cmd) {
+    if (cmd != 'next' && cmd != 'prev') return;
+    if (!mounted || _shown.isEmpty) return;
+    final PlayerState? st = MiniPlayer.instance.state;
+    final VFile? curFile = st?.file;
+    final String? cur = curFile?.docId;
+    int idx = 0;
+    if (cur != null) {
+      final int at = _shown.indexWhere((Entry e) => e.file?.docId == cur);
+      if (at >= 0) idx = at;
+    }
+    idx = cmd == 'next' ? idx + 1 : idx - 1;
+    if (idx < 0 || idx >= _shown.length) return; // 到头/到尾就停
+    final VFile? next = _shown[idx].file;
+    final store = Repo.instance.store;
+    if (next == null || store == null) return;
+    MiniPlayer.instance.lastCover = CoverCache.instance.peek(next);
+    unawaited(MiniPlayer.instance.play(
+      next,
+      saf: store is SafFileStore ? store : null,
+      openExternal: store.openWithPlayer,
+    ));
+    if (mounted) setState(() {});
   }
 
   /// 曲库 / 标签数据变化：重新过滤一遍（`_applyFilter` 内部 setState）。
@@ -152,6 +193,7 @@ class _LibraryPageState extends State<LibraryPage> {
     _status.dispose();
     _scrollController.dispose();
     _search.dispose();
+    LibraryPage.onPlayerCommand = null;
     super.dispose();
   }
 
@@ -1394,6 +1436,9 @@ class _LibraryPageState extends State<LibraryPage> {
                     final store = Repo.instance.store;
                     if (store == null) return;
                     Navigator.of(fctx).pop();
+                    // 通知栏媒体卡要显示封面：先把已缓存的小图带上
+                    MiniPlayer.instance.lastCover =
+                        CoverCache.instance.peek(f);
                     // 安卓：应用内迷你播放条；桌面：系统默认播放器
                     await MiniPlayer.instance.play(
                       f,

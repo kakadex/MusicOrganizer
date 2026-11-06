@@ -1,11 +1,11 @@
-version=0.3.0
-tag=v0.3.0
+version=0.3.1
+tag=v0.3.1
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.0/MusicOrganizer-0.3.0-android-arm64-v8a.apk
-size=20003601
-sha256=8aaa765e419d1d4fabe5ec561abee812d5db18e54be22990e3d78ba766d19d8c
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.0/MusicOrganizer-0.3.0-windows-x64.zip
-zip_size=12976917
-zip_sha256=0b202def3e14b4350b47fedfd3d09c1779aa1caf338b0138b6de1b0f21b05dea
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.3.0
-summary=封面滚动预解码：滚动不再空白
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.1/MusicOrganizer-0.3.1-android-arm64-v8a.apk
+size=20036992
+sha256=16b5cb241ebe5f18d978a74588ce3d05cf7d77496eb72bab5eb440ec2b905d88
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.1/MusicOrganizer-0.3.1-windows-x64.zip
+zip_size=12980326
+zip_sha256=8d007ba257b976aca9e53eb161158ae9f32aa277204d4ec6bc792e4bcc981696
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.3.1
+summary=音频焦点+通知栏媒体控制卡

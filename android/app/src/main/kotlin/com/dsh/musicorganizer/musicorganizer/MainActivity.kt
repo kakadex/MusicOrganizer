@@ -1,7 +1,9 @@
 package com.dsh.musicorganizer.musicorganizer
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
+import android.media.AudioManager
 import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Handler
@@ -94,7 +96,12 @@ class MainActivity : FlutterActivity() {
         )
         hostChannel = host
         // 应用内迷你播放器（单曲试听）：独立通道，生命周期跟引擎走
-        miniPlayer = MiniPlayerPlugin(flutterEngine, contentResolver).also {
+        miniPlayer = MiniPlayerPlugin(
+            flutterEngine,
+            contentResolver,
+            getSystemService(Context.AUDIO_SERVICE) as AudioManager,
+            applicationContext
+        ).also {
             it.attach(flutterEngine.dartExecutor.binaryMessenger)
         }
         host.setMethodCallHandler { call, result ->

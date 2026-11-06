@@ -43,8 +43,9 @@ class _MoShellState extends State<MoShell> {
     TaskService.attach();
     // 外部调起：文件管理器里「用本应用打开」音频
     ExternalOpen.listen(_onExternalUri);
-    // 应用内迷你播放器：监听原生侧「播完 / 出错」事件
+    // 应用内迷你播放器：监听原生侧「播完 / 出错」事件 + 通知栏按钮命令
     MiniPlayer.instance.wire();
+    MiniPlayer.onCommand = LibraryPageStateGuard.handlePlayerCommand;
     _boot();
   }
 
