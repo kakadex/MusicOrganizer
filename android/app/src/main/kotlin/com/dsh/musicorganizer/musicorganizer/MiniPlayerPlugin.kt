@@ -166,6 +166,23 @@ class MiniPlayerPlugin(
                 }
             }
         }
+        // 通知卡进度条拖动（0.3.2）：直接在播放器上 seek，然后按新位置刷通知。
+        // 不绕 Dart：Dart 的 250ms 轮询稍后自会对上，通知先保真。
+        PlaybackNotificationService.seekSink = { posMs ->
+            runCatching { player?.seekTo(posMs.toInt()) }
+            val ctx = appContext
+            ctx?.let { c ->
+                player?.let { p ->
+                    PlaybackNotificationService.update(
+                        c, lastTitle, lastArtist,
+                        runCatching { p.isPlaying }.getOrNull() == true,
+                        posMs,
+                        runCatching { p.duration.toLong() }.getOrDefault(0L),
+                        lastCover
+                    )
+                }
+            }
+        }
         // 通知按钮 / 蓝牙线控的命令 → 转发给 Dart 侧处理
         // （play/pause/stop 由插件本地直接执行；next/prev 必须由 Dart 选下一首）
         PlaybackNotificationService.commandSink = { cmd ->
@@ -214,7 +231,8 @@ class MiniPlayerPlugin(
         }
         // 先申请音频焦点：拿不到就礼貌地不播（其它 App 正在强占，如通话中）
         if (!requestFocus()) return "其它应用正在占用音频"
-        stop()
+        // 只换播放器实例：焦点刚申请到，绝不能在这里被 abandon 掉
+        releasePlayerOnly()
         val p = MediaPlayer()
         return try {
             p.setAudioAttributes(
@@ -254,10 +272,17 @@ class MiniPlayerPlugin(
         }
     }
 
-    private fun stop() {
+    /// 只释放播放器实例（换歌时用）：**不动音频焦点**——焦点在「开始播新歌前」
+    /// 刚申请到，这里若顺手 abandon，播着的歌就不是焦点拥有者，别的播放器再播
+    /// 时系统不会通知我们暂停（0.3.1 真机「两个声音一起响」的根因）。
+    private fun releasePlayerOnly() {
         player?.let { runCatching { it.stop(); it.release() } }
         player = null
         preparedDocId = null
+    }
+
+    private fun stop() {
+        releasePlayerOnly()
         abandonFocus()
     }
 }

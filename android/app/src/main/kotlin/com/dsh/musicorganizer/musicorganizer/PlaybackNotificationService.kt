@@ -38,6 +38,11 @@ class PlaybackNotificationService : Service() {
             override fun onStop() = Companion.emit("stop")
             override fun onSkipToNext() = Companion.emit("next")
             override fun onSkipToPrevious() = Companion.emit("prev")
+            // 通知卡进度条拖动（0.3.2）：系统把目标位置（毫秒）发过来，
+            // 转给插件在播放器上直接 seek，然后按新位置刷新通知。
+            override fun onSeekTo(pos: Long) {
+                Companion.emitSeek(pos)
+            }
         })
         // 允许媒体按钮（蓝牙耳机线控等）路由进来
         s.setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or
@@ -58,6 +63,10 @@ class PlaybackNotificationService : Service() {
         val meta = MediaMetadataCompat.Builder()
             .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title.ifBlank { "正在试听" })
             .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, artist.ifBlank { "未知歌手" })
+        // 时长必须有：系统靠它画可拖动的进度条；没有时通知卡不显示拖动条
+        if (durationMs > 0) {
+            meta.putLong(MediaMetadataCompat.METADATA_KEY_DURATION, durationMs)
+        }
         // 封面位图：有的话媒体卡片左上角就会显示大图（与用户示例一致）
         if (cover != null && cover.isNotEmpty()) {
             meta.putBitmap(
@@ -168,8 +177,16 @@ class PlaybackNotificationService : Service() {
         @Volatile
         var commandSink: ((String) -> Unit)? = null
 
+        /// 拖动进度回调（由 MiniPlayerPlugin 注册）：毫秒 → 插件 seek 播放器
+        @Volatile
+        var seekSink: ((Long) -> Unit)? = null
+
         fun emit(cmd: String) {
             commandSink?.invoke(cmd)
+        }
+
+        fun emitSeek(posMs: Long) {
+            seekSink?.invoke(posMs)
         }
 
         /// 更新通知内容（由 MiniPlayerPlugin 在播放/暂停/停歌时调用）。
