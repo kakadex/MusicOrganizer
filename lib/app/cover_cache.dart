@@ -7,6 +7,7 @@ import '../core/tag/cover_art.dart';
 import '../core/scan/scanner.dart';
 import 'cover_pack_store.dart';
 import 'cover_thumb_cache.dart';
+import '../core/log/log.dart';
 import 'repo.dart';
 
 /// 封面内存缓存（列表滚动时不重复解压同一张图）。
@@ -110,6 +111,34 @@ class CoverCache {
   /// 的行占满，真正停下来看的行反而排队——表现就是快速滑动一片空白。
   /// 传 false 时只走便宜路径（内存 + 磁盘小图），磁盘没有就返回 null 保持
   /// 占位，滑停后再由调用方用 true 补。
+  /// 诊断计数（0.2.95 探针）：看每次取封面到底走了哪条路。
+  ///
+  /// 真机排查用：pack 命中 = 打包存储生效；file = 现场读音频文件（慢）；
+  /// miss = 压根没封面。每 50 次汇总记一条日志，不刷屏。
+  int _diagPack = 0;
+  int _diagThumb = 0;
+  int _diagFile = 0;
+  int _diagMiss = 0;
+  int _diagTotal = 0;
+
+  void _diag(String path) {
+    _diagTotal++;
+    switch (path) {
+      case 'pack':
+        _diagPack++;
+      case 'thumb':
+        _diagThumb++;
+      case 'file':
+        _diagFile++;
+      default:
+        _diagMiss++;
+    }
+    if (_diagTotal % 50 == 0) {
+      Log.info('[CoverDiag] 累计 $_diagTotal 次：pack=$_diagPack '
+          'thumb=$_diagThumb file=$_diagFile miss=$_diagMiss');
+    }
+  }
+
   Future<Uint8List?> load(VFile f, {bool allowExpensive = true}) async {
     final String key = keyOf(f);
     final Uint8List? hit = _bytes[key];
@@ -127,6 +156,7 @@ class CoverCache {
       final Uint8List? packed = CoverPackStore.instance.peekOf(f);
       if (packed != null) {
         _put(key, packed);
+        _diag('pack');
         return packed;
       }
       // ② 旧的「一歌一文件」缓存：兼容升级前已生成的缩略图，不浪费。
@@ -135,6 +165,7 @@ class CoverCache {
         _put(key, thumb);
         // 顺手并入打包存储，下次启动就是纯内存命中
         CoverPackStore.instance.put(f, thumb);
+        _diag('thumb');
         return thumb;
       }
       // 滚动中到此为止：不读文件头，避免把并发名额烧在滑动路过的行上
@@ -142,14 +173,17 @@ class CoverCache {
       final Uint8List? art = await Scanner.readCover(store, f);
       if (art == null || art.isEmpty) {
         _miss.add(key);
+        _diag('miss');
         return null;
       }
       // 不是 JPEG/PNG/WebP 的字节直接当「没有封面」：
       // 与其让 Image 解码时报错，不如显示音符占位
       if (!CoverArt.isImage(art)) {
         _miss.add(key);
+        _diag('miss');
         return null;
       }
+      _diag('file');
       // 后台缩一张存盘：不 await，别让滚动等磁盘
       unawaited(CoverThumbCache.instance.save(f, art));
       // 入内存前先缩到显示尺寸。
@@ -163,6 +197,13 @@ class CoverCache {
         small = await CoverThumbCache.instance.encodeSmall(art);
       } catch (_) {
         small = null;
+      }
+      // 0.2.95：**把刚读出来的原图也写进打包存储**。
+      // 旧版只有「后台补图」那条路会写 pack，列表现读的结果只进了内存——
+      // 于是每次重启打包文件几乎是空的，又得重新慢滑一遍。
+      final Uint8List? packedSmall = small;
+      if (packedSmall != null) {
+        CoverPackStore.instance.put(f, packedSmall);
       }
       _put(key, small ?? art);
       return small ?? art;

@@ -24,6 +24,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../core/cover/thumb_pack.dart';
+import '../core/log/log.dart';
 import '../core/model/vfile.dart';
 
 /// 打包版封面缩略图缓存（单例）。
@@ -62,8 +63,7 @@ class CoverPackStore {
   bool _saving = false;
   bool _dirty = false;
 
-  /// 当前内存里有多少张（测试与排查用）。
-  @visibleForTesting
+  /// 当前内存里有多少张（界面 / 测试用）。
   int get entryCount => _blobs.length;
 
   /// 估算内存占用（测试用）。
@@ -105,9 +105,11 @@ class CoverPackStore {
       if (!await d.exists()) await d.create(recursive: true);
       _file = File('${d.path}${Platform.pathSeparator}cover_pack.bin');
       _dirFailures = 0;
+      Log.info('[CoverPack] 目录就绪 file=${_file!.path}');
       return _file;
-    } catch (_) {
+    } catch (e) {
       _dirFailures++;
+      Log.warn('[CoverPack] 目录获取失败($_dirFailures/$maxDirFailures) $e');
       return null;
     }
   }

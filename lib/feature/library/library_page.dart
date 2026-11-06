@@ -26,6 +26,7 @@ import '../../core/fs/file_store.dart';
 import '../../core/fs/tree_ref.dart';
 import '../settings/settings_page.dart';
 import '../../core/scan/scanner.dart';
+import '../../core/log/log.dart';
 import '../../core/scan/search_index.dart';
 import '../../core/scan/search_query.dart';
 import '../../core/task/task_center.dart';
@@ -278,6 +279,10 @@ class _LibraryPageState extends State<LibraryPage> {
       }
       // 补完落盘一次（原子写）
       await CoverPackStore.instance.flush();
+      // 0.2.95 探针：补图结果写进日志，真机排查靠它判断「到底存下来没有」
+      Log.info('[CoverPack] 补图完成 made=$made 共${missing.length}首缺，'
+          '包内 ${CoverPackStore.instance.entryCount} 条，'
+          '文件 ${await CoverPackStore.instance.packFileSize()} 字节');
       if (mounted && made > 0) setState(() {});
     } finally {
       _fillingCovers = false;

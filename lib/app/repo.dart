@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/cover/cover_thumb_hook.dart';
+import '../core/log/log.dart';
 import '../core/cover/folder_cover.dart';
 import '../core/cover/sidecar_cover.dart';
 import '../core/fs/desktop_file_store.dart';
@@ -172,9 +173,11 @@ class Repo extends ChangeNotifier {
         CoverThumbCache.instance.encodeSmall(art);
     // 封面打包存储（0.2.93）：启动时**一次**把整包缩略图读进内存，
     // 之后列表取封面是纯内存查表，不再每张一次跨进程读盘。
-    // 0.2.94：失败不再永久禁用——`ensureLoaded` 内部可重试，
-    // 所以这里失败也不影响后续（列表补图时会再调一次）。
-    await CoverPackStore.instance.ensureLoaded();
+    // 0.2.94：失败不再永久禁用——`ensureLoaded` 内部可重试。
+    // 0.2.95：加载结果记日志（真机排查用，正常路径只一条）。
+    final int packedCount = await CoverPackStore.instance.ensureLoaded();
+    Log.info('[CoverPack] 启动加载 $packedCount 条，'
+        '文件 ${await CoverPackStore.instance.packFileSize()} 字节');
     final Directory dir = await _dataDir();
     // 上次进程被杀 / 断电留下的临时副本：启动时顺手清掉（只认本 app 的前缀、
     // 只清 6 小时前的），不然缓存目录会一天天涨。失败不影响启动。
