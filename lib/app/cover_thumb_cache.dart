@@ -261,6 +261,27 @@ class CoverThumbCache {
     return n;
   }
 
+  /// 只读磁盘小图进内存（不碰音频文件），返回是否命中。
+  ///
+  /// 给「滚动路过」用（0.2.90）：滑过一屏时顺序读小图很便宜（每张 20–40KB），
+  /// 比读 256KB 文件头便宜十倍；读进来后用户滑回去或停下就能立刻看到。
+  Future<bool> warm(VFile f) async {
+    if (CoverCache.instance.peek(f) != null) return true;
+    final Directory? dir = await _ensureDir();
+    if (dir == null) return false;
+    try {
+      final File file = File(
+          '${dir.path}${Platform.pathSeparator}${ThumbPolicy.fileName(ThumbPolicy.keyOf(f))}');
+      if (!await file.exists()) return false;
+      final Uint8List bytes = await file.readAsBytes();
+      if (bytes.length < _minBytes) return false;
+      CoverCache.instance.put(f, bytes);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// 解码 + 缩放到 [width] + 编 PNG。
   ///
   /// 用 `getTargetSize` 让解码器直接按目标尺寸解（JPEG 走整数倍降采样，

@@ -91,7 +91,13 @@ class CoverCache {
   /// 0.2.59 起的顺序：内存 → **磁盘缩略图** → 读文件头解析原图。
   /// 磁盘小图是上一次启动时缩好存下的（约 20–40KB），命中就不必再读
   /// 0.5–2MB 文件头，也不必解码大图。
-  Future<Uint8List?> load(VFile f) async {
+  ///
+  /// [allowExpensive]（0.2.90）：**滚动中传 false**。快速滑动时一屏接一屏
+  /// 冒出新行，如果每行都去读 256KB 文件头，4 个并发名额会全被「滑过就销毁」
+  /// 的行占满，真正停下来看的行反而排队——表现就是快速滑动一片空白。
+  /// 传 false 时只走便宜路径（内存 + 磁盘小图），磁盘没有就返回 null 保持
+  /// 占位，滑停后再由调用方用 true 补。
+  Future<Uint8List?> load(VFile f, {bool allowExpensive = true}) async {
     final String key = keyOf(f);
     final Uint8List? hit = _bytes[key];
     if (hit != null) return hit;
@@ -108,6 +114,8 @@ class CoverCache {
         _put(key, thumb);
         return thumb;
       }
+      // 滚动中到此为止：不读文件头，避免把并发名额烧在滑动路过的行上
+      if (!allowExpensive) return null;
       final Uint8List? art = await Scanner.readCover(store, f);
       if (art == null || art.isEmpty) {
         _miss.add(key);

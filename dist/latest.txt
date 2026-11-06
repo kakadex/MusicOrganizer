@@ -1,11 +1,11 @@
-version=0.2.89
-tag=v0.2.89
+version=0.2.90
+tag=v0.2.90
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.89/MusicOrganizer-0.2.89-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.90/MusicOrganizer-0.2.90-android-arm64-v8a.apk
 size=19938069
-sha256=39819acd863c7354af548557c34337829fb040811d3d8c607d0538fb536612d8
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.89/MusicOrganizer-0.2.89-windows-x64.zip
-zip_size=12957719
-zip_sha256=82268e234d9b1f966afff043054688d05bf2d7f119f3d13aea355dc2370a416f
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.89
-summary=修复翻到哪加载到哪：封面启动预热+滚动不暂停
+sha256=9b410881e0d78628415cc10c9e44c2f2420629701597d8473891748b60d23072
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.90/MusicOrganizer-0.2.90-windows-x64.zip
+zip_size=12957835
+zip_sha256=213a300da8370e4ffa5b7cd6cf0a15e0ed819bcd4ee9004bfbcb363cf380d92f
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.90
+summary=修快速滑动空白：滑动中只读小图

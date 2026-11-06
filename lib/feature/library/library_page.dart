@@ -1290,7 +1290,10 @@ class _CoverRowState extends State<_CoverRow> {
     if (old.entry.file?.docId != widget.entry.file?.docId) {
       _cover = CoverCache.instance.peek(widget.entry.file ?? _never);
       _load();
+      return;
     }
+    // 滚动结束：滚动中只走了便宜路径，这里补读文件头（0.2.90）
+    if (old.paused && !widget.paused && _cover == null) _load();
   }
 
   Future<void> _load() async {
@@ -1307,7 +1310,9 @@ class _CoverRowState extends State<_CoverRow> {
     }
     Uint8List? art;
     if (!CoverCache.instance.knownMiss(file)) {
-      art = await CoverCache.instance.load(file);
+      // 滚动中只走便宜路径（内存 + 磁盘小图）；滑停后 widget.paused 变 false，
+      // 页面会重建这些行，那时再补读文件头（0.2.90）。
+      art = await CoverCache.instance.load(file, allowExpensive: !widget.paused);
     }
     // 自己没有封面 → 找旁边的同名图片 → 再找专辑目录里的 cover.jpg
     // 0.2.88：这两步的结果也写回统一内存缓存——不然每行重建都要重查一遍
