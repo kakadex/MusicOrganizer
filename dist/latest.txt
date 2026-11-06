@@ -1,11 +1,11 @@
-version=0.3.7
-tag=v0.3.7
+version=0.3.8
+tag=v0.3.8
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.7/MusicOrganizer-0.3.7-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.8/MusicOrganizer-0.3.8-android-arm64-v8a.apk
 size=20036992
-sha256=91ef0113fe5d08e8f7e4be51715f5997e9cbd41239963f7fcf97b6114a39a157
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.7/MusicOrganizer-0.3.7-windows-x64.zip
-zip_size=12977332
-zip_sha256=f40299a341333cfc311bf8209bcaa81fd865b528c8732bdb5fc5efb5fa076f40
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.3.7
-summary=Windows 桌面交互适配第一期：右键菜单/键盘多选/双击播放
+sha256=c93fc289215a11d441c1d0e3437a984a9e6f3d575f35d85ed8ec9ab424f19bd9
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.8/MusicOrganizer-0.3.8-windows-x64.zip
+zip_size=12977443
+zip_sha256=0aa39d4384548daa42eb9b02368428b7c7e0c59d81134789b8987c6d96447c1d
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.3.8
+summary=修复 Windows 端检查更新超时（超时放宽 + 重试不被熔断拦住）

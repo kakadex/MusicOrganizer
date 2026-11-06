@@ -105,7 +105,11 @@ abstract final class UpdateCheck {
         return null;
       }
       onStep?.call('正在读取$label版本清单…');
-      final String? text = await Http.getText(url, null, null, timeout);
+      // ignoreBreaker：检查更新是用户手动触发的低频动作，被屏蔽的 host
+      // （典型：hosts 屏蔽了 GitHub 全家）失败两次就冷却 45 秒，用户立刻
+      // 点「重试」会白等——这里永远真发请求（0.3.8）。
+      final String? text =
+          await Http.getText(url, null, null, timeout, ignoreBreaker: true);
       if (text == null) {
         final String why = Http.lastError.isEmpty ? '无响应' : Http.lastError;
         failures.add('$label 清单：无法访问或超时（$why）');
@@ -131,6 +135,7 @@ abstract final class UpdateCheck {
         null,
         <String, String>{'Accept': 'application/vnd.github+json'},
         Http.readTimeoutOverseasMs,
+        ignoreBreaker: true,
       );
       if (json == null) {
         final String why = Http.lastError.isEmpty ? '无响应' : Http.lastError;

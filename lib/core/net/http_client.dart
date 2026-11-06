@@ -71,9 +71,17 @@ abstract final class Http {
   static const int connectTimeoutMs = 3500;
 
   /// 读取超时（海外源 8s / 国内源 5s：跨境链路本来就慢，给得太紧会整片超时）。
-  static const int readTimeoutOverseasMs = 8000;
+  ///
+  /// 0.3.8 放宽：Windows 端检查更新时用户反馈「超时」——排查发现用户机器
+  /// hosts 屏蔽了 GitHub 全家（连 127.0.0.1 必超时吃满 5s），且 5s 对部分
+  /// 家宽首次握手偏紧。海外源 8s→12s、国内源 5s→8s；连接 3.5s→5s。
+  /// 熔断只影响单个主机（按 host 分桶），放宽不影响限流保护的语义。
+  static const int readTimeoutOverseasMs = 12000;
 
-  static const int readTimeoutCnMs = 5000;
+  static const int readTimeoutCnMs = 8000;
+
+  /// 连接超时同步放宽（dart:io 的 DNS/握手在部分网络下会吃满它）。
+  static const int connectTimeoutMsScaled = 5000;
 
   static const int textMaxBytes = 4 * 1024 * 1024;
 
@@ -93,7 +101,7 @@ abstract final class Http {
   static HttpClient client() {
     _client ??= HttpClient()
       ..connectionTimeout =
-          Duration(milliseconds: NetTuning.scale(connectTimeoutMs))
+          Duration(milliseconds: NetTuning.scale(connectTimeoutMsScaled))
       ..maxConnectionsPerHost = 8
       // 走应用内配置的代理（直连 / 自动 / 手动）：联网源在需要代理的网络里也能用
       ..findProxy = NetworkProxy.findProxy;
@@ -108,8 +116,10 @@ abstract final class Http {
 
   /// 带查询参数的 GET，返回 JSON（Object / List / 其它）或 null。
   static Future<Object?> getJson(String url, Map<String, String>? params,
-      Map<String, String>? headers, int timeoutMs) async {
-    final String? text = await getText(url, params, headers, timeoutMs);
+      Map<String, String>? headers, int timeoutMs,
+      {bool ignoreBreaker = false}) async {
+    final String? text =
+        await getText(url, params, headers, timeoutMs, ignoreBreaker: ignoreBreaker);
     if (text == null) return null;
     try {
       return jsonDecode(text);
@@ -120,9 +130,11 @@ abstract final class Http {
 
   /// GET 并返回原始文本。
   static Future<String?> getText(String url, Map<String, String>? params,
-      Map<String, String>? headers, int timeoutMs) async {
-    final Uint8List? body =
-        await getBytes(url, params, headers, timeoutMs, textMaxBytes);
+      Map<String, String>? headers, int timeoutMs,
+      {bool ignoreBreaker = false}) async {
+    final Uint8List? body = await getBytes(
+        url, params, headers, timeoutMs, textMaxBytes,
+        ignoreBreaker: ignoreBreaker);
     if (body == null) return null;
     final String text = utf8.decode(body, allowMalformed: false).trim();
     if (text.isEmpty) return null;
@@ -130,11 +142,16 @@ abstract final class Http {
   }
 
   /// GET 并返回原始字节（封面图片这类二进制用）。失败返回 null。
+  ///
+  /// [ignoreBreaker] = 跳过熔断检查（0.3.8）：「检查更新」是用户手动触发的
+  /// 低频动作，被屏蔽的 host（如 hosts 屏蔽 GitHub）失败两次就冷却 45 秒，
+  /// 用户立刻点重试会白等——检查更新传 true，重试永远真发请求。
   static Future<Uint8List?> getBytes(String url, Map<String, String>? params,
-      Map<String, String>? headers, int timeoutMs, int maxBytes) async {
+      Map<String, String>? headers, int timeoutMs, int maxBytes,
+      {bool ignoreBreaker = false}) async {
     final String host = _hostOf(url);
     lastError = '';
-    if (breaker.isCoolingDown(host)) {
+    if (!ignoreBreaker && breaker.isCoolingDown(host)) {
       _note('$host 冷却中（${breaker.cooldownSecondsLeft(host)}s）');
       return null;
     }
@@ -143,7 +160,7 @@ abstract final class Http {
       final Uri uri = Uri.parse(full);
       final HttpClientRequest req = await client()
           .getUrl(uri)
-          .timeout(Duration(milliseconds: NetTuning.scale(connectTimeoutMs)));
+          .timeout(Duration(milliseconds: NetTuning.scale(connectTimeoutMsScaled)));
       req.headers.set('Connection', 'keep-alive');
       req.headers.set('User-Agent', userAgent);
       req.headers.set('Accept', 'application/json, text/plain, */*');
