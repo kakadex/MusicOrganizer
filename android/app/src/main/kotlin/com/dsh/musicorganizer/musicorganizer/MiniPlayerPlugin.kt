@@ -143,6 +143,12 @@ class MiniPlayerPlugin(
                     "updateNotification" -> {
                         val ctx = appContext
                         if (ctx != null) {
+                            // 0.3.3：把 Dart 带来的卡片元数据记下来——通知卡上
+                            // 拖动进度条后由原生刷新通知，刷新时用的是这些缓存值；
+                            // 之前 lastTitle 从不赋值，拖一下歌名就变「正在试听」。
+                            lastTitle = call.argument<String>("title") ?: ""
+                            lastArtist = call.argument<String>("artist") ?: ""
+                            call.argument<ByteArray>("cover")?.let { lastCover = it }
                             PlaybackNotificationService.update(
                                 ctx,
                                 call.argument<String>("title") ?: "",

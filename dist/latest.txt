@@ -1,11 +1,11 @@
-version=0.3.2
-tag=v0.3.2
+version=0.3.3
+tag=v0.3.3
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.2/MusicOrganizer-0.3.2-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.3/MusicOrganizer-0.3.3-android-arm64-v8a.apk
 size=20036992
-sha256=c6ed3cb5374a59864d72b08811678610cfa3b7f5d88ed319f2735438407faff7
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.2/MusicOrganizer-0.3.2-windows-x64.zip
-zip_size=12980355
-zip_sha256=e5a6e24c70a7b45fe3ca82ee0e93eb8cf64d24b76344a4f42b03077fc997c069
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.3.2
-summary=通知栏媒体卡可拖进度；修复换歌后音频焦点失效导致两个声音一起响
+sha256=bcc9dd71e7c3d7d12ae1e1af00334716bf338f101f355f39760cc0406c11c8b4
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.3/MusicOrganizer-0.3.3-windows-x64.zip
+zip_size=12980312
+zip_sha256=57b571ddb9ed89ce29ecb1c9fa22b84fedeeecbe118d17f41889a244cbbe043a
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.3.3
+summary=修复通知卡拖动进度后歌名和封面消失
