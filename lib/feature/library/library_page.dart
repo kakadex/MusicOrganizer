@@ -166,12 +166,16 @@ class _LibraryPageState extends State<LibraryPage> {
     }
     idx += 1;
     if (idx >= _shown.length) {
-      Log.info('[Player] 自动连播：已到列表末尾，停止');
+      Log.info('[Player] 自动连播：已到列表末尾 idx=$idx，停止');
       return false;
     }
     final VFile? next = _shown[idx].file;
     final store = Repo.instance.store;
-    if (next == null || store == null) return false;
+    if (next == null || store == null) {
+      Log.info('[Player] 自动连播：目标为空或 store 缺失 idx=$idx，停止');
+      return false;
+    }
+    Log.info('[Player] 自动连播：切到 idx=$idx docId=${next.docId.hashCode}');
     MiniPlayer.instance.lastCover = CoverCache.instance.peek(next);
     unawaited(MiniPlayer.instance.play(
       next,

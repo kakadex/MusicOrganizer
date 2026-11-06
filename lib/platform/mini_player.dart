@@ -256,21 +256,33 @@ class MiniPlayer extends ChangeNotifier {
         if (!playing) {
           _idleTicks++;
           if (_idleTicks >= 2) {
-            // 播完（或被系统停了）：停在当前进度，按钮变「继续」；
-            // 注册了自动连播就接着放下一首
             final int pos = await _ch.invokeMethod<int>('position') ?? s.positionMs;
+            final int dur = s.durationMs;
+            // 真播完 vs 被中断（0.3.6）：正常播完时 position ≈ duration；
+            // pos=0 或远小于 duration = 播放器被外部打断（音频焦点丢失、
+            // 解码错误等）。0.3.5 真机日志实锤：每 7~12 秒「播完于 0 ms」
+            // 跳一首——被打断被误判成播完就连跳不停。中断就停在当前位置
+            //（按钮变「继续」），绝不自动跳下一首。
+            final bool reallyFinished =
+                pos > 0 && (dur <= 0 || pos >= dur - 1000);
             state = PlayerState(
                 file: s.file,
                 playing: false,
-                durationMs: s.durationMs,
-                positionMs: pos);
+                durationMs: dur,
+                positionMs: reallyFinished && dur > 0 ? dur : pos);
             _stopTicker();
             notifyListeners();
-            final Future<bool> Function()? next = onNextTrack;
-            if (next != null) {
-              Log.info('[Player] 播完自动连播: ${s.file.stem()} 播完于 $pos ms');
-              final bool ok = await next();
-              if (!ok) Log.info('[Player] 自动连播：页面层返回无下一首');
+            if (reallyFinished) {
+              // 真播完：接下一首（没注册或没有下一首就停在播完态）
+              final Future<bool> Function()? next = onNextTrack;
+              if (next != null) {
+                Log.info('[Player] 真播完 pos=$pos/dur=$dur '
+                    'docId=${s.file.docId.hashCode}，自动连播');
+                final bool ok = await next();
+                if (!ok) Log.info('[Player] 自动连播：无下一首，停止');
+              }
+            } else {
+              Log.info('[Player] 播放中断 pos=$pos/dur=$dur，不连播，保持停止态');
             }
           }
           return;

@@ -43,4 +43,30 @@ void main() {
       expect(f.stem(), 'song');
     });
   });
+
+  group('真播完判定（0.3.6，日志实证的误触发修复）', () {
+    // 与 mini_player.dart 轮询里的判定保持一致（改一处同步改这里，
+    // 测试变红就是提醒两处不一致）：
+    //   pos > 0 && (dur <= 0 || pos >= dur - 1000) 才算真播完。
+    bool reallyFinished(int pos, int dur) =>
+        pos > 0 && (dur <= 0 || pos >= dur - 1000);
+
+    test('pos=0 不是播完（真机实锤：被焦点抢断时 pos=0，绝不能连播）', () {
+      expect(reallyFinished(0, 240000), isFalse);
+    });
+
+    test('pos 远小于时长不是播完（播了几秒被打断）', () {
+      expect(reallyFinished(12041, 240000), isFalse);
+    });
+
+    test('pos 接近时长是真播完（1 秒容差）', () {
+      expect(reallyFinished(239500, 240000), isTrue);
+      expect(reallyFinished(240000, 240000), isTrue);
+    });
+
+    test('时长未知（dur=0）时 pos>0 按播完处理', () {
+      expect(reallyFinished(5000, 0), isTrue);
+      expect(reallyFinished(0, 0), isFalse);
+    });
+  });
 }

@@ -1,11 +1,11 @@
-version=0.3.5
-tag=v0.3.5
+version=0.3.6
+tag=v0.3.6
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.5/MusicOrganizer-0.3.5-android-arm64-v8a.apk
-size=20036992
-sha256=16b45bd7cac9c08b04b01cfd72804c7355267903eaf76a7e561723b58144fb11
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.5/MusicOrganizer-0.3.5-windows-x64.zip
-zip_size=12977039
-zip_sha256=f0a019a555b70e4cb02a409ccdc9d6d166eeb90cea092221ba5f393e48506c7e
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.3.5
-summary=播完自动连播下一首；切歌可靠性改进
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.6/MusicOrganizer-0.3.6-android-arm64-v8a.apk
+size=20036988
+sha256=46d13d8ba1e60eb0a2155f85f69f9d2d8317f5352484046a8d5a1d54ef04c87f
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.6/MusicOrganizer-0.3.6-windows-x64.zip
+zip_size=12977054
+zip_sha256=9f67830e5d5f37cfa35fb43c7a977ade5172d2cdf4f03f9a4c302a2ada07346f
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.3.6
+summary=修复自动连播被误触发导致不停跳歌
