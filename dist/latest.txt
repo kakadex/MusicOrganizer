@@ -3,7 +3,7 @@ tag=v0.3.4
 # 优先国内直链（Gitee Release 下载）
 apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.4/MusicOrganizer-0.3.4-android-arm64-v8a.apk
 size=20036992
-sha256=3ff5f62a122eb008709d54af9111f7160d35110cc6a95544cadbcaf8ab52fd47
+sha256=961e53598e6cf4d936c12f41010c13d0d92c0ebd3ba1441bda22a4d1e4b442db
 zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.4/MusicOrganizer-0.3.4-windows-x64.zip
 zip_size=12980756
 zip_sha256=47ad692da3622cc6d6277bef72a53839de1e66b4a93350734fb222f1eb877c3f
