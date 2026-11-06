@@ -155,18 +155,38 @@ class CoverPackStore {
   }
 
   /// 取一张缩略图（**纯内存，零 IO**）；没有或已过期返回 null。
+  ///
+  /// 0.2.96：**不再因为一次失配就删除条目**（旧版自杀式逻辑：失配→删内存→
+  /// 标脏→把空表写回磁盘，35MB 缓存被自己清空）。现在失配只返回 null，
+  /// 条目保留；真正的清理交给下一次 `put` 覆盖。
+  /// 失配原因记进诊断计数，方便真机核对。
   Uint8List? peekOf(VFile f) {
     final Uint8List? b = _blobs[f.docId];
-    if (b == null) return null;
+    if (b == null) {
+      _diagNoEntry++;
+      return null;
+    }
     if (_keys[f.docId] != ThumbPackCodec.keyOf(f)) {
-      // 文件变了：这条作废（下次补图会重做）
-      _blobs.remove(f.docId);
-      _keys.remove(f.docId);
-      _markDirty();
+      _diagStale++;
+      if (_diagStale == 1) {
+        // 只记第一条失配的细节，避免刷屏；用来判断是 size 还是 mtime 变了
+        Log.warn('[CoverPack] 首个失配 docId=${_short(f.docId)} '
+            '存=${_keys[f.docId]} 现=${ThumbPackCodec.keyOf(f)}');
+      }
       return null;
     }
     return b;
   }
+
+  int _diagNoEntry = 0;
+  int _diagStale = 0;
+
+  /// 诊断快照（界面 / 日志用）。
+  String diagSummary() =>
+      '包内 ${_blobs.length} 条；无条目 $_diagNoEntry 次，失配 $_diagStale 次';
+
+  static String _short(String s) =>
+      s.length <= 12 ? s : '${s.substring(0, 12)}…';
 
   /// 有没有这张（不看新鲜度，仅判断是否存过）。
   bool has(String docId) => _blobs.containsKey(docId);

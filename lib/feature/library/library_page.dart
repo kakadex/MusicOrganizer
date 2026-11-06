@@ -232,6 +232,12 @@ class _LibraryPageState extends State<LibraryPage> {
   ///
   /// 现在：结果写进**单个打包文件**（一次读入内存），补图**不因滚动中断**，
   /// 只逐首让出事件循环保证滑动跟手；补完统一落盘一次。
+  ///
+  /// 0.2.96：**连续空转保护**——如果上一轮一首都没补成，就不许被
+  /// `ScrollEnd` 反复触发重跑（旧版日志里能看到 1 秒刷一次、跑了十几次）。
+  int _emptyRuns = 0;
+  static const int maxEmptyRuns = 2;
+
   Future<void> _preloadCovers() async {
     if (_fillingCovers) return;
     _fillingCovers = true;
@@ -249,24 +255,40 @@ class _LibraryPageState extends State<LibraryPage> {
         for (final VFile f in files)
           if (CoverPackStore.instance.peekOf(f) == null) f,
       ];
-      if (missing.isEmpty) return;
+      if (missing.isEmpty) {
+        _emptyRuns = 0;
+        return;
+      }
+      // 连续两轮一首都没补成：别再被 ScrollEnd 反复触发（0.2.96）
+      if (_emptyRuns >= maxEmptyRuns) {
+        Log.warn('[CoverPack] 连续 $_emptyRuns 轮零产出，暂停自动补图'
+            '（还缺 ${missing.length} 首）');
+        return;
+      }
 
       int made = 0;
+      int readNull = 0;
+      int encodeNull = 0;
+      int threw = 0;
       for (final VFile f in missing) {
         if (!mounted) break;
         try {
           final Uint8List? art = await Scanner.readCover(store, f);
-          if (art != null && art.isNotEmpty) {
+          if (art == null || art.isEmpty) {
+            readNull++;
+          } else {
             final Uint8List? small =
                 await CoverThumbCache.instance.encodeSmall(art);
             if (small != null) {
               CoverPackStore.instance.put(f, small);
               _putMemory(f, small);
               made++;
+            } else {
+              encodeNull++;
             }
           }
         } catch (_) {
-          // 单首失败跳过，不影响其余
+          threw++;
         }
         // 让出一帧：保证补图期间滑动依然跟手（但**不中断**补图）
         await Future<void>.delayed(Duration.zero);
@@ -281,9 +303,11 @@ class _LibraryPageState extends State<LibraryPage> {
       await CoverPackStore.instance.flush();
       // 0.2.95 探针：补图结果写进日志，真机排查靠它判断「到底存下来没有」
       Log.info('[CoverPack] 补图完成 made=$made 共${missing.length}首缺，'
-          '包内 ${CoverPackStore.instance.entryCount} 条，'
+          '读空=$readNull 缩图失败=$encodeNull 异常=$threw；'
+          '${CoverPackStore.instance.diagSummary()}；'
           '文件 ${await CoverPackStore.instance.packFileSize()} 字节');
       if (mounted && made > 0) setState(() {});
+      _emptyRuns = made > 0 ? 0 : _emptyRuns + 1;
     } finally {
       _fillingCovers = false;
     }

@@ -68,14 +68,17 @@ void main() {
     expect(CoverPackStore.instance.peekOf(f2), blob(150, 0x33));
   });
 
-  test('文件变了（大小或时间）：旧图作废，返回 null', () async {
+  test('文件变了（大小或时间）：旧图不返回，但条目保留不自毁', () async {
     final CoverPackStore s = CoverPackStore.instance;
     await s.ensureLoaded();
     final VFile f = song('a/3.mp3');
     s.put(f, blob(80, 0x44));
 
-    expect(s.peekOf(song('a/3.mp3', size: 999)), isNull, reason: '大小变了应作废');
-    expect(s.has('a/3.mp3'), isFalse, reason: '作废后应被移除');
+    expect(s.peekOf(song('a/3.mp3', size: 999)), isNull, reason: '大小变了不该返回旧图');
+    // 0.2.96：条目保留——旧版这里会删掉并标脏，最终把整个缓存文件清空
+    expect(s.has('a/3.mp3'), isTrue,
+        reason: '失配只影响这一次返回，不能删除数据（否则会自毁整包缓存）');
+    expect(s.peekOf(f), blob(80, 0x44), reason: '换回正确的 key 仍应命中');
   });
 
   test('坏文件不会卡死：删掉重建，load 返回 0', () async {
