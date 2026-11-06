@@ -23,8 +23,13 @@ class CoverCache {
 
   static final CoverCache instance = CoverCache._();
 
-  /// 条目上限（约覆盖两屏多一点，回滚时不必重读）。
-  static const int _limit = 400;
+  /// 条目上限。
+  ///
+  /// 0.2.88：400 → 4000。原来的 400 条在 900 首的曲库上不够用：缩略图单张
+  /// 只有 20–40KB，真正该卡住的是**字节**（24MB），条数却先到了上限，导致
+  /// 滚过 400 首以后前面的被淘汰、回滚就要重读——用户感知就是「每次下翻到
+  /// 新部分都要重新加载封面」。4000 条足够覆盖普通曲库，内存仍由字节上限管。
+  static const int _limit = 4000;
 
   /// 字节上限：与 [CoverMemCache.defaultMaxBytes] 保持一致（24MB）。
   ///
@@ -138,6 +143,12 @@ class CoverCache {
       _release();
     }
   }
+
+  /// 写入内存缓存（旁挂封面等外部来源也走这里，保证「一套内存缓存」）。
+  ///
+  /// 传进来的应当已经是缩过的小图；原图请先走
+  /// [CoverThumbCache.encodeSmall]，否则 24MB 预算会被几张图吃满。
+  void put(VFile f, Uint8List bytes) => _put(keyOf(f), bytes);
 
   /// 写入内存缓存并按「条数 + 字节」双上限淘汰。
   void _put(String key, Uint8List bytes) {

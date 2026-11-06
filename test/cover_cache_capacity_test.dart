@@ -53,11 +53,12 @@ void main() {
 
   test('超过条数上限会淘汰，且淘汰后账本仍然一致', () {
     final CoverCache c = CoverCache.instance;
-    // 上限 400 条：塞 500 条小数据
-    for (int i = 0; i < 500; i++) {
+    // 0.2.88：条数上限从 400 提到 4000（900 首的库装得下，不再因条数被砍）。
+    // 这里塞超出上限的量，确认淘汰机制本身还在、账本不漂。
+    for (int i = 0; i < 4500; i++) {
       c.debugPut('k$i', blob(16));
     }
-    expect(c.entryCount, lessThanOrEqualTo(400),
+    expect(c.entryCount, lessThanOrEqualTo(4000),
         reason: '必须被压到条数上限以内');
     expect(c.bytesUsed, c.entryCount * 16,
         reason: '字节账本必须与条数 × 单条大小严格一致');

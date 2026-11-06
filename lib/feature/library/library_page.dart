@@ -1262,8 +1262,15 @@ class _CoverRowState extends State<_CoverRow> {
   @override
   void initState() {
     super.initState();
+    // 先同步取一次内存缓存：列表行被回收后重建很频繁（addAutomaticKeepAlives
+    // 关闭 + 离屏即销毁），以前这里只能等 _load() 的异步结果，于是每翻到
+    // 新位置都先闪一帧空占位。内存命中就直接有图，一帧都不闪。
+    _cover = CoverCache.instance.peek(widget.entry.file ?? _never);
     _load();
   }
+
+  /// 只用于 peek 的空对象（file 为 null 时必然不命中）。
+  static final VFile _never = VFile(docId: '', name: '');
 
   @override
   void didUpdateWidget(covariant _CoverRow old) {
@@ -1278,7 +1285,8 @@ class _CoverRowState extends State<_CoverRow> {
     if (widget.paused) return;
     final Uint8List? hit = CoverCache.instance.peek(file);
     if (hit != null) {
-      setState(() => _cover = hit);
+      // 已有内存缓存：只在还没显示时才 setState（initState 已经同步取过一次）
+      if (_cover != hit) setState(() => _cover = hit);
       return;
     }
     Uint8List? art;
@@ -1286,6 +1294,8 @@ class _CoverRowState extends State<_CoverRow> {
       art = await CoverCache.instance.load(file);
     }
     // 自己没有封面 → 找旁边的同名图片 → 再找专辑目录里的 cover.jpg
+    // 0.2.88：这两步的结果也写回统一内存缓存——不然每行重建都要重查一遍
+    // （旁挂缓存有 5 分钟 TTL、300 条上限，翻几屏就被挤掉了）。
     final FileStore? store = Repo.instance.store;
     if (art == null && store != null) {
       try {
@@ -1304,6 +1314,10 @@ class _CoverRowState extends State<_CoverRow> {
           art = null;
         }
       }
+    }
+    if (art != null) {
+      // 统一进内存缓存（已是缩图；旁挂缓存里的也保证是缩过的或可缩）
+      CoverCache.instance.put(file, art);
     }
     if (mounted && art != null) setState(() => _cover = art);
   }
