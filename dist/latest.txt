@@ -1,11 +1,11 @@
-version=0.3.4
-tag=v0.3.4
+version=0.3.5
+tag=v0.3.5
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.4/MusicOrganizer-0.3.4-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.5/MusicOrganizer-0.3.5-android-arm64-v8a.apk
 size=20036992
-sha256=961e53598e6cf4d936c12f41010c13d0d92c0ebd3ba1441bda22a4d1e4b442db
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.4/MusicOrganizer-0.3.4-windows-x64.zip
-zip_size=12980756
-zip_sha256=47ad692da3622cc6d6277bef72a53839de1e66b4a93350734fb222f1eb877c3f
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.3.4
-summary=检查更新改为双站同时查询取更高版本
+sha256=16b45bd7cac9c08b04b01cfd72804c7355267903eaf76a7e561723b58144fb11
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.5/MusicOrganizer-0.3.5-windows-x64.zip
+zip_size=12977039
+zip_sha256=f0a019a555b70e4cb02a409ccdc9d6d166eeb90cea092221ba5f393e48506c7e
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.3.5
+summary=播完自动连播下一首；切歌可靠性改进

@@ -149,12 +149,47 @@ class _LibraryPageState extends State<LibraryPage> {
     _repoChanges.addListener(_onRepoChanged);
     // 通知栏「上一首/下一首」：按当前筛选结果选曲（0.2.96）
     LibraryPage.onPlayerCommand = _handlePlayerCommand;
+    // 播完自动连播（0.3.5）：播完接当前筛选列表的下一首，到尾就停
+    MiniPlayer.onNextTrack = _autoNextTrack;
     WidgetsBinding.instance.addPostFrameCallback((_) => _autoScan());
+  }
+
+  /// 播完自动连播（0.3.5）：在当前筛选列表里找下一首；返回 false=没有下一首。
+  Future<bool> _autoNextTrack() async {
+    if (!mounted || _shown.isEmpty) return false;
+    final PlayerState? st = MiniPlayer.instance.state;
+    final String? cur = st?.file.docId;
+    int idx = 0;
+    if (cur != null) {
+      final int at = _shown.indexWhere((Entry e) => e.file?.docId == cur);
+      if (at >= 0) idx = at;
+    }
+    idx += 1;
+    if (idx >= _shown.length) {
+      Log.info('[Player] 自动连播：已到列表末尾，停止');
+      return false;
+    }
+    final VFile? next = _shown[idx].file;
+    final store = Repo.instance.store;
+    if (next == null || store == null) return false;
+    MiniPlayer.instance.lastCover = CoverCache.instance.peek(next);
+    unawaited(MiniPlayer.instance.play(
+      next,
+      saf: store is SafFileStore ? store : null,
+      openExternal: store.openWithPlayer,
+    ));
+    if (mounted) setState(() {});
+    return true;
   }
 
   /// 通知栏媒体卡的上/下一首：在当前筛选列表里移动一格。
   void _handlePlayerCommand(String cmd) {
     if (cmd != 'next' && cmd != 'prev') return;
+    // 探针（0.3.5）：每次命令到达都记一条（命令名 + 列表长度 + 当前歌位置），
+    // 用于对账「点了但没反应」时命令到底断在哪一层。无隐私内容。
+    final PlayerState? st0 = MiniPlayer.instance.state;
+    Log.info('[PlayerCmd] 到达 cmd=$cmd 列表=${_shown.length} '
+        '当前=${st0?.file.docId.hashCode} mounted=$mounted');
     if (!mounted || _shown.isEmpty) return;
     final PlayerState? st = MiniPlayer.instance.state;
     final VFile? curFile = st?.file;
@@ -165,10 +200,18 @@ class _LibraryPageState extends State<LibraryPage> {
       if (at >= 0) idx = at;
     }
     idx = cmd == 'next' ? idx + 1 : idx - 1;
-    if (idx < 0 || idx >= _shown.length) return; // 到头/到尾就停
+    if (idx < 0 || idx >= _shown.length) {
+      // 到头/到尾就停（0.3.5 起记日志：区分「没反应=越界」与「命令丢了」）
+      Log.info('[PlayerCmd] cmd=$cmd 越界 idx=$idx 列表=${_shown.length}，忽略');
+      return;
+    }
     final VFile? next = _shown[idx].file;
     final store = Repo.instance.store;
-    if (next == null || store == null) return;
+    if (next == null || store == null) {
+      Log.info('[PlayerCmd] cmd=$cmd 目标为空或 store 缺失，忽略');
+      return;
+    }
+    Log.info('[PlayerCmd] cmd=$cmd 执行切歌 idx=$idx');
     MiniPlayer.instance.lastCover = CoverCache.instance.peek(next);
     unawaited(MiniPlayer.instance.play(
       next,
@@ -194,6 +237,7 @@ class _LibraryPageState extends State<LibraryPage> {
     _scrollController.dispose();
     _search.dispose();
     LibraryPage.onPlayerCommand = null;
+    MiniPlayer.onNextTrack = null;
     super.dispose();
   }
 

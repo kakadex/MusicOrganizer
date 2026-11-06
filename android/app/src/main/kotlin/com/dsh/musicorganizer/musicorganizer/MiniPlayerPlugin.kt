@@ -202,6 +202,8 @@ class MiniPlayerPlugin(
                 }
                 else -> {
                     // next/prev 等「选曲」类命令：交给 Dart 决定播哪首
+                    // 探针（0.3.5）：记录转发给 Dart 的动作；修完保留
+                    android.util.Log.d("MOPlayerCmd", "plugin-forward cmd=$cmd")
                     MethodChannel(messenger, CHANNEL).invokeMethod("onCommand", cmd)
                 }
             }

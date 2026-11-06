@@ -9,6 +9,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../core/log/log.dart';
 import '../core/model/vfile.dart';
 import '../core/fs/saf_file_store.dart';
 
@@ -40,6 +41,11 @@ class MiniPlayer extends ChangeNotifier {
   /// 0.2.96 起通知栏有媒体控制卡，上一首/下一首要由 Dart 选曲。
   static void Function(String cmd)? onCommand;
 
+  /// 播完自动接下一首的回调（0.3.5）：由页面层注册，返回 false 或不注册
+  /// 都表示「没有下一首」，播放器保持播完停止的状态。
+  /// 参数 fromUser 为 false 时表示这是自动连播（区别于通知栏按钮）。
+  static Future<bool> Function()? onNextTrack;
+
   /// 最近一次播放的封面字节（通知卡显示用；由调用方在 play 时带上）。
   Uint8List? lastCover;
 
@@ -49,6 +55,12 @@ class MiniPlayer extends ChangeNotifier {
 
   /// 连续两次轮询到「没在播」：判定播完（避免个别状态抖动误判）。
   int _idleTicks = 0;
+
+  /// 是否正在自动连播换歌（0.3.5）：换歌窗口期内（约 3 秒）轮询不再做
+  /// 播完判定——新歌 prepare 期间 isPlaying=false 会被旧轮询误判成「播完」，
+  /// 连跳两首就是这个机制（这也是真机「上一曲要点两次」的头号嫌疑）。
+  bool _switching = false;
+  Timer? _switchGuard;
 
   /// 最近一次错误（界面上显示过就清）。
   String? get error => _error;
@@ -61,7 +73,11 @@ class MiniPlayer extends ChangeNotifier {
   void wire() {
     _ch.setMethodCallHandler((MethodCall call) async {
       if (call.method == 'onCommand') {
-        onCommand?.call(call.arguments as String? ?? '');
+        final String cmd = call.arguments as String? ?? '';
+        // 探针（0.3.5）：Dart 侧收到命令即记一条，与原生 svc-emit 对账
+        // ——原生发了 Dart 没收到 = 通道层丢；Dart 收了没反应 = 页面层问题。
+        Log.info('[PlayerCmd] Dart 收到 cmd=$cmd');
+        onCommand?.call(cmd);
       }
       return null;
     });
@@ -72,6 +88,10 @@ class MiniPlayer extends ChangeNotifier {
     _error = null;
     _saf = saf;
     _openExternal = openExternal;
+    // 换歌窗口（0.3.5）：从现在起到原生播放器真正开始播新歌之间，
+    // isPlaying 必然返回 false。窗口期内轮询不做播完判定——否则上一首的
+    // 轮询会把「正在换歌」误判成「上一首播完了」，再自动跳一首。
+    _beginSwitchWindow();
     if (saf != null) {
       try {
         final String? uri = await saf.playerUri(f);
@@ -208,21 +228,36 @@ class MiniPlayer extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 换歌窗口管理（0.3.5）：play() 进门就开窗口，3 秒后自动关
+  ///（prepare 毫秒级，3 秒是极宽裕的上限；期间轮询跳过播完判定）。
+  void _beginSwitchWindow() {
+    _switching = true;
+    _switchGuard?.cancel();
+    _switchGuard = Timer(const Duration(seconds: 3), () {
+      _switching = false;
+    });
+  }
+
   /// 250ms 轮询进度（MediaPlayer 没有进度流，这是最省事的稳态做法）。
-  /// 顺带做播完检测：播放中连续两次查到 isPlaying=false → 已播完。
+  /// 顺带做播完检测：播放中连续两次查到 isPlaying=false → 已播完，
+  /// 播完触发 [onNextTrack] 自动连播（0.3.5；没注册或返回 false 就停在播完态）。
   void _startTicker() {
     _stopTicker();
     _idleTicks = 0;
     _ticker = Timer.periodic(const Duration(milliseconds: 250), (Timer t) async {
       final PlayerState? s = state;
       if (s == null || !s.playing) return;
+      // 换歌窗口期：新播放器还没起来，isPlaying 必然是 false，
+      // 这段时间不做播完判定（否则会把「正在换歌」误判成「播完了」）
+      if (_switching) return;
       try {
         final bool playing =
             await _ch.invokeMethod<bool>('isPlaying') ?? false;
         if (!playing) {
           _idleTicks++;
           if (_idleTicks >= 2) {
-            // 播完（或被系统停了）：停在当前进度，按钮变「继续」
+            // 播完（或被系统停了）：停在当前进度，按钮变「继续」；
+            // 注册了自动连播就接着放下一首
             final int pos = await _ch.invokeMethod<int>('position') ?? s.positionMs;
             state = PlayerState(
                 file: s.file,
@@ -231,6 +266,12 @@ class MiniPlayer extends ChangeNotifier {
                 positionMs: pos);
             _stopTicker();
             notifyListeners();
+            final Future<bool> Function()? next = onNextTrack;
+            if (next != null) {
+              Log.info('[Player] 播完自动连播: ${s.file.stem()} 播完于 $pos ms');
+              final bool ok = await next();
+              if (!ok) Log.info('[Player] 自动连播：页面层返回无下一首');
+            }
           }
           return;
         }
@@ -249,6 +290,9 @@ class MiniPlayer extends ChangeNotifier {
   void _stopTicker() {
     _ticker?.cancel();
     _ticker = null;
+    _switchGuard?.cancel();
+    _switchGuard = null;
+    _switching = false;
   }
 
   @override
@@ -256,4 +300,8 @@ class MiniPlayer extends ChangeNotifier {
     _stopTicker();
     super.dispose();
   }
+
+  /// 探针（0.3.5）：通知卡选曲命令的到达与执行结果，用于定位
+  /// 「上一曲/下一曲偶发要点两次」。只记命令名、当前索引与结果，无隐私。
+  static void Function(String stage, String detail)? probeSink;
 }

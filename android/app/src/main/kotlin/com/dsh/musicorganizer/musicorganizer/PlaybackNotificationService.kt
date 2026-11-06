@@ -182,8 +182,15 @@ class PlaybackNotificationService : Service() {
         var seekSink: ((Long) -> Unit)? = null
 
         fun emit(cmd: String) {
-            commandSink?.invoke(cmd)
+            // 探针（0.3.5）：通知按钮命令到达即记一条（命令名 + 计数，无隐私），
+            // 用于对账「点了没反应」时命令是否到达本层。修完保留。
+            cmdCount[cmd] = (cmdCount[cmd] ?: 0) + 1
+            android.util.Log.d("MOPlayerCmd", "svc-emit cmd=$cmd total=${cmdCount[cmd]}")
+            commandSink?.invoke(cmd) ?: android.util.Log.w("MOPlayerCmd", "svc-emit cmd=$cmd 但 commandSink 为空（插件未注册？）")
         }
+
+        /// 命令到达计数（探针用）。
+        private val cmdCount = mutableMapOf<String, Int>()
 
         fun emitSeek(posMs: Long) {
             seekSink?.invoke(posMs)

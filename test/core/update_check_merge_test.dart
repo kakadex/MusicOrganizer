@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:musicorganizer/core/update/app_update.dart';
 import 'package:musicorganizer/core/update/update_check.dart';
