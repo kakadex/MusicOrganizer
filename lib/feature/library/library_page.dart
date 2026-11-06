@@ -378,6 +378,46 @@ class _LibraryPageState extends State<LibraryPage> {
     CoverCache.instance.put(f, bytes);
   }
 
+  /// 预热「当前可见 + 前后各一屏」的封面解码（0.2.101）。
+  ///
+  /// 只解内存里**已经拿到字节**的；没有字节的不去读盘（交给常规加载）。
+  void _precacheVisible() {
+    if (!mounted || _shown.isEmpty) return;
+    final int first = _firstVisibleIndex();
+    final int perScreen = (_rowExtent <= 0)
+        ? 20
+        : (MediaQuery.maybeOf(context)?.size.height ?? 800) ~/ _rowExtent;
+    final int from = (first - perScreen).clamp(0, _shown.length);
+    final int to = (first + perScreen * 2).clamp(0, _shown.length);
+    final List<Uint8List> picks = <Uint8List>[];
+    for (int i = from; i < to; i++) {
+      final VFile? f = _shown[i].file;
+      if (f == null) continue;
+      // 同步查内存/打包存储（都是纯内存，不会阻塞）
+      final Uint8List? b = CoverCache.instance.peek(f);
+      if (b != null) picks.add(b);
+      if (picks.length >= 40) break;
+    }
+    if (picks.isEmpty) return;
+    unawaited(CoverBox.precacheAll(context, picks));
+  }
+
+  /// 滚动过程中节流预热（0.2.101）：每滑过一定距离补一次，避免逐帧都算。
+  int _lastPrecacheAt = 0;
+  void _maybePrecacheOnScroll() {
+    if (!mounted) return;
+    final double off = _scrollController.hasClients ? _scrollController.offset : 0;
+    if ((off - _lastPrecacheAt).abs() < _rowExtent * 8) return;
+    _lastPrecacheAt = off.round();
+    _precacheVisible();
+  }
+
+  /// 当前第一个可见行的序号（用滚动偏移 ÷ 行高估算，够预热用）。
+  int _firstVisibleIndex() {
+    if (!_scrollController.hasClients || _rowExtent <= 0) return 0;
+    return (_scrollController.offset ~/ _rowExtent).clamp(0, _shown.length);
+  }
+
   Future<void> _pickRoot() async {
     final repo = Repo.instance;
     final bool ok = await repo.pickRoot();
@@ -967,6 +1007,13 @@ class _LibraryPageState extends State<LibraryPage> {
         onNotification: (ScrollNotification n) {
           if (n is ScrollStartNotification) {
             _scrolling = true;
+            // 0.2.101：**滚动一开始就预热接下来的封面**。
+            // 真机现象是「快速滚动空白、停下马上有图」——数据一直在内存里
+            // （日志实测 29/30 命中、解码 0 失败），纯粹是解码来不及。
+            // 这里提前把可见范围±一屏的图解码进 ImageCache，滚动时直接命中。
+            _precacheVisible();
+          } else if (n is ScrollUpdateNotification) {
+            _maybePrecacheOnScroll();
           } else if (n is ScrollEndNotification) {
             _scrolling = false;
             // 停下来后重建一次，让可见行补读封面

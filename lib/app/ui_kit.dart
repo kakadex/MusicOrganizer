@@ -288,6 +288,62 @@ class CoverBox extends StatelessWidget {
   final Uint8List? bytes;
   final double size;
 
+  /// 预热用的 provider 缓存（0.2.101）。
+  ///
+  /// **为什么需要**：真机现象是「快速滚动空白、停下马上有图」，日志已证明
+  /// 数据在内存、解码也不报错——纯属**解码需要时间，滚动时来不及**。
+  /// `Image.memory` 每次 build 都会新建一个 provider，滚动时每行重建都
+  /// 重新走一遍异步解码，一屏十几行根本赶不上。
+  ///
+  /// 这里按「字节实例 + 解码尺寸」缓存 provider，并提前 [precacheImage]：
+  /// 图片解码好之后进 Flutter 的 ImageCache，滚动时直接命中位图，不再等待。
+  static final Map<String, ImageProvider> _providerCache =
+      <String, ImageProvider>{};
+  static const int _providerCacheMax = 1500;
+
+  static ImageProvider providerFor(Uint8List bytes, int cachePx) {
+    final String key = '${identityHashCode(bytes)}|$cachePx';
+    final ImageProvider? hit = _providerCache[key];
+    if (hit != null) return hit;
+    if (_providerCache.length > _providerCacheMax) {
+      _providerCache.clear(); // 简单粗暴但有效：曲库不会真的需要几千张
+    }
+    // 注意：`scale` 不是「解码尺寸」，它是逻辑像素比例（会改变显示大小）。
+    // 这里必须用默认 scale=1，解码尺寸靠 [ResizeImage] 控制。
+    final ImageProvider p = ResizeImage(
+      MemoryImage(bytes),
+      width: cachePx,
+      height: cachePx,
+      policy: ResizeImagePolicy.fit,
+      allowUpscaling: false,
+    );
+    _providerCache[key] = p;
+    return p;
+  }
+
+  /// 提前解码一批封面（在 buildContext 可用的地方调用，如列表页）。
+  ///
+  /// 只解前 [limit] 张已经拿到字节的图；失败无所谓（滚动时仍会按需解码）。
+  static Future<void> precacheAll(
+    BuildContext context,
+    Iterable<Uint8List> images, {
+    int size = 46,
+    int limit = 40,
+  }) async {
+    final double dpr = MediaQuery.maybeOf(context)?.devicePixelRatio ?? 1.0;
+    final int cachePx = (size * dpr).round().clamp(1, 4096).toInt();
+    int n = 0;
+    for (final Uint8List b in images) {
+      if (n >= limit) break;
+      n++;
+      try {
+        await precacheImage(providerFor(b, cachePx), context);
+      } catch (_) {
+        // 单张失败跳过
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // 按实际显示尺寸解码：封面原图常见 500~1000px，若按全分辨率解到 46dp 的格子里，
@@ -303,11 +359,13 @@ class CoverBox extends StatelessWidget {
         color: MoKit.line(context),
         child: bytes == null
             ? Icon(Icons.music_note, size: size * 0.42, color: MoKit.faint(context))
-            : Image.memory(bytes!,
+            // 0.2.101：改用**稳定复用的 provider**（而不是 `Image.memory`
+            // 每次新建 provider）。同一个字节实例 + 同一尺寸 → 同一个 provider →
+            // Flutter 的 ImageCache 能命中已解码位图，滚动时不再等解码。
+            : Image(
+                image: providerFor(bytes!, cachePx),
                 fit: BoxFit.cover,
                 gaplessPlayback: true,
-                cacheWidth: cachePx,
-                cacheHeight: cachePx,
                 // 字节只保证「来自文件」，不保证是合法图片：
                 // 损坏的 cover.jpg 或写坏的 APIC 会让 Image 抛错，不兜底就整屏红
                 errorBuilder: (BuildContext c, Object e, StackTrace? st) {
