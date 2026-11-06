@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../core/log/log.dart';
 import '../core/model/task_control.dart';
 import '../core/task/task_center.dart';
 
@@ -267,6 +268,21 @@ class MoTile extends StatelessWidget {
 
 /// 封面方块（48dp，圆角 8，无图时显示音符占位）。
 class CoverBox extends StatelessWidget {
+  /// 解码失败诊断（0.2.100）：只记前若干条，避免滚屏时刷爆日志。
+  static int _decodeErrShown = 0;
+  static int _decodeErrCount = 0;
+  static void _logDecodeError(int bytesLen, Object e) {
+    _decodeErrCount++;
+    if (_decodeErrShown < 8) {
+      _decodeErrShown++;
+      Log.info('[CoverDecode] 解码失败 #$_decodeErrCount '
+          'bytes=$bytesLen err=${e.runtimeType}: $e');
+    }
+  }
+
+  /// 解码失败汇总（排查用）。
+  static String decodeErrorSummary() =>
+      '解码失败 $_decodeErrCount 次（已显示 $_decodeErrShown 条）';
   const CoverBox({super.key, this.bytes, this.size = 46});
 
   final Uint8List? bytes;
@@ -294,10 +310,15 @@ class CoverBox extends StatelessWidget {
                 cacheHeight: cachePx,
                 // 字节只保证「来自文件」，不保证是合法图片：
                 // 损坏的 cover.jpg 或写坏的 APIC 会让 Image 抛错，不兜底就整屏红
-                errorBuilder: (BuildContext c, Object e, StackTrace? st) => Icon(
-                    Icons.music_note,
-                    size: size * 0.42,
-                    color: MoKit.faint(c))),
+                errorBuilder: (BuildContext c, Object e, StackTrace? st) {
+                  // 0.2.100 探针：解码失败以前**完全静默**，界面上只是一片音符
+                  // 占位，看不出是"没数据"还是"数据解不开"。这里记日志区分。
+                  _logDecodeError(bytes!.length, e);
+                  return Icon(
+                      Icons.music_note,
+                      size: size * 0.42,
+                      color: MoKit.faint(c));
+                }),
       ),
     );
   }

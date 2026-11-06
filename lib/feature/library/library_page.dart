@@ -1426,6 +1426,25 @@ class _CoverRow extends StatefulWidget {
 class _CoverRowState extends State<_CoverRow> {
   Uint8List? _cover;
 
+  /// 0.2.100 探针：区分「行没拿到数据」和「拿到数据但显示不出来」。
+  static int _rowInitHit = 0;
+  static int _rowInitMiss = 0;
+  static bool _rowProbeLogged = false;
+
+  static void _probeRow(bool hit) {
+    if (hit) {
+      _rowInitHit++;
+    } else {
+      _rowInitMiss++;
+    }
+    if (!_rowProbeLogged && (_rowInitHit + _rowInitMiss) >= 30) {
+      _rowProbeLogged = true;
+      Log.info('[CoverRow] 前 ${_rowInitHit + _rowInitMiss} 行：'
+          'initState 命中缓存 $_rowInitHit 次，未命中 $_rowInitMiss 次；'
+          '${CoverBox.decodeErrorSummary()}');
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1433,6 +1452,7 @@ class _CoverRowState extends State<_CoverRow> {
     // 关闭 + 离屏即销毁），以前这里只能等 _load() 的异步结果，于是每翻到
     // 新位置都先闪一帧空占位。内存命中就直接有图，一帧都不闪。
     _cover = CoverCache.instance.peek(widget.entry.file ?? _never);
+    _probeRow(_cover != null);
     _load();
   }
 
