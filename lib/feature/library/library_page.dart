@@ -237,6 +237,7 @@ class _LibraryPageState extends State<LibraryPage> {
   /// `ScrollEnd` 反复触发重跑（旧版日志里能看到 1 秒刷一次、跑了十几次）。
   int _emptyRuns = 0;
   bool _emptyPauseLogged = false;
+  bool _matchProbeLogged = false;
   static const int maxEmptyRuns = 2;
 
   Future<void> _preloadCovers() async {
@@ -256,6 +257,27 @@ class _LibraryPageState extends State<LibraryPage> {
         for (final VFile f in files)
           if (CoverPackStore.instance.peekOf(f) == null) f,
       ];
+      // 0.2.99 决定性探针：打包里的 869 条，到底能不能对上当前列表的 docId？
+      // 「大片没图」说明对不上——那就得看是 docId 变了还是 key 变了。
+      if (!_matchProbeLogged && files.isNotEmpty) {
+        _matchProbeLogged = true;
+        final int hit = files.length - missing.length;
+        final double pct = files.isEmpty ? 0 : hit * 100 / files.length;
+        Log.info('[CoverMatch] 列表 ${files.length} 首，打包命中 $hit 首'
+            '（${pct.toStringAsFixed(1)}%），缺 ${missing.length} 首；'
+            '包内 ${CoverPackStore.instance.entryCount} 条');
+        // 抽一条「缺的」和一条「命中的」，把两边 key 都打出来对比
+        if (missing.isNotEmpty) {
+          final VFile m = missing.first;
+          Log.info('[CoverMatch] 缺例 docId=${m.docId} key=${CoverPackStore.instance.debugKeyOf(m)}');
+        }
+        for (final VFile ok in files.take(200)) {
+          if (CoverPackStore.instance.peekOf(ok) != null) {
+            Log.info('[CoverMatch] 命中例 docId=${ok.docId} key=${CoverPackStore.instance.debugKeyOf(ok)}');
+            break;
+          }
+        }
+      }
       if (missing.isEmpty) {
         _emptyRuns = 0;
         return;

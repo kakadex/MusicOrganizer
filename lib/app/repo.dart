@@ -177,8 +177,7 @@ class Repo extends ChangeNotifier {
     // 0.2.95：加载结果记日志（真机排查用，正常路径只一条）。
     final int packedCount = await CoverPackStore.instance.ensureLoaded();
     Log.info('[CoverPack] 启动加载 $packedCount 条，'
-        '文件 ${await CoverPackStore.instance.packFileSize()} 字节');
-    final Directory dir = await _dataDir();
+        '文件 ${await CoverPackStore.instance.packFileSize()} 字节');    final Directory dir = await _dataDir();
     // 上次进程被杀 / 断电留下的临时副本：启动时顺手清掉（只认本 app 的前缀、
     // 只清 6 小时前的），不然缓存目录会一天天涨。失败不影响启动。
     sweepTemp(Directory.systemTemp);

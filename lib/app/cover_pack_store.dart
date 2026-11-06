@@ -185,6 +185,13 @@ class CoverPackStore {
   String diagSummary() =>
       '包内 ${_blobs.length} 条；无条目 $_diagNoEntry 次，失配 $_diagStale 次';
 
+  /// 排查用：某首歌当前的查找键、以及包里存的键（可能没有）。
+  String debugKeyOf(VFile f) {
+    final String now = ThumbPackCodec.keyOf(f);
+    final String? stored = _keys[f.docId];
+    return 'now=$now stored=${stored ?? '(无此docId)'}';
+  }
+
   static String _short(String s) =>
       s.length <= 12 ? s : '${s.substring(0, 12)}…';
 
