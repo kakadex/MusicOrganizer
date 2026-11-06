@@ -457,6 +457,8 @@ class SongRow extends StatelessWidget {
     this.selectionMode = false,
     this.highlight = false,
     this.terms = const <String>[],
+    this.onSecondaryTapUp,
+    this.onDoubleTap,
   });
 
   final String title;
@@ -474,11 +476,20 @@ class SongRow extends StatelessWidget {
   /// 检索命中词（为空不高亮）。
   final List<String> terms;
 
+  /// 右键（Windows 桌面）：弹上下文菜单。回调收到菜单弹出位置（全局坐标）。
+  /// 手机端无右键，不传即无此行为。
+  final void Function(TapUpDetails details)? onSecondaryTapUp;
+
+  /// 双击（Windows 桌面）：直接播放。手机端双击无语义，不传即无此行为。
+  final VoidCallback? onDoubleTap;
+
   @override
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
       onLongPress: onLongPress,
+      onDoubleTap: onDoubleTap,
+      onSecondaryTapUp: onSecondaryTapUp,
       borderRadius: BorderRadius.circular(MoKit.radiusRow),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),

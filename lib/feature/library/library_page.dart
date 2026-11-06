@@ -101,6 +101,10 @@ class _LibraryPageState extends State<LibraryPage> {
   /// 列表自身的 key：拖选时用它的 RenderBox 做全局→局部坐标换算。
   final GlobalKey _listKey = GlobalKey();
 
+  /// Shift+点击范围选的锚点行号（桌面端）：最后一次 Ctrl/普通点击的行。
+  /// -1 表示还没点过，Shift 点击退化为普通单选。
+  int _lastTapIndex = -1;
+
   /// 列表行高（dp）。与 [_row] 外层的固定高度、ListView 的 itemExtent 保持一致。
   ///
   /// 实测 SongRow 在默认与多选两种模式下渲染高度都是 60.0；固定住之后
@@ -1091,55 +1095,58 @@ class _LibraryPageState extends State<LibraryPage> {
             : null,
       );
     }
-    return RefreshIndicator(
-      onRefresh: _scan,
-      child: NotificationListener<ScrollNotification>(
-        onNotification: (ScrollNotification n) {
-          if (n is ScrollStartNotification) {
-            _scrolling = true;
-            // 0.2.101：**滚动一开始就预热接下来的封面**。
-            // 真机现象是「快速滚动空白、停下马上有图」——数据一直在内存里
-            // （日志实测 29/30 命中、解码 0 失败），纯粹是解码来不及。
-            // 这里提前把可见范围±一屏的图解码进 ImageCache，滚动时直接命中。
-            _precacheVisible();
-          } else if (n is ScrollUpdateNotification) {
-            _maybePrecacheOnScroll();
-          } else if (n is ScrollEndNotification) {
-            _scrolling = false;
-            // 停下来后重建一次，让可见行补读封面
-            if (mounted) setState(() {});
-            // 补图被滑动打断过：滑停后接着补（0.2.91）
-            unawaited(_preloadCovers());
-          }
-          return false;
-        },
-        child: Listener(
-          // 长按进入多选后，手指继续滑动即可连续勾选（Listener 不参与手势竞争，
-          // 所以不会影响正常滚动）。
-          onPointerMove: _onDragSelectMove,
-          onPointerUp: (_) => _dragSelecting = false,
-          onPointerCancel: (_) => _dragSelecting = false,
-          child: ListView.builder(
-            key: _listKey,
-            controller: _scrollController,
-            padding: const EdgeInsets.only(bottom: 12),
-            // 行高固定：滚动时不用逐项测量，拖选也能用行高反查行号。
-            itemExtent: _rowExtent,
-            // 快速滑动优化：离屏行不再保活，避免一次性为大量行保留状态、触发过多封面 I/O。
-            addAutomaticKeepAlives: false,
-            // 预建范围（0.2.89）：240px 约 4 行，等于没有预取，滚到边上才开始
-            // 加载，观感就是「翻到哪加载到哪」。放到约两屏，滚到之前封面已在内存。
-            scrollCacheExtent: const ScrollCacheExtent.pixels(1200),
-            itemCount: _shown.length,
-            itemBuilder: (BuildContext c, int i) => _row(_shown[i]),
-          ),
-        ),
+    final ListView list = ListView.builder(
+      key: _listKey,
+      controller: _scrollController,
+      padding: const EdgeInsets.only(bottom: 12),
+      // 行高固定：滚动时不用逐项测量，拖选也能用行高反查行号。
+      itemExtent: _rowExtent,
+      // 快速滑动优化：离屏行不再保活，避免一次性为大量行保留状态、触发过多封面 I/O。
+      addAutomaticKeepAlives: false,
+      // 预建范围（0.2.89）：240px 约 4 行，等于没有预取，滚到边上才开始
+      // 加载，观感就是「翻到哪加载到哪」。放到约两屏，滚到之前封面已在内存。
+      scrollCacheExtent: const ScrollCacheExtent.pixels(1200),
+      itemCount: _shown.length,
+      itemBuilder: (BuildContext c, int i) => _row(_shown[i]),
+    );
+    final Widget content = NotificationListener<ScrollNotification>(
+      onNotification: (ScrollNotification n) {
+        if (n is ScrollStartNotification) {
+          _scrolling = true;
+          // 0.2.101：**滚动一开始就预热接下来的封面**。
+          // 真机现象是「快速滚动空白、停下马上有图」——数据一直在内存里
+          // （日志实测 29/30 命中、解码 0 失败），纯粹是解码来不及。
+          // 这里提前把可见范围±一屏的图解码进 ImageCache，滚动时直接命中。
+          _precacheVisible();
+        } else if (n is ScrollUpdateNotification) {
+          _maybePrecacheOnScroll();
+        } else if (n is ScrollEndNotification) {
+          _scrolling = false;
+          // 停下来后重建一次，让可见行补读封面
+          if (mounted) setState(() {});
+          // 补图被滑动打断过：滑停后接着补（0.2.91）
+          unawaited(_preloadCovers());
+        }
+        return false;
+      },
+      child: Listener(
+        // 长按进入多选后，手指继续滑动即可连续勾选（Listener 不参与手势竞争，
+        // 所以不会影响正常滚动）。
+        onPointerMove: _onDragSelectMove,
+        onPointerUp: (_) => _dragSelecting = false,
+        onPointerCancel: (_) => _dragSelecting = false,
+        child: list,
       ),
     );
+    // 桌面端不包 RefreshIndicator：鼠标滚轮在列表顶部的「过度滚动下拉」
+    // 是手机手势语义，桌面用 F5 重扫（快捷键已挂）。手机端保持原行为。
+    if (Repo.isDesktop) return content;
+    return RefreshIndicator(onRefresh: _scan, child: content);
   }
 
   Widget _row(Entry e) {
     final bool selected = _selected.contains(e.docId);
+    final int rowIndex = _shown.indexOf(e);
     // 固定行高：与 ListView.itemExtent 一致。SongRow 自己渲染约 60dp，
     // 但封面异步回来前后的高度必须一样，拖选按行高反查才准。
     return SizedBox(
@@ -1150,7 +1157,9 @@ class _LibraryPageState extends State<LibraryPage> {
         selected: selected,
         selectMode: _selectMode,
         paused: _scrolling,
-        onTap: () {
+        onDesktopTap: (bool ctrl, bool shift) =>
+            _onRowTapDesktop(e, rowIndex, ctrl: ctrl, shift: shift),
+        onPhoneTap: () {
           if (_selectMode) {
             _toggleSelect(e);
           } else {
@@ -1164,8 +1173,92 @@ class _LibraryPageState extends State<LibraryPage> {
             _dragSelecting = true;
           });
         },
+        onSecondaryTapUp: Repo.isDesktop
+            ? (TapUpDetails d) => _showRowContextMenu(e, d.globalPosition)
+            : null,
+        onDoubleTap: Repo.isDesktop ? () => _playEntry(e) : null,
       ),
     );
+  }
+
+  /// 桌面端行点击（0.3.7）：普通点击 = 进详情；Ctrl+点击 = 切换选中（自动进
+  /// 多选态）；Shift+点击 = 从锚点行到本行范围全选。锚点随每次点击更新。
+  void _onRowTapDesktop(Entry e, int index, {required bool ctrl, required bool shift}) {
+    if (ctrl) {
+      setState(() {
+        _selectMode = true;
+        if (!_selected.add(e.docId)) _selected.remove(e.docId);
+        _lastTapIndex = index;
+      });
+      return;
+    }
+    if (shift && _lastTapIndex >= 0 && _lastTapIndex < _shown.length) {
+      final int a = index < _lastTapIndex ? index : _lastTapIndex;
+      final int b = index < _lastTapIndex ? _lastTapIndex : index;
+      setState(() {
+        _selectMode = true;
+        for (int i = a; i <= b; i++) {
+          _selected.add(_shown[i].docId);
+        }
+      });
+      return;
+    }
+    _lastTapIndex = index;
+    _showDetail(e);
+  }
+
+  /// 桌面端右键菜单（0.3.7）：播放 / 查看详情 / 编辑标签 / 加入多选。
+  /// 手机端没有右键，不进这条路。
+  void _showRowContextMenu(Entry e, Offset position) async {
+    final String? picked = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+          position.dx, position.dy, position.dx + 1, position.dy + 1),
+      items: const <PopupMenuEntry<String>>[
+        PopupMenuItem<String>(value: 'play', height: 40, child: Text('播放')),
+        PopupMenuItem<String>(
+            value: 'detail', height: 40, child: Text('查看详情')),
+        PopupMenuItem<String>(
+            value: 'edit', height: 40, child: Text('编辑标签')),
+        PopupMenuItem<String>(
+            value: 'select', height: 40, child: Text('加入多选')),
+      ],
+    );
+    if (picked == null || !mounted) return;
+    switch (picked) {
+      case 'play':
+        _playEntry(e);
+      case 'detail':
+        _showDetail(e);
+      case 'edit':
+        final VFile? f = e.file;
+        if (f != null) {
+          final bool? changed = await EditorPage.show(context, f);
+          if (changed == true && mounted) _applyFilter();
+        }
+      case 'select':
+        setState(() {
+          _selectMode = true;
+          _selected.add(e.docId);
+        });
+    }
+  }
+
+  /// 播放一首（桌面双击 / 右键菜单共用）。逻辑与详情页「播放」按钮一致。
+  Future<void> _playEntry(Entry e) async {
+    final VFile? f = e.file;
+    final store = Repo.instance.store;
+    if (f == null || store == null) return;
+    MiniPlayer.instance.lastCover = CoverCache.instance.peek(f);
+    await MiniPlayer.instance.play(
+      f,
+      saf: store is SafFileStore ? store : null,
+      openExternal: store.openWithPlayer,
+    );
+    if (mounted && MiniPlayer.instance.error != null) {
+      moSnack(context, MiniPlayer.instance.error!);
+      MiniPlayer.instance.clearError();
+    }
   }
 
   /// 手指滑到哪一行就把哪一行勾上（长按进入多选后生效）。
@@ -1544,8 +1637,11 @@ class _CoverRow extends StatefulWidget {
     this.terms = const <String>[],
     required this.selected,
     required this.selectMode,
-    required this.onTap,
+    required this.onPhoneTap,
+    this.onDesktopTap,
     required this.onLongPress,
+    this.onSecondaryTapUp,
+    this.onDoubleTap,
     this.paused = false,
   });
 
@@ -1554,8 +1650,15 @@ class _CoverRow extends StatefulWidget {
   final List<String> terms;
   final bool selected;
   final bool selectMode;
-  final VoidCallback onTap;
+  /// 手机端点击（无修饰键概念）：进详情或多选切换。
+  final VoidCallback onPhoneTap;
+  /// 桌面端点击（0.3.7）：回调带 Ctrl/Shift 修饰键状态；null = 走手机路径。
+  final void Function(bool ctrl, bool shift)? onDesktopTap;
   final VoidCallback onLongPress;
+  /// 右键弹菜单（桌面端）；null = 无此行为（手机端）。
+  final void Function(TapUpDetails details)? onSecondaryTapUp;
+  /// 双击播放（桌面端）；null = 无此行为（手机端）。
+  final VoidCallback? onDoubleTap;
   /// 列表正在滚动：先不读封面，等停下再补。
   final bool paused;
 
@@ -1680,8 +1783,15 @@ class _CoverRowState extends State<_CoverRow> {
       selected: widget.selected,
       selectionMode: widget.selectMode,
       highlight: !e.metaLoaded,
-      onTap: widget.onTap,
+      onTap: widget.onDesktopTap != null
+          // 桌面端：把修饰键状态带回页面层（HardwareKeyboard 读当前按下状态）
+          ? () => widget.onDesktopTap!(
+              HardwareKeyboard.instance.isControlPressed,
+              HardwareKeyboard.instance.isShiftPressed)
+          : widget.onPhoneTap,
       onLongPress: widget.onLongPress,
+      onSecondaryTapUp: widget.onSecondaryTapUp,
+      onDoubleTap: widget.onDoubleTap,
       trailing: e.metaLoaded
           ? Text(e.hasLyrics ? '词' : '',
               style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context)))

@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart' hide Tags;
 import 'package:musicorganizer/app/repo.dart';
 import 'package:musicorganizer/app/repo_changes.dart';
@@ -31,15 +33,35 @@ class _MemStore implements FileStore {
     return tree[dir.docId] ?? const <VFile>[];
   }
 
+  // 0.3.7 桌面交互测试会走「双击播放」：FileStore 基类的 openWithPlayer
+  // 是具体方法（不是抽象），noSuchMethod 兜底反而拦截不到它——必须显式
+  // 覆写为「成功拉起」返回 null，否则测试环境报 NoSuchMethodError。
+  @override
+  Future<String?> openWithPlayer(VFile f) async => null;
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 void main() {
+  // 数据目录注入：单测环境没有 path_provider 插件，不给注入点的话
+  // 后台增量扫触发的 saveLibraryCache 会挂起 20ms 轮询 Timer，
+  // 每条用例结束时都报「Timer is still pending」。
+  setUpAll(() {
+    Repo.dataDirOverride = () async => Directory.systemTemp.createTemp('mo_test_');
+  });
+
   VFile audio(String id, String name, {int size = 1024}) =>
       VFile(docId: id, parentId: 'r', name: name, size: size, lastModified: 1);
 
   void seed(Repo repo) {
+    // 桌面端页面初始化会后台增量扫（repo.rescan → store.children / stat），
+    // 不给 store 的话 rescan 会把 rootUnavailable 置真、页面被空状态盖住——
+    // 手机端首次授权路径不会走到这（resetForTest 已清 rootUnavailable），
+    // 桌面测试宿主上必须给一个能列出内容的 store。
+    repo.store = _MemStore(<String, List<VFile>>{
+      'r': <VFile>[audio('r/a.mp3', 'a.mp3'), audio('r/b.mp3', 'b.mp3', size: 2048), audio('r/c.flac', 'c.flac', size: 4096)],
+    });
     final VFile a = audio('r/a.mp3', 'a.mp3');
     a.cacheMeta(Tags()
       ..put('title', '示例歌名')
@@ -77,6 +99,10 @@ void main() {
       home: const Scaffold(body: LibraryPage()),
     ));
     await tester.pumpAndSettle();
+    // seed 给了 store 后，页面初始化的后台增量扫会触发 saveLibraryCache；
+    // 它内部有 20ms 轮询等待（repo.dart:478），pumpAndSettle 收不掉真 Timer，
+    // 用 pump 推进假时钟把它耗干，否则用例结束时报「Timer is still pending」。
+    await tester.pump(const Duration(seconds: 1));
   }
 
   /// 0.2.63 回归：首屏可能比授权恢复先出来（shell._boot 不再等 restoreRoot）。
@@ -234,11 +260,13 @@ void main() {
     await pumpPage(tester);
 
     // 先把焦点交给页面（真实使用里焦点在页面/输入框上）
-    await tester.tap(find.text('示例歌名'));
+    await tester.tap(find.text('示例歌名').first);
     await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 400));
     // 详情面板会弹出，先关掉
     await tester.tapAt(const Offset(10, 10));
     await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 400));
 
     await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
     await tester.sendKeyEvent(LogicalKeyboardKey.keyA);
@@ -249,6 +277,7 @@ void main() {
 
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(find.textContaining('已选'), findsNothing);
   });
 
@@ -265,6 +294,125 @@ void main() {
 
     final EditableText field = tester.widget<EditableText>(find.byType(EditableText));
     expect(field.focusNode.hasFocus, isTrue);
+  });
+
+  group('桌面端交互（0.3.7 第一期）', () {
+    // 注意：flutter test 在桌面宿主上跑，Repo.isDesktop == true，
+    // 所以这里验证的就是桌面路径的真实行为。
+    //
+    // 【手势机制前提】SongRow 的 InkWell 同时注册了 onTap 与 onDoubleTap：
+    // Flutter 的双击识别器会让**单击延迟约 300ms**（等双击超时）才触发，
+    // 这是框架固有行为（Windows 资源管理器同款体验）。测试里凡断言单击
+    // 效果，必须先 pump 400ms 推过这个超时，否则 onTap 还没执行。
+    testWidgets('Ctrl+点击行 = 进入多选并选中该行（不弹详情）',
+        (WidgetTester tester) async {
+      final Repo repo = Repo.instance;
+      repo.resetForTest();
+      seed(repo);
+      await pumpPage(tester);
+
+      // tap 回调同步读 HardwareKeyboard 全局状态：Ctrl 按下 → tap → pump 过
+      // 双击超时（回调在超时后才跑，此时 Ctrl 仍按住）→ 松开
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.tap(find.text('示例歌名').first);
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pumpAndSettle();
+      expect(find.text('已选 1'), findsOneWidget,
+          reason: 'Ctrl+点击应进多选并选中');
+      expect(find.text('编辑标签'), findsNothing,
+          reason: '不应弹出详情面板');
+    });
+
+    testWidgets('Shift+点击第二行 = 从锚点范围选中（锚点=上次点击行）',
+        (WidgetTester tester) async {
+      final Repo repo = Repo.instance;
+      repo.resetForTest();
+      seed(repo);
+      await pumpPage(tester);
+
+      // 先普通点击第一行（pump 过双击超时后进详情），关掉——确立锚点=行 0
+      await tester.tap(find.text('示例歌名').first);
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+
+      // Shift+点击第三行：行 0 到行 2 全选（回调在双击超时后跑，那时 Shift
+      // 必须仍按住，所以 keyUp 放在 pump 之后）
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.tap(find.text('c').first);
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.pumpAndSettle();
+
+      expect(find.text('已选 3'), findsOneWidget,
+          reason: 'Shift+点击应范围选中 0..2 三行');
+    });
+
+    testWidgets('双击行 = 播放（不弹详情面板）', (WidgetTester tester) async {
+      final Repo repo = Repo.instance;
+      repo.resetForTest();
+      seed(repo);
+      await pumpPage(tester);
+
+      // 手工双击：两次 tap 间隔小于双击阈值，第二次 tap 触发 onDoubleTap（播放）。
+      // 第一击的 onTap 在双击超时后本会弹详情，但第二击构成双击后 onTap 取消、
+      // onDoubleTap 接管——详情不应留下。
+      await tester.tap(find.text('示例歌名').first);
+      await tester.pump(const Duration(milliseconds: 80));
+      await tester.tap(find.text('示例歌名').first);
+      await tester.pumpAndSettle();
+      // 换歌窗口 Timer（play() 里 3 秒）用假时钟推过去，避免 pending timer
+      await tester.pump(const Duration(seconds: 4));
+
+      expect(find.text('编辑标签'), findsNothing,
+          reason: '双击的最终态不应停在详情面板');
+      // 双击走播放：桌面端 MiniPlayer 走 openExternal（测试桩返回 null=成功），
+      // 这里只验证「详情没弹出来」= 双击语义生效。
+    });
+
+    testWidgets('右键行 = 弹上下文菜单（含播放/详情/编辑/多选）',
+        (WidgetTester tester) async {
+      final Repo repo = Repo.instance;
+      repo.resetForTest();
+      seed(repo);
+      await pumpPage(tester);
+
+      final Offset pos = tester.getCenter(find.text('示例歌名'));
+      final TestGesture gesture = await tester.startGesture(pos,
+          kind: PointerDeviceKind.mouse, buttons: kSecondaryMouseButton);
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(find.text('播放'), findsOneWidget);
+      expect(find.text('查看详情'), findsOneWidget);
+      expect(find.text('编辑标签'), findsOneWidget);
+      expect(find.text('加入多选'), findsOneWidget);
+
+      // 选「查看详情」应正常弹出详情（面板里的「编辑标签」按钮出现）
+      await tester.tap(find.text('查看详情'));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('编辑标签'), findsOneWidget);
+    });
+
+    testWidgets('普通单击仍进详情（桌面端默认行为不变）',
+        (WidgetTester tester) async {
+      final Repo repo = Repo.instance;
+      repo.resetForTest();
+      seed(repo);
+      await pumpPage(tester);
+
+      // 详情面板的编辑按钮文案是「编辑标签」。断言面板出现用它。
+      // 【必须 pump 400ms】：单击在注册了 onDoubleTap 的 InkWell 上要等
+      // 双击超时才触发（见本 group 头部说明），pumpAndSettle 不够。
+      await tester.tap(find.text('示例歌名').first);
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+      expect(find.text('编辑标签'), findsOneWidget, reason: '单击应弹详情');
+    });
   });
 
   testWidgets('搜索能过滤（按歌手）', (WidgetTester tester) async {

@@ -205,7 +205,14 @@ class Repo extends ChangeNotifier {
     _initialized = true;
   }
 
+  /// 数据目录注入点（测试专用）：单测环境没有 path_provider 插件，
+  /// `getApplicationSupportDirectory` 会抛 MissingPluginException，导致
+  /// saveLibraryCache 的 20ms 轮询 Timer 挂死（widget 测试报 pending timer）。
+  /// 生产代码不要碰这个字段。
+  static Future<Directory> Function()? dataDirOverride;
+
   Future<Directory> _dataDir() async {
+    if (dataDirOverride != null) return dataDirOverride!();
     final Directory base = await getApplicationSupportDirectory();
     if (!base.existsSync()) base.createSync(recursive: true);
     return base;
@@ -1047,12 +1054,19 @@ class Repo extends ChangeNotifier {
     store = null;
     roots.clear();
     rootLost = false;
+    rootUnavailable = false;
     files = <VFile>[];
     index.clear();
     journal = null;
     tx = null;
     runner = null;
     _initialized = false;
+    // 清掉上一条用例残留的「保存中」状态：单测里 saveLibraryCache 的
+    // 20ms 轮询等待 Timer 不会被 pumpAndSettle 收掉，若上一条用例的
+    // 后台扫描把 _savingCache 留成 true，下一条用例一调它就死循环挂 Timer。
+    _savingCache = false;
+    _cacheDirty = false;
+    _scanning = false;
   }
 }
 
