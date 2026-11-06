@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../core/model/vfile.dart';
 import '../core/tag/cover_art.dart';
 import '../core/scan/scanner.dart';
+import 'cover_pack_store.dart';
 import 'cover_thumb_cache.dart';
 import 'repo.dart';
 
@@ -81,7 +82,19 @@ class CoverCache {
   static String keyOf(VFile f) => '${f.docId}|${f.size}|${f.lastModified}';
 
   /// 已缓存的字节（没有返回 null，不代表「一定没有封面」）。
-  Uint8List? peek(VFile f) => _bytes[keyOf(f)];
+  ///
+  /// 0.2.93：内存没有时也查一下打包存储——那也是纯内存表，同步可返回，
+  /// 列表行重建时能一帧出图（不需要 setState 等异步）。
+  Uint8List? peek(VFile f) {
+    final Uint8List? mem = _bytes[keyOf(f)];
+    if (mem != null) return mem;
+    final Uint8List? packed = CoverPackStore.instance.peekOf(f);
+    if (packed != null) {
+      _put(keyOf(f), packed);
+      return packed;
+    }
+    return null;
+  }
 
   /// 已经确认没有封面（避免每次滚动都重读）。
   bool knownMiss(VFile f) => _miss.contains(keyOf(f));
@@ -108,10 +121,20 @@ class CoverCache {
     try {
       final store = Repo.instance.store;
       if (store == null) return null;
-      // 磁盘缩略图：小图直接可用；读失败就当没有（不能因为缓存读错让列表空着）
+      // ① 打包存储（0.2.93）：**纯内存读取，零 IO**。
+      //    所有缩略图启动时一次性读进内存，这里只是查表——这是「滚动不加载」
+      //    的关键。旧版每张都要读一个文件，安卓上就是一次跨进程调用。
+      final Uint8List? packed = CoverPackStore.instance.peekOf(f);
+      if (packed != null) {
+        _put(key, packed);
+        return packed;
+      }
+      // ② 旧的「一歌一文件」缓存：兼容升级前已生成的缩略图，不浪费。
       final Uint8List? thumb = await CoverThumbCache.instance.peek(f);
       if (thumb != null) {
         _put(key, thumb);
+        // 顺手并入打包存储，下次启动就是纯内存命中
+        CoverPackStore.instance.put(f, thumb);
         return thumb;
       }
       // 滚动中到此为止：不读文件头，避免把并发名额烧在滑动路过的行上

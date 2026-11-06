@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../../app/app_focus.dart';
 import '../../app/cover_cache.dart';
+import '../../app/cover_pack_store.dart';
 import '../../app/cover_thumb_cache.dart';
 import '../../app/repo.dart';
 import '../../app/repo_changes.dart';
@@ -221,33 +222,66 @@ class _LibraryPageState extends State<LibraryPage> {
     // 每次都弹一条「多少首 / 待整理多少」只会挡视线。
   }
 
-  /// 后台把磁盘缩略图预热进内存；再补齐还没有缩略图的歌（0.2.91）。
+  /// 后台把整库封面准备好（0.2.93 重做）。
   ///
-  /// 两步分开做，先把「已有的」立刻装进内存（马上见效），再慢慢补缺的。
-  /// 补图期间不占 UI：逐首让出事件循环，用户照样能滑；一旦用户开始滑动就
-  /// 先让路（[shouldStop]），滑停后下一轮再接着补。
+  /// 旧版两个毛病，这次都改掉：
+  /// 1. 补图被 `shouldStop: () => _scrolling` **自己打断**——用户手指一碰屏幕
+  ///    就停，而 `_fillingCovers` 又挡住重入，结果基本补不完；
+  /// 2. 缩略图「一歌一文件」，安卓上每张一次跨进程调用，物理上就来不及。
+  ///
+  /// 现在：结果写进**单个打包文件**（一次读入内存），补图**不因滚动中断**，
+  /// 只逐首让出事件循环保证滑动跟手；补完统一落盘一次。
   Future<void> _preloadCovers() async {
     if (_fillingCovers) return;
     _fillingCovers = true;
     try {
+      // 一次把打包文件读进内存（约 30MB，一次顺序读）
+      await CoverPackStore.instance.ensureLoaded();
       final List<VFile> files = Repo.instance.files;
-      final int n = await CoverThumbCache.instance.preloadInto(files);
-      if (n > 0 && mounted) setState(() {});
+      if (!mounted || files.isEmpty) return;
+      setState(() {}); // 已加载的立即可见
+
       final FileStore? store = Repo.instance.store;
       if (store == null) return;
-      await CoverThumbCache.instance.fillMissing(
-        files,
-        readCover: (VFile f) => Scanner.readCover(store, f),
-        // 用户一开始滑就停手，别和滑动抢磁盘；滑停后会有新一轮调用
-        shouldStop: () => !mounted || _scrolling,
-      );
-      // 补完再预热一次：新生成的小图一次进内存，之后滚动零 IO
-      final int n2 =
-          await CoverThumbCache.instance.preloadInto(Repo.instance.files);
-      if (n2 > 0 && mounted) setState(() {});
+      // 只补「打包里没有的」；有的话直接跳过（增量）
+      final List<VFile> missing = <VFile>[
+        for (final VFile f in files)
+          if (CoverPackStore.instance.peekOf(f) == null) f,
+      ];
+      if (missing.isEmpty) return;
+
+      int made = 0;
+      for (final VFile f in missing) {
+        if (!mounted) break;
+        try {
+          final Uint8List? art = await Scanner.readCover(store, f);
+          if (art != null && art.isNotEmpty) {
+            final Uint8List? small =
+                await CoverThumbCache.instance.encodeSmall(art);
+            if (small != null) {
+              CoverPackStore.instance.put(f, small);
+              _putMemory(f, small);
+              made++;
+            }
+          }
+        } catch (_) {
+          // 单首失败跳过，不影响其余
+        }
+        // 让出一帧：保证补图期间滑动依然跟手（但**不中断**补图）
+        await Future<void>.delayed(Duration.zero);
+        if (made > 0 && made % 20 == 0 && mounted) setState(() {});
+      }
+      // 补完落盘一次（原子写）
+      await CoverPackStore.instance.flush();
+      if (mounted && made > 0) setState(() {});
     } finally {
       _fillingCovers = false;
     }
+  }
+
+  /// 塞进统一内存缓存（列表行重建时同步可取）。
+  void _putMemory(VFile f, Uint8List bytes) {
+    CoverCache.instance.put(f, bytes);
   }
 
   Future<void> _pickRoot() async {

@@ -21,6 +21,7 @@ import '../core/model/cancel_token.dart';
 import '../core/model/tags.dart';
 import '../core/model/vfile.dart';
 import 'cover_cache.dart';
+import 'cover_pack_store.dart';
 import 'cover_thumb_cache.dart';
 import 'tag_parse_isolate.dart';
 import 'repo_changes.dart';
@@ -169,6 +170,10 @@ class Repo extends ChangeNotifier {
         CoverThumbCache.instance.save(f, art);
     CoverThumbHook.shrink = (Uint8List art) =>
         CoverThumbCache.instance.encodeSmall(art);
+    // 封面打包存储（0.2.93）：启动时**一次**把整包缩略图读进内存，
+    // 之后列表取封面是纯内存查表，不再每张一次跨进程读盘。
+    // 失败不影响启动（读不到就按没有缓存处理，列表会按需补）。
+    await CoverPackStore.instance.ensureLoaded();
     final Directory dir = await _dataDir();
     // 上次进程被杀 / 断电留下的临时副本：启动时顺手清掉（只认本 app 的前缀、
     // 只清 6 小时前的），不然缓存目录会一天天涨。失败不影响启动。
@@ -936,6 +941,14 @@ class Repo extends ChangeNotifier {
             unawaited(CoverCache.instance
                 .seed(f, cover)
                 .then((_) {}, onError: (Object _) {}));
+            // 打包存储也直接塞一份（0.2.93）：扫描时封面字节已在手上，
+            // 顺手存进内存表，列表之后零 IO 就能拿到。
+            unawaited(CoverThumbCache.instance.encodeSmall(cover).then(
+              (Uint8List? small) {
+                if (small != null) CoverPackStore.instance.put(f, small);
+              },
+              onError: (Object _) {},
+            ));
           }
           index.find(f.docId)?.applyTags(tags, f.cachedHasCover);
           done++;
@@ -978,6 +991,8 @@ class Repo extends ChangeNotifier {
     // 磁盘缩略图也要删掉：这里不会重新 stat 文件，大小 / 修改时间还是旧值，
     // 缓存键不变就会一直读到「换封面之前」那张小图（0.2.59）。
     unawaited(CoverThumbCache.instance.remove(f));
+    // 打包存储里那张也作废（0.2.93）：不然换了封面还显示旧图
+    CoverPackStore.instance.remove(f);
     _reindex(f);
   }
 
@@ -998,6 +1013,10 @@ class Repo extends ChangeNotifier {
       _reindex(f);
     }
     await CoverThumbCache.instance.removeMany(files);
+    // 打包存储同样清理（0.2.93）
+    for (final VFile f in files) {
+      CoverPackStore.instance.remove(f);
+    }
   }
 
   /// 把一首歌的新状态写回搜索索引（O(1)：靠 `SearchIndex` 里的下标表）。
