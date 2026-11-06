@@ -236,6 +236,7 @@ class _LibraryPageState extends State<LibraryPage> {
   /// 0.2.96：**连续空转保护**——如果上一轮一首都没补成，就不许被
   /// `ScrollEnd` 反复触发重跑（旧版日志里能看到 1 秒刷一次、跑了十几次）。
   int _emptyRuns = 0;
+  bool _emptyPauseLogged = false;
   static const int maxEmptyRuns = 2;
 
   Future<void> _preloadCovers() async {
@@ -261,9 +262,24 @@ class _LibraryPageState extends State<LibraryPage> {
       }
       // 连续两轮一首都没补成：别再被 ScrollEnd 反复触发（0.2.96）
       if (_emptyRuns >= maxEmptyRuns) {
-        Log.warn('[CoverPack] 连续 $_emptyRuns 轮零产出，暂停自动补图'
-            '（还缺 ${missing.length} 首）');
+        // 只在「刚进入暂停」时记一条，不要每次 ScrollEnd 都刷（0.2.97）
+        if (!_emptyPauseLogged) {
+          _emptyPauseLogged = true;
+          Log.warn('[CoverPack] 连续 $_emptyRuns 轮零产出，暂停自动补图'
+              '（还缺 ${missing.length} 首）；读封面失败原因：'
+              '${Scanner.coverDiagSummary()}');
+        }
         return;
+      }
+      _emptyPauseLogged = false;
+      Scanner.resetCoverDiag();
+      // 0.2.97 探针：这批「缺封面」的歌到底是什么情况（只记前几条样本）
+      if (missing.isNotEmpty) {
+        final List<String> sample = <String>[
+          for (final VFile f in missing.take(3))
+            '${f.name}(size=${f.size},ext=${f.ext()})',
+        ];
+        Log.info('[CoverPack] 缺封面样本 ${missing.length} 首：${sample.join(' | ')}');
       }
 
       int made = 0;
@@ -305,6 +321,7 @@ class _LibraryPageState extends State<LibraryPage> {
       Log.info('[CoverPack] 补图完成 made=$made 共${missing.length}首缺，'
           '读空=$readNull 缩图失败=$encodeNull 异常=$threw；'
           '${CoverPackStore.instance.diagSummary()}；'
+          '读封面失败原因：${Scanner.coverDiagSummary()}；'
           '文件 ${await CoverPackStore.instance.packFileSize()} 字节');
       if (mounted && made > 0) setState(() {});
       _emptyRuns = made > 0 ? 0 : _emptyRuns + 1;

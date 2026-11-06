@@ -13,6 +13,7 @@ import 'dart:typed_data';
 
 import '../concurrency.dart';
 import '../fs/file_store.dart';
+import '../log/log.dart';
 import '../model/cancel_token.dart';
 import '../model/progress.dart';
 import '../model/tags.dart';
@@ -299,6 +300,9 @@ abstract final class Scanner {
   }
 
   static Future<Uint8List?> _readCoverBytes(FileStore st, VFile f, bool probeOnly) async {
+    // 0.2.97 探针：逐档记录「读到了多少字节 / 哪一档失败」，真机排查用。
+    // 以前这里 catch 一律返回 null，失败原因被吞掉，根本看不到。
+    String stage = 'start';
     try {
       final String ext = TagIO.extOf(f.name);
       if (probeOnly) {
@@ -308,22 +312,73 @@ abstract final class Scanner {
       // 第一档：只读 256KB。
       // 注意单独包一层 try：标签被 256KB 截断时解析会越界，这属于「读少了」，
       // 不是「没有封面」，要落到第二档去补读，不能直接当没有。
+      stage = 'head256k';
       final Uint8List small = await st.headBytes(f, coverProbeBytes);
+      if (small.isEmpty) {
+        _coverDiag(f, 'head-empty', 0);
+        return null;
+      }
+      stage = 'parse256k';
       Uint8List? quick;
       try {
         quick = CoverReader.read(small, ext);
-      } catch (_) {
+      } catch (e) {
+        _coverDiag(f, 'parse-threw:${e.runtimeType}', small.length);
         quick = null;
       }
       if (quick != null && CoverArt.isComplete(quick)) return quick;
       // 整份文件就这么大，读完了都没有完整封面：不必再读第二遍
-      if (small.length < coverProbeBytes) return null;
+      if (small.length < coverProbeBytes) {
+        _coverDiag(f, 'no-cover-in-file', small.length);
+        return null;
+      }
       // 第二档：按标签格式判断要不要扩到 2MB（MP4 的 moov 可能在文件尾）
+      stage = 'loadForTags';
       final Uint8List data = await loadForTags(st, f, ext);
-      return CoverReader.read(data, ext);
-    } catch (_) {
+      final Uint8List? out = CoverReader.read(data, ext);
+      if (out == null || out.isEmpty) {
+        _coverDiag(f, 'no-cover-after-full', data.length);
+      }
+      return out;
+    } catch (e) {
+      // 关键：把异常类型和阶段记下来，而不是一律吞成 null
+      _coverDiag(f, 'stage=$stage threw=${e.runtimeType}', -1);
       return null;
     }
+  }
+
+  /// 封面读取诊断（0.2.97）：只记前若干条 + 计数，避免日志刷爆。
+  static final Map<String, int> _coverDiagCounts = <String, int>{};
+  static int _coverDiagShown = 0;
+  static const int _coverDiagMaxShown = 12;
+
+  static void _coverDiag(VFile f, String why, int bytes) {
+    final String key = why.replaceAll(RegExp(r':.*'), '');
+    _coverDiagCounts[key] = (_coverDiagCounts[key] ?? 0) + 1;
+    if (_coverDiagShown < _coverDiagMaxShown) {
+      _coverDiagShown++;
+      Log.info('[CoverRead] ${_shortName(f.name)} why=$why bytes=$bytes '
+          'size=${f.size} ext=${f.ext()}');
+    }
+  }
+
+  static String _shortName(String n) =>
+      n.length <= 16 ? n : '${n.substring(0, 16)}…';
+
+  /// 诊断汇总（补图结束时打印一次）。
+  static String coverDiagSummary() {
+    if (_coverDiagCounts.isEmpty) return '无失败记录';
+    final List<String> parts = <String>[];
+    for (final MapEntry<String, int> e in _coverDiagCounts.entries) {
+      parts.add('${e.key}=${e.value}');
+    }
+    return parts.join(' ');
+  }
+
+  /// 清空诊断计数（每轮补图开始时调用）。
+  static void resetCoverDiag() {
+    _coverDiagCounts.clear();
+    _coverDiagShown = 0;
   }
 
   /// 丢掉单个文件的缓存（标签写入之后必须调用）。
