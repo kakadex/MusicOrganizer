@@ -282,6 +282,49 @@ class CoverThumbCache {
     }
   }
 
+  /// 整库补齐缩略图（0.2.91）：把还没有磁盘小图的歌逐首生成出来。
+  ///
+  /// 这才是「滚动全程不加载」的根治办法：与其等用户滚到某一行才现场读
+  /// 256KB 文件头，不如扫描完成后在后台**一次做完**，之后滚动永远只碰
+  /// 几十 KB 的小图（或内存）。
+  ///
+  /// - 已经有小图的直接跳过（增量，不会重复解码）；
+  /// - 逐首串行 + 每首之间让出事件循环，保证滑动依然跟手；
+  /// - [onDone]/[onProgress] 只做提示，不影响流程；
+  /// - 可中途 [shouldStop] 取消（用户开始滑动也别抢带宽，滑完再续）。
+  /// 返回本次新生成的张数。
+  Future<int> fillMissing(
+    List<VFile> files, {
+    Future<Uint8List?> Function(VFile)? readCover,
+    void Function(int done, int total, int made)? onProgress,
+    bool Function()? shouldStop,
+  }) async {
+    final Directory? dir = await _ensureDir();
+    if (dir == null || files.isEmpty || readCover == null) return 0;
+    int made = 0;
+    int done = 0;
+    for (final VFile f in files) {
+      if (shouldStop?.call() ?? false) break;
+      done++;
+      try {
+        final File target = File(
+            '${dir.path}${Platform.pathSeparator}${ThumbPolicy.fileName(ThumbPolicy.keyOf(f))}');
+        if (await target.exists()) continue;
+        final Uint8List? art = await readCover(f);
+        if (art != null && art.isNotEmpty) {
+          await save(f, art);
+          made++;
+        }
+      } catch (_) {
+        // 单首失败跳过
+      }
+      onProgress?.call(done, files.length, made);
+      // 每首让出一帧：批量补图不能让界面失去响应
+      await Future<void>.delayed(Duration.zero);
+    }
+    return made;
+  }
+
   /// 解码 + 缩放到 [width] + 编 PNG。
   ///
   /// 用 `getTargetSize` 让解码器直接按目标尺寸解（JPEG 走整数倍降采样，

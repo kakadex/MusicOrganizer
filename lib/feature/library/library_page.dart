@@ -77,6 +77,9 @@ class _LibraryPageState extends State<LibraryPage> {
   /// 会被 I/O 回调和图片解码挤满，表现就是一顿一顿；向上回看命中缓存所以不卡。
   bool _scrolling = false;
 
+  /// 是否正在后台补封面缩略图（0.2.91）。同时只跑一轮。
+  bool _fillingCovers = false;
+
   /// 列表滚动控制器：拖选时用「全局 Y → 列表内容 Y」换算行号。
   final ScrollController _scrollController = ScrollController();
 
@@ -218,10 +221,33 @@ class _LibraryPageState extends State<LibraryPage> {
     // 每次都弹一条「多少首 / 待整理多少」只会挡视线。
   }
 
-  /// 后台把磁盘缩略图预热进内存；有更新时轻刷列表让已预热的行直接出图。
+  /// 后台把磁盘缩略图预热进内存；再补齐还没有缩略图的歌（0.2.91）。
+  ///
+  /// 两步分开做，先把「已有的」立刻装进内存（马上见效），再慢慢补缺的。
+  /// 补图期间不占 UI：逐首让出事件循环，用户照样能滑；一旦用户开始滑动就
+  /// 先让路（[shouldStop]），滑停后下一轮再接着补。
   Future<void> _preloadCovers() async {
-    final int n = await CoverThumbCache.instance.preloadInto(Repo.instance.files);
-    if (n > 0 && mounted) setState(() {});
+    if (_fillingCovers) return;
+    _fillingCovers = true;
+    try {
+      final List<VFile> files = Repo.instance.files;
+      final int n = await CoverThumbCache.instance.preloadInto(files);
+      if (n > 0 && mounted) setState(() {});
+      final FileStore? store = Repo.instance.store;
+      if (store == null) return;
+      await CoverThumbCache.instance.fillMissing(
+        files,
+        readCover: (VFile f) => Scanner.readCover(store, f),
+        // 用户一开始滑就停手，别和滑动抢磁盘；滑停后会有新一轮调用
+        shouldStop: () => !mounted || _scrolling,
+      );
+      // 补完再预热一次：新生成的小图一次进内存，之后滚动零 IO
+      final int n2 =
+          await CoverThumbCache.instance.preloadInto(Repo.instance.files);
+      if (n2 > 0 && mounted) setState(() {});
+    } finally {
+      _fillingCovers = false;
+    }
   }
 
   Future<void> _pickRoot() async {
@@ -817,6 +843,8 @@ class _LibraryPageState extends State<LibraryPage> {
             _scrolling = false;
             // 停下来后重建一次，让可见行补读封面
             if (mounted) setState(() {});
+            // 补图被滑动打断过：滑停后接着补（0.2.91）
+            unawaited(_preloadCovers());
           }
           return false;
         },
