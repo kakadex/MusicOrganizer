@@ -1,11 +1,11 @@
-version=0.2.91
-tag=v0.2.91
+version=0.2.92
+tag=v0.2.92
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.91/MusicOrganizer-0.2.91-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.92/MusicOrganizer-0.2.92-android-arm64-v8a.apk
 size=19938069
-sha256=6abc31c40f006851578e227387cfcb60849e0fe1935a4e6bb2f7d0936f3229a1
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.91/MusicOrganizer-0.2.91-windows-x64.zip
-zip_size=12959384
-zip_sha256=2d508d08f0de666e06ef492092a87b3e5dac47d9de5b481b9fd186bd3f0fd2a6
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.91
-summary=后台补齐整库封面缩略图，滚动零加载
+sha256=daa4acb513f0d557c1e0c5d9290b700141bc12b95cb943c8ce56203651f47213
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.92/MusicOrganizer-0.2.92-windows-x64.zip
+zip_size=12959983
+zip_sha256=57e6984af022ff930c1ce0fe4f91f29ac7ca25e5cb733fcac9130cc5df3e7c51
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.92
+summary=扫描时顺手存封面，滚动不再重复读文件

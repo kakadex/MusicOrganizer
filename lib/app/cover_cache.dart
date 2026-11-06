@@ -158,6 +158,21 @@ class CoverCache {
   /// [CoverThumbCache.encodeSmall]，否则 24MB 预算会被几张图吃满。
   void put(VFile f, Uint8List bytes) => _put(keyOf(f), bytes);
 
+  /// 把一张**原图**缩好再塞进内存缓存（0.2.92）。
+  ///
+  /// 扫描读标签时封面字节本来就在手上，趁热缩好存起来，列表就不必再读盘。
+  /// 缩图失败就退回原图（与旧行为一致）。
+  Future<void> seed(VFile f, Uint8List original) async {
+    if (original.isEmpty) return;
+    Uint8List? small;
+    try {
+      small = await CoverThumbCache.instance.encodeSmall(original);
+    } catch (_) {
+      small = null;
+    }
+    put(f, small ?? original);
+  }
+
   /// 写入内存缓存并按「条数 + 字节」双上限淘汰。
   void _put(String key, Uint8List bytes) {
     final Uint8List? old = _bytes.remove(key);

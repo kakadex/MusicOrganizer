@@ -20,6 +20,7 @@ import '../core/match/match_queue.dart';
 import '../core/model/cancel_token.dart';
 import '../core/model/tags.dart';
 import '../core/model/vfile.dart';
+import 'cover_cache.dart';
 import 'cover_thumb_cache.dart';
 import 'tag_parse_isolate.dart';
 import 'repo_changes.dart';
@@ -925,6 +926,17 @@ class Repo extends ChangeNotifier {
           f.cacheMeta(tags,
               cover: r.cover != null && r.cover!.isNotEmpty,
               lyrics: tags.get(Tags.lyrics).trim().isNotEmpty);
+          // 0.2.92：封面字节这里**本来就已经读出来了**，以前只拿它算一个布尔
+          // （有没有封面）就把字节扔掉，之后列表要封面又得再读一遍 256KB 头、
+          // 再解码一遍——920 首就是 920 次重复读盘。现在趁热缩成小图落盘，
+          // 列表那边直接读小图，滚动不再有加载。
+          final Uint8List? cover = r.cover;
+          if (cover != null && cover.isNotEmpty) {
+            unawaited(CoverThumbCache.instance.save(f, cover));
+            unawaited(CoverCache.instance
+                .seed(f, cover)
+                .then((_) {}, onError: (Object _) {}));
+          }
           index.find(f.docId)?.applyTags(tags, f.cachedHasCover);
           done++;
           final int now = DateTime.now().millisecondsSinceEpoch;
