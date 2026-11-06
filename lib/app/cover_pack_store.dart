@@ -47,8 +47,15 @@ class CoverPackStore {
   /// 是否已经从磁盘加载过（避免重复读 30MB）。
   bool _loaded = false;
 
-  /// 目录拿不到时置位，整个缓存静默关闭（退回旧逻辑）。
-  bool _unavailable = false;
+  /// 目录拿不到时的**已失败次数**（0.2.94）。
+  ///
+  /// 旧版一旦失败就置 `_unavailable = true` 永久禁用——而 `Repo.init` 调
+  /// `ensureLoaded()` 时机很早，`path_provider` 可能还没就绪，于是一次失败
+  /// 就让**整个进程再也没有封面缓存**：重启后快滑全空白，慢滑一遍才补进内存。
+  /// 现在改成「失败可重试」：只有连续失败 [maxDirFailures] 次才放弃。
+  int _dirFailures = 0;
+
+  static const int maxDirFailures = 3;
 
   File? _file;
   Timer? _saveTimer;
@@ -76,7 +83,7 @@ class CoverPackStore {
     _blobs.clear();
     _keys.clear();
     _loaded = false;
-    _unavailable = false;
+    _dirFailures = 0;
     _file = null;
     _saving = false;
     _dirty = false;
@@ -84,44 +91,52 @@ class CoverPackStore {
 
   Future<File?> _ensureFile() async {
     if (_file != null) return _file;
-    if (_unavailable) return null;
+    if (_dirFailures >= maxDirFailures) return null;
     try {
       final Directory? base = dirOverride != null
           ? await dirOverride!()
           : await getApplicationSupportDirectory();
       if (base == null) {
-        _unavailable = true;
+        _dirFailures++;
         return null;
       }
       final Directory d =
           Directory('${base.path}${Platform.pathSeparator}cover_pack');
       if (!await d.exists()) await d.create(recursive: true);
       _file = File('${d.path}${Platform.pathSeparator}cover_pack.bin');
+      _dirFailures = 0;
       return _file;
     } catch (_) {
-      _unavailable = true;
+      _dirFailures++;
       return null;
     }
   }
 
-  /// 加载整个打包文件进内存（幂等，只做一次）。
+  /// 加载整个打包文件进内存（幂等；**失败可重试**）。
   ///
   /// 这是新方案的关键：**一次顺序读**换掉过去 920 次小文件读。
   /// 返回加载到的条目数；文件不存在 / 损坏返回 0（不抛异常）。
+  ///
+  /// 0.2.94：只有「真正读成功了（或确认文件不存在）」才把 `_loaded` 置位。
+  /// 旧版一进来就置 `_loaded = true`，导致启动早期拿不到目录时永久失败——
+  /// 用户感受到的就是「重启后必须慢滑一遍才有封面」。
   Future<int> ensureLoaded() async {
     if (_loaded) return _blobs.length;
     final File? f = await _ensureFile();
-    if (f == null) return 0;
-    _loaded = true;
+    if (f == null) return 0; // 目录没就绪：不置 _loaded，下次还能重试
     try {
-      if (!await f.exists()) return 0;
+      if (!await f.exists()) {
+        _loaded = true; // 确实没有缓存文件，之后 put 会逐步写入
+        return 0;
+      }
       final Uint8List bytes = await f.readAsBytes();
       final ThumbPack? pack = ThumbPackCodec.decode(bytes);
       if (pack == null) {
-        // 格式不认识（老版本 / 损坏）：直接重建，别让用户卡在坏缓存上
+        // 格式不认识（老版本 / 损坏）：删掉重建，别让用户卡在坏缓存上
         try {
           await f.delete();
         } catch (_) {}
+        _loaded = true;
         return 0;
       }
       for (final MapEntry<String, Uint8List> e in pack.entries.entries) {
@@ -129,8 +144,10 @@ class CoverPackStore {
         _blobs[e.key] = e.value;
         _keys[e.key] = pack.keys[e.key] ?? '';
       }
+      _loaded = true;
       return _blobs.length;
     } catch (_) {
+      // 读失败（IO 抖动）：同样不置 _loaded，下次再试
       return 0;
     }
   }
@@ -186,25 +203,33 @@ class CoverPackStore {
 
   /// 立刻把内存内容写盘（原子：临时文件 → 改名）。
   ///
-  /// 供「退出前」「补图完成后」显式调用；平时由防抖计时器触发。
+  /// 供「补图完成后」「退出前」显式调用；平时由防抖计时器触发。
+  ///
+  /// 0.2.94：写完再检查一次 `_dirty`——flush 期间如果又有 `put`，那批改动
+  /// 不能等到下一次防抖（用户可能随时杀进程）。改成循环直到不再脏。
   Future<void> flush() async {
-    if (_saving || !_dirty) return;
-    final File? f = await _ensureFile();
-    if (f == null) return;
+    if (_saving) return;
     _saving = true;
-    _dirty = false;
-    File? tmp;
     try {
-      final Uint8List packed =
-          ThumbPackCodec.encode(keys: _keys, blobs: _blobs);
-      tmp = File('${f.path}.${DateTime.now().microsecondsSinceEpoch}.tmp');
-      await tmp.writeAsBytes(packed, flush: true);
-      await tmp.rename(f.path);
-    } catch (_) {
-      _dirty = true; // 下次再试
-      try {
-        await tmp?.delete();
-      } catch (_) {}
+      while (_dirty) {
+        final File? f = await _ensureFile();
+        if (f == null) return; // 目录不可用：保留 _dirty，下次再试
+        _dirty = false;
+        File? tmp;
+        try {
+          final Uint8List packed =
+              ThumbPackCodec.encode(keys: _keys, blobs: _blobs);
+          tmp = File('${f.path}.${DateTime.now().microsecondsSinceEpoch}.tmp');
+          await tmp.writeAsBytes(packed, flush: true);
+          await tmp.rename(f.path);
+        } catch (_) {
+          _dirty = true; // 下次再试
+          try {
+            await tmp?.delete();
+          } catch (_) {}
+          return;
+        }
+      }
     } finally {
       _saving = false;
     }

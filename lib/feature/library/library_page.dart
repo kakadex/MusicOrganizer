@@ -269,7 +269,12 @@ class _LibraryPageState extends State<LibraryPage> {
         }
         // 让出一帧：保证补图期间滑动依然跟手（但**不中断**补图）
         await Future<void>.delayed(Duration.zero);
-        if (made > 0 && made % 20 == 0 && mounted) setState(() {});
+        // 每 50 首落盘一次（0.2.94）：用户补到一半杀进程也不会全丢，
+        // 下次启动能接着用已存的部分，而不是重新慢滑一遍。
+        if (made > 0 && made % 50 == 0) {
+          await CoverPackStore.instance.flush();
+          if (mounted) setState(() {});
+        }
       }
       // 补完落盘一次（原子写）
       await CoverPackStore.instance.flush();

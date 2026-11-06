@@ -1,11 +1,11 @@
-version=0.2.93
-tag=v0.2.93
+version=0.2.94
+tag=v0.2.94
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.93/MusicOrganizer-0.2.93-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.94/MusicOrganizer-0.2.94-android-arm64-v8a.apk
 size=19938069
-sha256=0f3b7a68a3424fdf48a9f04da24e1459f9738e1262fcaa027fe8a857ee1b413b
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.93/MusicOrganizer-0.2.93-windows-x64.zip
-zip_size=12967810
-zip_sha256=9e3651d1c3a1e30c4ebdefe892918a3cb2821bbbb15032fcca9df9ea892dd6d9
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.93
-summary=封面加载重做：打包存一个文件，启动一次读入内存
+sha256=47b98924ce01f485292dd43e0d8177cc48222262ecb76805a24dac7e10b37f0a
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.2.94/MusicOrganizer-0.2.94-windows-x64.zip
+zip_size=12967954
+zip_sha256=6f2b782980a0db06ade297d700deec7cb67e5a3a4c0d016646ceb05ce4563b10
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.2.94
+summary=修复重启后封面缓存永久失效

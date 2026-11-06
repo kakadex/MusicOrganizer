@@ -172,7 +172,8 @@ class Repo extends ChangeNotifier {
         CoverThumbCache.instance.encodeSmall(art);
     // 封面打包存储（0.2.93）：启动时**一次**把整包缩略图读进内存，
     // 之后列表取封面是纯内存查表，不再每张一次跨进程读盘。
-    // 失败不影响启动（读不到就按没有缓存处理，列表会按需补）。
+    // 0.2.94：失败不再永久禁用——`ensureLoaded` 内部可重试，
+    // 所以这里失败也不影响后续（列表补图时会再调一次）。
     await CoverPackStore.instance.ensureLoaded();
     final Directory dir = await _dataDir();
     // 上次进程被杀 / 断电留下的临时副本：启动时顺手清掉（只认本 app 的前缀、
