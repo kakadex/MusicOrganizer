@@ -20,8 +20,12 @@ class FontScale extends ChangeNotifier {
   static const double maxScale = 1.6;
   static const double defaultScale = 1.0;
 
-  /// 桌面端默认倍率：比手机稍大，贴近 Windows 原生软件的观感。
-  static const double desktopDefaultScale = 1.15;
+  /// 桌面端默认倍率。
+  ///
+  /// 原来是 1.15，但非整数缩放会让 Windows 上文字笔画粗细不匀（用户反馈
+  /// 「同一行有粗有细」，实锤是 115% 造成的）。改回 1.0 保证渲染干净；
+  /// 觉得字小的用户可以在设置里选 125% / 150%，或调 Windows 系统缩放。
+  static const double desktopDefaultScale = 1.0;
 
   double _scale = defaultScale;
   double get scale => _scale;
@@ -34,8 +38,13 @@ class FontScale extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 档位列表（设置页用）：80% / 100% / 115% / 130% / 150%。
-  static const List<double> steps = <double>[0.8, 1.0, 1.15, 1.3, 1.5];
+  /// 档位列表（设置页用）。
+  ///
+  /// **只用整数倍率**（0.4.0）：Flutter 的字体栅格化在非整数缩放（如 1.15、
+  /// 1.3）下会产生笔画粗细不匀、边缘发糊——用户在 Windows 上反馈「同一行
+  /// 有粗有细」，实测是 115% 缩放导致。改成 100%/125%/150% 这类整档，
+  /// 缩放结果更干净。需要更细的调节就用 Windows 系统缩放。
+  static const List<double> steps = <double>[1.0, 1.25, 1.5];
 
   /// 百分比文案，如「115%」。
   static String label(double v) => '${(v * 100).round()}%';

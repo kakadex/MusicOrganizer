@@ -1,11 +1,11 @@
-version=0.3.9
-tag=v0.3.9
+version=0.4.0
+tag=v0.4.0
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.9/MusicOrganizer-0.3.9-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.4.0/MusicOrganizer-0.4.0-android-arm64-v8a.apk
 size=20036992
-sha256=61de2e33fdcb7a21e67cbbc1624e2e8c02479c30e9264775c21e5aca3a3b5ed9
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.9/MusicOrganizer-0.3.9-windows-x64.zip
-zip_size=12984435
-zip_sha256=6f0acb1b422458352c974f9d7904afac93e2f23a47dc1c909924ff3414b9f7cd
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.3.9
-summary=桌面第二期：字体可调 + 行密度 + 窗口记忆 + 最小尺寸 + 宽窗口居中
+sha256=fe5a997e7496daeb2ff62fd56e895d0381178ece3c414af416ab8e172f029cab
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.4.0/MusicOrganizer-0.4.0-windows-x64.zip
+zip_size=12984916
+zip_sha256=7be8b9aee530871fecc88c915f825bc1229c076d1640ba41d05115fa0524a9b2
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.4.0
+summary=修复文字粗细不匀（字体缩放改整数倍 + 统一字体族）

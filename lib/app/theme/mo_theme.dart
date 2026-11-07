@@ -44,6 +44,21 @@ abstract final class MoTheme {
       brightness: brightness,
       colorScheme: scheme,
       scaffoldBackgroundColor: p.bg,
+      // 统一字体（0.4.0）：Windows 上不指定 fontFamily 时，英文/数字走
+      // Segoe UI、中文回退到微软雅黑——两套字体的字重与字形不同，中英混排
+      // 就会出现「同一行有粗有细」（用户反馈）。这里显式指定「微软雅黑 UI」：
+      // 它覆盖中文，且自带西文字形，中英混排口径一致。
+      // Windows 10/11 都自带；macOS / 安卓没有这个字体时会正常走系统回退。
+      fontFamily: 'Microsoft YaHei UI',
+      // 字体族列表：Flutter 按顺序尝试，第一个不含某个字符时逐个往下找。
+      // 把「微软雅黑 UI」放最前，避免跳到 Segoe UI 造成混排不一致。
+      fontFamilyFallback: const <String>[
+        'Microsoft YaHei',
+        'Microsoft YaHei UI',
+        'PingFang SC',
+        'Noto Sans CJK SC',
+        'sans-serif',
+      ],
       appBarTheme: AppBarTheme(
         backgroundColor: p.card,
         foregroundColor: p.text,
