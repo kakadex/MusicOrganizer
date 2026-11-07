@@ -1,12 +1,12 @@
-version=0.3.15
-tag=v0.3.15
+version=0.3.16
+tag=v0.3.16
 # 下载直链走 Gitee（国内实测 ~1.8MB/s，够快）。每个新版本号是全新 URL，
 # 不存在「重传覆盖后 CDN 还吐旧包」的问题——那个坑只在同名文件重传时出现。
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.15/MusicOrganizer-0.3.15-android-arm64-v8a.apk
-size=20036992
-sha256=ee2d78f2aaabde0912aef40b22df18aff11a20a512f09f42424ac73d33fac63e
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.15/MusicOrganizer-0.3.15-windows-x64.zip
-zip_size=13004124
-zip_sha256=6dbb44819de70656c14fc20674e9b98eff9f26f832df48c3ad2bd3f16b8947c5
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.3.15
-summary=修复：拖动缩放残影 + 右侧/底部边缘拖不动
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.16/MusicOrganizer-0.3.16-android-arm64-v8a.apk
+size=20036988
+sha256=e2fbb179f0b5db6d8136104761e5a251b178599e4334706f078a14d062fe3095
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.16/MusicOrganizer-0.3.16-windows-x64.zip
+zip_size=12992936
+zip_sha256=40ccecd42cd6c3fa877330094bf27ed463ceeef14fae38959ceeb50fde6a6401
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.3.16
+summary=桌面端窗口改回 Windows 原生标题栏，撤掉自绘标题栏带来的缩放残影与边缘拖不动
