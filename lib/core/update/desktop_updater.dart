@@ -38,6 +38,29 @@ abstract final class DesktopUpdater {
     return '';
   }
 
+  /// 校验已落盘的安装包（0.3.14 流式下载后使用）。
+  ///
+  /// 与 [verifyZip] 语义一致，只是数据在文件里：分块读、内存恒定，
+  /// 不再把几十 MB 的包整个读进内存。
+  static Future<String> verifyZipFile(File f,
+      {int expectedSize = 0, String expectedSha256 = ''}) async {
+    if (!await f.exists()) return '安装包不存在：${f.path}';
+    if (expectedSize > 0) {
+      final int len = await f.length();
+      if (len != expectedSize) {
+        return '安装包大小不符：清单是 $expectedSize 字节，实际 $len 字节';
+      }
+    }
+    final String want = expectedSha256.trim().toLowerCase();
+    if (want.isNotEmpty) {
+      final String got = (await sha256HexOfFile(f)).toLowerCase();
+      if (got != want) {
+        return '安装包 SHA-256 校验失败（可能被篡改或下载不完整）';
+      }
+    }
+    return '';
+  }
+
   /// 清单里到底有没有给可校验的信息。
   static bool hasVerification(int size, String sha256) =>
       size > 0 || sha256.trim().isNotEmpty;

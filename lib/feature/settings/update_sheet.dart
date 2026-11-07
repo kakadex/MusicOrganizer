@@ -1,12 +1,10 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/ui_kit.dart';
 import '../../core/log/log.dart';
-import '../../core/net/http_client.dart';
 import '../../core/source/endpoints.dart';
 import '../../core/task/task_center.dart';
 import '../../core/model/task_control.dart';
@@ -40,9 +38,6 @@ class UpdateSheet extends StatefulWidget {
 }
 
 class _UpdateSheetState extends State<UpdateSheet> {
-  /// 桌面版 zip 的下载上限（200MB：正常版本几十 MB，留足余量）。
-  static const int _maxZipBytes = 200 * 1024 * 1024;
-
   bool _busy = true;
   String _step = '正在检查…';
   String _error = '';
@@ -379,36 +374,65 @@ class _UpdateSheetState extends State<UpdateSheet> {
     }
     final RunningTask? task = TaskCenter.start('下载更新');
     if (task == null) return;
+    final TaskControl ctl = task.control;
     setState(() {
       _busy = true;
       _step = '正在下载桌面版…';
     });
-    Uint8List? bytes;
     String stage = '';
     try {
-      bytes = await Http.getBytes(
-          r.zipUrl, null, null, Http.readTimeoutCnMs, _maxZipBytes);
-      task.control.report(1, 3, '下载完成');
-      if (!mounted) return;
-      if (bytes == null || bytes.isEmpty) {
-        setState(() {
-          _busy = false;
-          _error = '下载失败：${Http.lastError.isEmpty ? '没有拿到内容' : Http.lastError}';
-        });
-        return;
-      }
-      setState(() => _step = '正在解压…');
+      // 0.3.14：改成流式下载（ApkDownloader 本身就为此写的）。
+      //
+      // 之前用 Http.getBytes(...) 把 13MB 整包读进内存，并且 readTimeoutCnMs
+      // 把「整包读取」套在 8 秒总时限里——家宽下 12MB 要 7 秒左右，跨境源
+      // 必然超时（用户实测「下载失败：超时」）。ApkDownloader 是分块流式写盘、
+      // 只有单次连接/空闲超时、支持断点续传和进度回调，正是这里该用的东西。
       final String tmp = Directory.systemTemp.path;
       final String sep = Platform.pathSeparator;
       final File zip = File('$tmp${sep}mo-update-${r.version}.zip');
-      await zip.writeAsBytes(bytes, flush: true);
-      // 解压之前先校验安装包：清单给了哪项就校验哪项，不符直接拒绝。
-      // 只有「大小 + SHA-256 都有」才算完整校验；只给一项或都没给时，
-      // 要把「哪项没验」说清楚，让用户自己决定装不装。
+      final ApkDownloader dl = ApkDownloader(
+        openConnection: openHttpConnection,
+        now: (Duration d) => Future<void>.delayed(d),
+      );
+      final ApkDownloadResult res = await dl.download(
+        url: r.zipUrl,
+        target: zip,
+        expectedSha256: r.zipSha256,
+        expectedSize: r.zipSize,
+        onProgress: (ApkProgress p) {
+          if (!mounted) return;
+          final int pct = p.percent;
+          setState(() {
+            _step = pct >= 0
+                ? '正在下载桌面版… $pct%'
+                : '正在下载桌面版… ${(p.received / (1024 * 1024)).toStringAsFixed(1)} MB';
+          });
+        },
+        cancel: () => ctl.isCancelled(),
+      );
+      if (!mounted) return;
+      if (res.cancelled) {
+        setState(() {
+          _busy = false;
+          _error = '已取消下载';
+        });
+        return;
+      }
+      if (!res.ok) {
+        setState(() {
+          _busy = false;
+          _error = '下载失败：${res.error}';
+        });
+        return;
+      }
+      task.control.report(1, 3, '下载完成');
+      setState(() => _step = '正在解压…');
+      // 解压之前再按清单校验一次落盘的包：ApkDownloader 内部已校验过哈希，
+      // 这里补「大小」这一项，两样都齐才算完整校验；缺项时让用户自己决定。
       final int level =
           DesktopUpdater.verificationLevel(r.zipSize, r.zipSha256);
       if (level > 0) {
-        final String vErr = DesktopUpdater.verifyZip(bytes,
+        final String vErr = await DesktopUpdater.verifyZipFile(zip,
             expectedSize: r.zipSize, expectedSha256: r.zipSha256);
         if (vErr.isNotEmpty) {
           try {

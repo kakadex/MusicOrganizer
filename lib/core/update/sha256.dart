@@ -5,6 +5,7 @@
 /// 保持零第三方依赖，且能被已知向量（FIPS 180-2）单测钉死。
 library;
 
+import 'dart:io';
 import 'dart:typed_data';
 
 /// 计算 [data] 的 SHA-256，返回 64 位小写十六进制串。
@@ -21,6 +22,23 @@ String sha256Hex(Uint8List data) {
 
 /// 一次性算一个 [Uint8List]（数据已在内存里，不分块）。
 String sha256HexBytes(List<int> bytes) => sha256Hex(Uint8List.fromList(bytes));
+
+/// 分块算一个文件的 SHA-256（0.3.14）。
+///
+/// 桌面更新改成流式下载后，安装包落盘而不是留在内存里；校验时若再整包读一遍
+/// 就白白多占几十 MB。这里按 64KB 分块喂给同一个哈希器，内存恒定。
+Future<String> sha256HexOfFile(File f) async {
+  final _Sha256 h = _Sha256();
+  await for (final List<int> chunk in f.openRead()) {
+    h.update(Uint8List.fromList(chunk));
+  }
+  final List<int> digest = h.digest();
+  final StringBuffer sb = StringBuffer();
+  for (final int b in digest) {
+    sb.write(b.toRadixString(16).padLeft(2, '0'));
+  }
+  return sb.toString();
+}
 
 class _Sha256 {
   static const List<int> _k = <int>[

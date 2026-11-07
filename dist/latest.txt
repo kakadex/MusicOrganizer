@@ -1,11 +1,12 @@
-version=0.3.13
-tag=v0.3.13
-# 文件下载直链走 GitHub Release（无 Gitee 长 CDN 缓存，上传即生效）
-apk=https://github.com/kakadex/MusicOrganizer/releases/download/v0.3.13/MusicOrganizer-0.3.13-android-arm64-v8a.apk
-size=20036992
-sha256=bb09fc3fb44c7b4a8d3dacd09e977cb0ef5b179b39b6a2e4537a3d1ed3001347
-zip=https://github.com/kakadex/MusicOrganizer/releases/download/v0.3.13/MusicOrganizer-0.3.13-windows-x64.zip
-zip_size=12992462
-zip_sha256=f2902ecd154c99354233e1bdf0d4b81238f0abef43d4dd6806d3aae411fc6a9c
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.3.13
-summary=修复：桌面端拖动窗口边界/四角缩放时的残影与平铺重影
+version=0.3.14
+tag=v0.3.14
+# 下载直链走 Gitee（国内实测 ~1.8MB/s，够快）。每个新版本号是全新 URL，
+# 不存在「重传覆盖后 CDN 还吐旧包」的问题——那个坑只在同名文件重传时出现。
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.14/MusicOrganizer-0.3.14-android-arm64-v8a.apk
+size=20036988
+sha256=bb89d0dc299cf30e4a5e54c17491f1e6e6a97645f28d217ae5ea3bd7c0f63c6e
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.14/MusicOrganizer-0.3.14-windows-x64.zip
+zip_size=13004148
+zip_sha256=9c8fcad136a7aed9fba77f6b1261862f16325bcad0de6f0c32f24594e6c3ea0c
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.3.14
+summary=修复：桌面端检查更新下载安装包超时（改为流式下载）
