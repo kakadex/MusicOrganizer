@@ -1,6 +1,40 @@
+# 静态检查配置。
+#
+# 分级方式（2026-11-07 实测后确定，不是拍脑袋）：
+#   第一档：存量零违规，直接设 error、立即生效，不影响任何现有代码。
+#   第二档：存量少数几处，修完再升 error（暂不列入本文件）。
+#   暂不启用：存量上百条且与本项目设计冲突的规则（见文件末尾说明）。
+#
+# 注意：analyzer.errors 只改严重级别，不启用规则。
+# 规则必须在 linter.rules 里设为 true 才会被报出来，
+# 只写在 errors 里等于静默失效，且分析器不会给任何提示。
+include: package:flutter_lints/flutter.yaml
+
 analyzer:
   exclude:
     - build/**
     - android/**
     - windows/**
-include: package:flutter_lints/flutter.yaml
+  errors:
+    # 第一档：实测 0 处违规。
+    use_build_context_synchronously: error
+    cancel_subscriptions: error
+    close_sinks: error
+
+linter:
+  rules:
+    # 与上面 errors 一一对应，缺一行上面的 error 就失效。
+    use_build_context_synchronously: true
+    cancel_subscriptions: true
+    close_sinks: true
+
+# 暂不启用的规则与原因（实测数据，2026-11-07）：
+#   avoid_catches_without_on_clauses  存量 191 处。本项目大量使用 catch (_) 处理
+#     「平台通道抖动 / 缓存损坏 / 写盘失败」这类坏了也不该中断主流程的场景，
+#     一刀切要求 on 子句只会制造无意义的异常类型枚举。约定改为：
+#     catch (_) 必须带中文注释说明为什么不向上抛。
+#   discarded_futures                 存量 33 处，需逐处判断「真漏了还是故意不 await」。
+#   unawaited_futures                 存量 9 处，修完后可升 error。
+#   avoid_void_async                  存量 1 处。
+#   prefer_const_constructors         存量 6 处 info，属性能建议，不影响正确性。
+#   prefer_const_declarations         存量 4 处 info。
