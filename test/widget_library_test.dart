@@ -95,7 +95,7 @@ void main() {
 
   Future<void> pumpPage(WidgetTester tester) async {
     await tester.pumpWidget(MaterialApp(
-      theme: MoTheme.build(MoPalette.of(MoThemeId.minimal, dark: false), dark: false),
+      theme: MoTheme.build(MoPalette.light, dark: false),
       home: const Scaffold(body: LibraryPage()),
     ));
     await tester.pumpAndSettle();
@@ -118,7 +118,7 @@ void main() {
     repo.store = store;
 
     await tester.pumpWidget(MaterialApp(
-      theme: MoTheme.build(MoPalette.of(MoThemeId.minimal, dark: false), dark: false),
+      theme: MoTheme.build(MoPalette.light, dark: false),
       home: const Scaffold(body: LibraryPage()),
     ));
     await tester.pumpAndSettle();

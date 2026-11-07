@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../core/version.dart';
 import 'router.dart';
-import 'theme/palette.dart';
 import 'theme/theme_controller.dart';
 
-/// Phase 0 占位页：标题 + 主题切换（3 套 × 亮/暗）+ 首页功能导航。
+/// Phase 0 占位页：标题 + 外观三态（跟随系统 / 浅色 / 深色）+ 首页功能导航。
 class MoPlaceholderPage extends StatelessWidget {
   const MoPlaceholderPage({
     super.key,
@@ -62,7 +61,7 @@ class MoPlaceholderPage extends StatelessWidget {
   }
 }
 
-/// 主题切换区：方案胶囊（3 套）+ 夜间模式开关。
+/// 外观切换区：跟随系统 / 浅色 / 深色（0.3.17）。
 class _ThemeSwitcher extends StatelessWidget {
   const _ThemeSwitcher({required this.themeController});
 
@@ -70,27 +69,26 @@ class _ThemeSwitcher extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const List<(ThemeMode, String)> modes = <(ThemeMode, String)>[
+      (ThemeMode.system, '跟随系统'),
+      (ThemeMode.light, '浅色'),
+      (ThemeMode.dark, '深色'),
+    ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text('主题', style: Theme.of(context).textTheme.titleMedium),
+        Text('外观', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
           children: <Widget>[
-            for (final MoThemeId id in MoThemeId.values)
+            for (final (ThemeMode mode, String label) in modes)
               ChoiceChip(
-                label: Text(id.label),
-                selected: themeController.themeId == id,
-                onSelected: (_) => themeController.setTheme(id),
+                label: Text(label),
+                selected: themeController.mode == mode,
+                onSelected: (_) => themeController.setMode(mode),
               ),
           ],
-        ),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('夜间模式'),
-          value: themeController.dark,
-          onChanged: themeController.setDark,
         ),
       ],
     );

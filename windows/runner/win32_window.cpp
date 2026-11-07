@@ -86,6 +86,37 @@ constexpr const wchar_t kGetPreferredBrightnessRegKey[] =
   L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize";
 constexpr const wchar_t kGetPreferredBrightnessRegValue[] = L"AppsUseLightTheme";
 
+/// 应用层指定的标题栏深浅（0.3.17 外观三态）。
+///
+/// 未指定时跟随系统；指定后连系统强调色变化（WM_DWMCOLORIZATIONCOLORCHANGED）
+/// 也不覆盖，否则用户选了深色、动一下系统主题色标题栏又翻回白色。
+static bool g_title_bar_override = false;
+static bool g_title_bar_dark = false;
+
+/// 读系统的「应用使用浅色主题」设置；读不到按浅色处理（与系统默认一致）。
+bool ReadSystemDark() {
+  DWORD light_mode = 1;
+  DWORD light_mode_size = sizeof(light_mode);
+  LSTATUS result = RegGetValue(HKEY_CURRENT_USER, kGetPreferredBrightnessRegKey,
+                               kGetPreferredBrightnessRegValue,
+                               RRF_RT_REG_DWORD, nullptr, &light_mode,
+                               &light_mode_size);
+  if (result != ERROR_SUCCESS) {
+    return false;
+  }
+  return light_mode == 0;
+}
+
+/// 直接改标题栏深浅。低于 Windows 10 2004 的系统会失败，静默即可。
+void ApplyTitleBarTheme(HWND const window, bool dark) {
+  if (window == nullptr) {
+    return;
+  }
+  BOOL enable_dark_mode = dark ? TRUE : FALSE;
+  DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE,
+                        &enable_dark_mode, sizeof(enable_dark_mode));
+}
+
 // The number of Win32Window objects that currently exist.
 static int g_active_window_count = 0;
 
@@ -372,16 +403,19 @@ void Win32Window::OnDestroy() {
 }
 
 void Win32Window::UpdateTheme(HWND const window) {
-  DWORD light_mode;
-  DWORD light_mode_size = sizeof(light_mode);
-  LSTATUS result = RegGetValue(HKEY_CURRENT_USER, kGetPreferredBrightnessRegKey,
-                               kGetPreferredBrightnessRegValue,
-                               RRF_RT_REG_DWORD, nullptr, &light_mode,
-                               &light_mode_size);
+  ApplyTitleBarTheme(window,
+                     g_title_bar_override ? g_title_bar_dark : ReadSystemDark());
+}
 
-  if (result == ERROR_SUCCESS) {
-    BOOL enable_dark_mode = light_mode == 0;
-    DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE,
-                          &enable_dark_mode, sizeof(enable_dark_mode));
-  }
+bool Win32Window::IsSystemDark() { return ReadSystemDark(); }
+
+void Win32Window::SetTitleBarDark(HWND const window, bool dark) {
+  g_title_bar_override = true;
+  g_title_bar_dark = dark;
+  ApplyTitleBarTheme(window, dark);
+}
+
+void Win32Window::ClearTitleBarOverride(HWND const window) {
+  g_title_bar_override = false;
+  ApplyTitleBarTheme(window, ReadSystemDark());
 }

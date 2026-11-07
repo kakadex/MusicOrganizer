@@ -1,12 +1,12 @@
-version=0.3.16
-tag=v0.3.16
+version=0.3.17
+tag=v0.3.17
 # 下载直链走 Gitee（国内实测 ~1.8MB/s，够快）。每个新版本号是全新 URL，
 # 不存在「重传覆盖后 CDN 还吐旧包」的问题——那个坑只在同名文件重传时出现。
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.16/MusicOrganizer-0.3.16-android-arm64-v8a.apk
-size=20036988
-sha256=e2fbb179f0b5db6d8136104761e5a251b178599e4334706f078a14d062fe3095
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.16/MusicOrganizer-0.3.16-windows-x64.zip
-zip_size=12992936
-zip_sha256=40ccecd42cd6c3fa877330094bf27ed463ceeef14fae38959ceeb50fde6a6401
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.3.16
-summary=桌面端窗口改回 Windows 原生标题栏，撤掉自绘标题栏带来的缩放残影与边缘拖不动
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.17/MusicOrganizer-0.3.17-android-arm64-v8a.apk
+size=20039248
+sha256=793c1478287bf3fad483a7dd57a50dcb68ff6d443af21e6426a20d0785fea294
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.17/MusicOrganizer-0.3.17-windows-x64.zip
+zip_size=13007910
+zip_sha256=b15fcb6bdb6d0f3026fd75e6324bc3f6596b94fc84863eec2f42f81f88864b81
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.3.17
+summary=外观改为跟随系统/浅色/深色三选一，桌面标题栏同步

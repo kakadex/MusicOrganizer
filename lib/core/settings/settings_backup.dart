@@ -92,6 +92,11 @@ abstract final class SettingsBackup {
 
   static const String keyLayout = 'layout_id';
   static const String keyWeight = 'fn_weight';
+
+  /// 外观三态（0.3.17）：`system` / `light` / `dark`。
+  static const String keyThemeMode = 'theme_mode';
+
+  /// 旧版配色 id：只为老备份能被识别，新版不再写入（见 `Repo.migrateThemeMode`）。
   static const String keyThemeId = 'theme_id';
   static const String keyNetFiles = 'net_files';
   static const String keyNetTimeout = 'net_timeout';
@@ -107,6 +112,9 @@ abstract final class SettingsBackup {
 
   // 等价旧 Theme.NAMES.length（主题枚举在 app/theme 层，core 不依赖 UI）。
   static const int _themeCount = 3;
+
+  /// 外观三态的合法取值（0.3.17）。
+  static const List<String> _themeModes = <String>['system', 'light', 'dark'];
 
   /// 判断一个偏好键属于哪类；返回 null 表示「不是可备份的设置」。
   static SettingsKind? kindOf(String? key) {
@@ -124,6 +132,7 @@ abstract final class SettingsBackup {
       return SettingsKind.intKey;
     }
     if (key == keyProxyHost ||
+        key == keyThemeMode ||
         key == keyScanExclude ||
         key == keyOrganizeTemplate) {
       return SettingsKind.stringKey;
@@ -159,8 +168,7 @@ abstract final class SettingsBackup {
       'lyrics_simplify': true,
       'tag_overwrite': false,
       'update_auto': true,
-      'theme_dark': false,
-      keyThemeId: 1,
+      keyThemeMode: 'system',
       keyWeight: 20,
       keyLayout: 0,
       keyNetFiles: NetTuning.defaultFileConcurrency,
@@ -322,6 +330,11 @@ abstract final class SettingsBackup {
       if (v.length > 120) {
         _warn(warnings, key, '内容过长，已丢弃');
         return null;
+      }
+      // 外观三态只认这三个值：别的版本 / 手改的备份写进来会让主题读不出来。
+      if (key == keyThemeMode && !_themeModes.contains(v)) {
+        _warn(warnings, key, '不是 system/light/dark，已改为 system');
+        return 'system';
       }
       return v;
     }

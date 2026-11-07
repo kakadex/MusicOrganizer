@@ -8,7 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../app/repo.dart';
 import '../../app/repo_changes.dart';
 import '../../app/theme/font_scale.dart';
-import '../../app/theme/palette.dart';
+import '../../app/theme/theme_controller.dart';
 import '../../app/ui_kit.dart';
 import '../../core/log/log.dart';
 import '../../core/match/tag_fill.dart';
@@ -552,46 +552,38 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _themeCard() {
-    final controller = _repo.themeController;
+    final ThemeController? controller = _repo.themeController;
     if (controller == null) return const SizedBox.shrink();
     return ListenableBuilder(
       listenable: controller,
       builder: (BuildContext context, Widget? _) {
+        const List<(ThemeMode, String)> modes = <(ThemeMode, String)>[
+          (ThemeMode.system, '跟随系统'),
+          (ThemeMode.light, '浅色'),
+          (ThemeMode.dark, '深色'),
+        ];
         return SectionCard(
           title: '外观',
           children: <Widget>[
-            Row(
+            // 三态（0.3.17）：原来的「三套配色 + 夜间模式开关」是二维组合，
+            // 现在合并成一个一维入口。浅色 / 深色各一套固定中性色板；跟随系统
+            // 优先用系统壁纸色（Android 12+），桌面端只跟随明暗。
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
               children: <Widget>[
-                for (final MoThemeId id in MoThemeId.values)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: MoChip(
-                      label: _themeName(id),
-                      selected: controller.themeId == id,
-                      onTap: () {
-                        controller.setTheme(id);
-                        _repo.setSetting('theme_id', id.index);
-                      },
-                    ),
+                for (final (ThemeMode mode, String label) in modes)
+                  MoChip(
+                    label: label,
+                    selected: controller.mode == mode,
+                    onTap: () {
+                      controller.setMode(mode);
+                      _repo.setSetting('theme_mode', mode.name);
+                    },
                   ),
               ],
             ),
-            const SizedBox(height: 6),
-            Row(
-              children: <Widget>[
-                Text('夜间模式',
-                    style: TextStyle(fontSize: MoKit.fsBody, color: MoKit.text(context))),
-                const Spacer(),
-                Switch(
-                  value: controller.dark,
-                  onChanged: (bool v) {
-                    controller.setDark(v);
-                    _repo.setSetting('theme_dark', v);
-                  },
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             // 字体大小（0.3.9）：Windows 高分屏上默认字号偏小，用户要能自己调。
             // 全局生效（含手机端），列表行高也会跟着放大，字不会被裁。
             Row(
@@ -828,8 +820,7 @@ class _SettingsPageState extends State<SettingsPage> {
     'update_silent': 'update_auto',
     'net_files': 'net_files',
     'net_timeout': 'net_timeout',
-    'theme_id': 'theme_id',
-    'theme_dark': 'theme_dark',
+    'theme_mode': 'theme_mode',
     'lyrics_simplify': 'lyrics_simplify',
     'proxy_mode': 'proxy_mode',
     'proxy_host': 'proxy_host',
@@ -850,8 +841,7 @@ class _SettingsPageState extends State<SettingsPage> {
     'update_auto': '启动时检查更新',
     'net_files': '同时处理（并发）',
     'net_timeout': '超时倍率',
-    'theme_id': '配色',
-    'theme_dark': '夜间模式',
+    'theme_mode': '外观模式',
     'lyrics_simplify': '歌词转简体',
     'proxy_mode': '代理模式',
     'proxy_host': '代理主机',
@@ -949,17 +939,6 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  String _themeName(MoThemeId id) {
-    switch (id) {
-      case MoThemeId.warm:
-        return '暖橙';
-      case MoThemeId.minimal:
-        return '简紫';
-      case MoThemeId.lyrico:
-        return '简蓝';
-    }
-  }
-
   void _push(Widget page) {
     Navigator.of(context).push<void>(
       MaterialPageRoute<void>(builder: (BuildContext _) => page),
@@ -1006,6 +985,18 @@ class _SettingsPageState extends State<SettingsPage> {
       // 备份格式里的键名与界面键名不同名（fn_weight ↔ filename_weight），要换回来。
       await _repo.setSetting(_fromBackupKey[e.key] ?? e.key, e.value);
     }
+    // 老备份里是 theme_id / theme_dark：导入后立刻收敛成三态，并把当前界面
+    // 一起切过去，否则要重启才看到新外观。
+    await _repo.migrateThemeMode();
+    _repo.themeController?.setMode(
+      <String, ThemeMode>{
+            'system': ThemeMode.system,
+            'light': ThemeMode.light,
+            'dark': ThemeMode.dark,
+          }[_repo.settings.get<String>('theme_mode', fallback: 'system') ??
+              'system'] ??
+          ThemeMode.system,
+    );
     if (!mounted) return;
     // 导入的代理配置立即生效，不用等重启
     _repo.applyProxy();

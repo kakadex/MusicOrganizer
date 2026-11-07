@@ -104,6 +104,12 @@ class MainActivity : FlutterActivity() {
         ).also {
             it.attach(flutterEngine.dartExecutor.binaryMessenger)
         }
+        // 系统动态色（0.3.17）：外观选「跟随系统」时用壁纸取色。
+        // 12 以下返回 null，Dart 侧回退固定色板。
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "com.dsh.musicorganizer/system_colors"
+        ).setMethodCallHandler(SystemColorsPlugin(applicationContext))
         host.setMethodCallHandler { call, result ->
             when (call.method) {
                 "updateTask" -> {

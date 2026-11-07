@@ -200,6 +200,9 @@ class Repo extends ChangeNotifier {
     coverQueue = MatchQueue.open(dir, 'covers');
     albumCovers = AlbumCoverCache.open(File('${dir.path}/album_covers.json'));
     await _loadSettings();
+    // 旧版外观设置（三套配色 + 夜间开关）迁移成三态 theme_mode（0.3.17）。
+    // 放在 _loadSettings 之后：迁移要读 prefs 里的旧键，也要把结果写回内存。
+    await migrateThemeMode();
     Endpoints.install(_RepoEndpoints(this));
     applyProxy();
     _initialized = true;
@@ -225,9 +228,10 @@ class Repo extends ChangeNotifier {
       'fill_overwrite',
       'net_files',
       'net_timeout',
-      'theme_id',
-      'theme_dark',
-      // 字体缩放（0.4.1）：漏了这个键，用户设 150% 重启后又回到 100%。
+      // 外观三态（0.3.17）：system / light / dark。旧键 theme_id / theme_dark
+      // 只由 migrateThemeMode() 读取并清理，不再进白名单。
+      'theme_mode',
+      // 字体缩放（0.3.10）：漏了这个键，用户设 150% 重启后又回到 100%。
       'font_scale',
       'sort_key',
       'sort_desc',
@@ -251,6 +255,32 @@ class Repo extends ChangeNotifier {
       final Object? v = prefs.get(key);
       if (v != null) settings.set(key, v);
     }
+  }
+
+  /// 旧版二维外观设置（`theme_id` 三套配色 + `theme_dark` 夜间开关）→
+  /// 新版三态 `theme_mode`（system / light / dark）。
+  ///
+  /// 幂等：启动、导入备份、恢复默认之后都可以再调一次。
+  ///
+  /// 迁移语义（0.3.17）：
+  /// - 开过夜间模式的老用户 → `dark`（不强制改成跟随系统，免得一升级就变浅）；
+  /// - 其余所有情况 → `system`（新默认，跟随系统）；
+  /// - 选过暖橙 / 简蓝的用户不再保留配色——这正是本次「去掉三套颜色」的要求。
+  Future<void> migrateThemeMode() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    const List<String> valid = <String>['system', 'light', 'dark'];
+    String? mode = prefs.getString('theme_mode');
+    if (mode == null || !valid.contains(mode)) {
+      final bool oldDark = prefs.getBool('theme_dark') ?? false;
+      mode = oldDark ? 'dark' : 'system';
+      await prefs.setString('theme_mode', mode);
+    }
+    // 旧键必须清掉：留着会在「恢复默认设置」或回滚旧版本时被重新读成旧语义。
+    await prefs.remove('theme_id');
+    await prefs.remove('theme_dark');
+    settings.remove('theme_id');
+    settings.remove('theme_dark');
+    settings.set('theme_mode', mode);
   }
 
   /// 把设置写回持久化（界面改了之后调用）。

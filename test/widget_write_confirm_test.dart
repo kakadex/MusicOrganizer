@@ -35,7 +35,7 @@ void main() {
     void Function(List<WriteTarget>?) onResult,
   ) async {
     await tester.pumpWidget(MaterialApp(
-      theme: MoTheme.build(MoPalette.of(MoThemeId.minimal, dark: false), dark: false),
+      theme: MoTheme.build(MoPalette.light, dark: false),
       home: Scaffold(
         body: Builder(
           builder: (BuildContext ctx) => Center(

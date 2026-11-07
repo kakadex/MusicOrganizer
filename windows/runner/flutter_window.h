@@ -34,6 +34,10 @@ class FlutterWindow : public Win32Window {
   // Forwards dropped file/folder paths to Dart (channel name matches the
   // Dart side).
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> drop_channel_;
+
+  // 外观三态（0.3.17）：Dart 侧推标题栏深浅 + 系统明暗变化推回 Dart。
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      appearance_channel_;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

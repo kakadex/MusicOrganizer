@@ -13,7 +13,7 @@ void main() {
   Future<void> pumpHost(
       WidgetTester tester, void Function(BuildContext) onOpen) {
     return tester.pumpWidget(MaterialApp(
-      theme: MoTheme.build(MoPalette.of(MoThemeId.minimal, dark: false), dark: false),
+      theme: MoTheme.build(MoPalette.light, dark: false),
       home: Scaffold(
         body: Builder(
           builder: (BuildContext ctx) => TextButton(

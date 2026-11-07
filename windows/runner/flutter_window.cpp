@@ -5,6 +5,7 @@
 
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "flutter/generated_plugin_registrant.h"
@@ -38,6 +39,38 @@ bool FlutterWindow::OnCreate() {
       flutter_controller_->engine()->messenger(),
       "com.dsh.musicorganizer/drop",
       &flutter::StandardMethodCodec::GetInstance());
+
+  // 外观三态（0.3.17）：标题栏深浅跟随应用 + 系统明暗变化通知。
+  appearance_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(),
+          "com.dsh.musicorganizer/appearance",
+          &flutter::StandardMethodCodec::GetInstance());
+  appearance_channel_->SetMethodCallHandler(
+      [this](const flutter::MethodCall<flutter::EncodableValue>& call,
+             std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+                 result) {
+        if (call.method_name() == "isSystemDark") {
+          result->Success(flutter::EncodableValue(Win32Window::IsSystemDark()));
+          return;
+        }
+        if (call.method_name() == "setDarkTitleBar") {
+          // 参数为 null 表示「跟随系统」，否则是应用显式选择的明暗。
+          if (call.arguments() == nullptr) {
+            Win32Window::ClearTitleBarOverride(GetHandle());
+          } else {
+            const bool* dark = std::get_if<bool>(call.arguments());
+            if (dark == nullptr) {
+              result->Error("bad_args", "setDarkTitleBar expects bool or null");
+              return;
+            }
+            Win32Window::SetTitleBarDark(GetHandle(), *dark);
+          }
+          result->Success();
+          return;
+        }
+        result->NotImplemented();
+      });
 
   // Accept files and folders dragged onto this window (enables WM_DROPFILES).
   DragAcceptFiles(GetHandle(), TRUE);
@@ -89,6 +122,23 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
       drop_channel_->InvokeMethod(
           "onDrop",
           std::make_unique<flutter::EncodableValue>(paths));
+    }
+    return 0;
+  }
+
+  // 系统深浅色切换（0.3.17）：Windows 广播 WM_SETTINGCHANGE("ImmersiveColorSet")。
+  // 1. 按当前覆盖 / 系统设置重设原生标题栏；
+  // 2. 推给 Dart —— Windows 上 Flutter 的 platformBrightness 不保证随系统刷新，
+  //    「跟随系统」靠这条消息才能即时生效。
+  if (message == WM_SETTINGCHANGE && lparam != 0 &&
+      std::wstring(reinterpret_cast<const wchar_t*>(lparam)) ==
+          L"ImmersiveColorSet") {
+    Win32Window::UpdateTheme(hwnd);
+    if (appearance_channel_) {
+      appearance_channel_->InvokeMethod(
+          "systemThemeChanged",
+          std::make_unique<flutter::EncodableValue>(
+              Win32Window::IsSystemDark()));
     }
     return 0;
   }

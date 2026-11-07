@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import '../core/log/log.dart';
 import '../core/model/task_control.dart';
 import '../core/task/task_center.dart';
+import 'theme/mo_colors.dart';
+import 'theme/palette.dart';
 
 /// 设计常量与通用组件。
 ///
@@ -48,21 +50,44 @@ abstract final class MoKit {
   static const double fsHuge = 22;
 
   // ---- 颜色 ----
-  static Color bg(BuildContext c) => Theme.of(c).scaffoldBackgroundColor;
-  static Color card(BuildContext c) => Theme.of(c).colorScheme.surface;
-  static Color text(BuildContext c) => Theme.of(c).colorScheme.onSurface;
-  static Color primary(BuildContext c) => Theme.of(c).colorScheme.primary;
-  static Color sub(BuildContext c) =>
-      Theme.of(c).colorScheme.onSurface.withValues(alpha: 0.60);
-  static Color faint(BuildContext c) =>
-      Theme.of(c).colorScheme.onSurface.withValues(alpha: 0.40);
-  static Color line(BuildContext c) =>
-      Theme.of(c).colorScheme.onSurface.withValues(alpha: 0.08);
-  static Color soft(BuildContext c) =>
-      Theme.of(c).colorScheme.primary.withValues(alpha: 0.12);
-  static Color ok(BuildContext c) => const Color(0xFF2E9E5B);
-  static Color warn(BuildContext c) => const Color(0xFFD98324);
-  static Color err(BuildContext c) => Theme.of(c).colorScheme.error;
+  //
+  // 0.3.17：全部取自当前主题的色板（`MoColors` extension），不再用
+  // `withValues(alpha:)` 或写死色值。原因有两条：
+  // 1. 透明色叠在不同底色上对比度不可控（亮色下 faint 只有 2.4:1，正文级的
+  //    `sub` 也只有 4.4:1，用户在桌面端看 11px 辅助字发虚）；
+  // 2. 硬编码的 ok / warn 不随深浅切换（暗底上偏灰），而且三套配色时代没人
+  //    记得改这三处。
+  //
+  // 取不到 extension 时（个别测试直接 `MaterialApp` 起页面）退回按明暗选固定
+  // 色板，不让它变成 `!` 空断言崩溃。
+  static MoPalette _palette(BuildContext c) {
+    final MoColors? ext = Theme.of(c).extension<MoColors>();
+    if (ext != null) return ext.palette;
+    return Theme.of(c).brightness == Brightness.dark
+        ? MoPalette.dark
+        : MoPalette.light;
+  }
+
+  static Color bg(BuildContext c) => _palette(c).bg;
+  static Color card(BuildContext c) => _palette(c).card;
+  static Color text(BuildContext c) => _palette(c).text;
+  static Color body(BuildContext c) => _palette(c).body;
+  static Color primary(BuildContext c) => _palette(c).primary;
+
+  /// 文字 / 图标上的强调色（暗底上比 [primary] 更亮，对比度达标）。
+  static Color primaryOnSurface(BuildContext c) =>
+      _palette(c).onSurfacePrimary;
+  static Color sub(BuildContext c) => _palette(c).sub;
+
+  /// 第三级弱化（占位 / 禁用）；实色，对底色 ≥3:1。
+  static Color faint(BuildContext c) => _palette(c).faint;
+  static Color line(BuildContext c) => _palette(c).line;
+
+  /// 主色的浅底容器（胶囊 / 选中态）。
+  static Color soft(BuildContext c) => _palette(c).primarySoft;
+  static Color ok(BuildContext c) => _palette(c).ok;
+  static Color warn(BuildContext c) => _palette(c).warn;
+  static Color err(BuildContext c) => _palette(c).err;
 }
 
 /// 页面标题（大标题 + 一行说明）。

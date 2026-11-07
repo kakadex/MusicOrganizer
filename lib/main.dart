@@ -8,11 +8,14 @@ import 'package:flutter/services.dart';
 import 'app/mo_app.dart';
 import 'app/repo.dart';
 import 'app/theme/font_scale.dart';
+import 'app/theme/mo_theme.dart';
 import 'app/theme/palette.dart';
 import 'app/theme/theme_controller.dart';
 import 'core/log/log.dart';
 import 'feature/crash/crash_screen.dart';
+import 'platform/appearance.dart';
 import 'platform/external_open.dart';
+import 'platform/system_colors.dart';
 
 /// 应用入口：初始化全局仓库 → 恢复主题 → 挂载 [MoApp]。
 Future<void> main(List<String> args) async {
@@ -35,7 +38,7 @@ Future<void> main(List<String> args) async {
   ErrorWidget.builder = (FlutterErrorDetails details) {
     final String text = Log.sanitize(details.exceptionAsString());
     return Material(
-      color: const Color(0xFF1B1B1F),
+      color: MoPalette.light.bg,
       child: Center(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -45,7 +48,8 @@ Future<void> main(List<String> args) async {
               Text(
                 '这个界面画不出来：\n$text',
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Color(0xFFE6E1E5), fontSize: 13),
+                style: TextStyle(
+                    color: MoPalette.light.body, fontSize: 13),
               ),
               const SizedBox(height: 8),
               TextButton(
@@ -69,14 +73,51 @@ Future<void> main(List<String> args) async {
     }
     await repo.init();
 
-    // 主题：上次选的方案与明暗（存在 SharedPreferences 里，repo 初始化时已读回）
-    final int themeId = repo.settings.get<int>('theme_id', fallback: 1) ?? 1;
-    final bool dark = repo.settings.get<bool>('theme_dark', fallback: false) ?? false;
+    // 外观（0.3.17）：三态「跟随系统 / 浅色 / 深色」。旧键 theme_id / theme_dark
+    // 已在 repo.init() 里由 migrateThemeMode() 迁移成 theme_mode。
+    //
+    // 动态色只有 Android 12+ 有；Windows / 低版本返回 null → 固定中性色板，
+    // 明暗仍跟随系统（这是预期行为，不是降级失败）。
+    final SystemPaletteSet? systemPalette = await SystemColors.fetch();
+    final String themeModeName =
+        repo.settings.get<String>('theme_mode', fallback: 'system') ?? 'system';
+    final ThemeMode startMode = <String, ThemeMode>{
+          'system': ThemeMode.system,
+          'light': ThemeMode.light,
+          'dark': ThemeMode.dark,
+        }[themeModeName] ??
+        ThemeMode.system;
     final ThemeController controller = ThemeController(
-      themeId: MoThemeId.values[themeId.clamp(0, MoThemeId.values.length - 1)],
-      dark: dark,
+      mode: startMode,
+      systemPalette: systemPalette,
     );
     repo.themeController = controller;
+
+    // Windows：① 标题栏深浅跟随应用（否则系统浅色 + 应用深色时标题栏是白的）；
+    // ② 系统切深浅时原生侧推回来，让「跟随系统」即时生效。
+    if (Repo.isDesktop) {
+      final bool? sysDark = await AppearanceBridge.systemDark();
+      if (sysDark != null) controller.setSystemDark(sysDark);
+      // 探针（修完保留）：标题栏与系统明暗只有真机才能验，记两行好对的日志。
+      // 只记状态，不记路径 / 用户名（日志脱敏规矩）。
+      Log.info('[Appearance] 启动：系统深色=${sysDark ?? '未知'} '
+          '外观模式=${startMode.name} 动态色=${systemPalette == null ? '无' : '有'}');
+      AppearanceBridge.listenSystemTheme((bool dark) {
+        Log.info('[Appearance] 系统明暗变化 → ${dark ? '深色' : '浅色'}');
+        controller.setSystemDark(dark);
+      });
+      bool? lastTitleDark;
+      void syncTitleBar() {
+        final bool? d = controller.effectiveDark;
+        if (d == lastTitleDark) return;
+        lastTitleDark = d;
+        Log.info('[Appearance] 标题栏 → ${d == null ? '跟随系统' : (d ? '深色' : '浅色')}');
+        unawaited(AppearanceBridge.setDarkTitleBar(d));
+      }
+
+      controller.addListener(syncTitleBar);
+      syncTitleBar();
+    }
 
     // 字体缩放（0.3.9）：从设置读回；没存过就用平台默认值
     // （桌面 115%——Windows 上 13px 正文偏小；手机 100%）。
@@ -129,6 +170,9 @@ class _BootFailureApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      // 启动失败页也带主题：否则默认 Material 白底 + 深色系统里一片刺白。
+      theme: MoTheme.build(MoPalette.light, dark: false),
+      darkTheme: MoTheme.build(MoPalette.dark, dark: true),
       home: Scaffold(
         body: SafeArea(
           child: Center(

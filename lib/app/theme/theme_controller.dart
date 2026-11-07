@@ -3,44 +3,81 @@ import 'package:flutter/material.dart';
 import 'mo_theme.dart';
 import 'palette.dart';
 
-/// 主题状态（Phase 0：内存态）。
+// 命名参数不能以 `_` 开头，所以 `this._mode` 这种初始化形式写法在这里不成立
+// （lint 的建议只对位置参数有效）。参数名是对外 API，保持可读，逐条改为
+// ignore 又太吵，这里统一关掉这一条。
+// ignore_for_file: prefer_initializing_formals
+
+/// 外观三态：跟随系统 / 浅色 / 深色。
 ///
-/// 持久化槽位已预留：主题 id / 夜间模式后续经 `Repo.settings` 落盘，
-/// 启动时读回（）。
+/// - [systemPalette]：Android 12+ 的系统动态色；其它平台为 null → 用固定中性板。
+/// - [systemDark]：桌面端由原生侧推来的「系统当前是否深色」。有值时「跟随系统」
+///   解算成明确的 light / dark（Windows 上 Flutter 的 platformBrightness 不保证
+///   随系统切换即时刷新，见 0.3.17 发版说明）；null 时交给 Flutter 的
+///   `ThemeMode.system`。
 class ThemeController extends ChangeNotifier {
-  /// 创建主题控制器；默认「简紫 · 亮色」。
-  ThemeController({MoThemeId themeId = MoThemeId.minimal, bool dark = false}) {
-    _themeId = themeId;
-    _dark = dark;
+  ThemeController({
+    ThemeMode mode = ThemeMode.system,
+    SystemPaletteSet? systemPalette,
+    bool? systemDark,
+  })  : _mode = mode,
+        _systemPalette = systemPalette,
+        _systemDark = systemDark;
+
+  ThemeMode _mode;
+  final SystemPaletteSet? _systemPalette;
+  bool? _systemDark;
+
+  ThemeMode get mode => _mode;
+
+  SystemPaletteSet? get systemPalette => _systemPalette;
+
+  bool? get systemDark => _systemDark;
+
+  /// 实际交给 `MaterialApp.themeMode` 的值：跟随系统且有明确明暗时解算成
+  /// light / dark，否则原样 `system`。
+  ThemeMode get effectiveMode {
+    if (_mode != ThemeMode.system) return _mode;
+    final bool? d = _systemDark;
+    if (d == null) return ThemeMode.system;
+    return d ? ThemeMode.dark : ThemeMode.light;
   }
 
-  MoThemeId _themeId = MoThemeId.minimal;
-  bool _dark = false;
+  /// 当前是否深色；`null` = 由系统决定（桌面标题栏据此恢复跟随系统）。
+  bool? get effectiveDark {
+    switch (effectiveMode) {
+      case ThemeMode.dark:
+        return true;
+      case ThemeMode.light:
+        return false;
+      case ThemeMode.system:
+        return null;
+    }
+  }
 
-  /// 当前主题方案。
-  MoThemeId get themeId => _themeId;
+  /// 只有「跟随系统」才用动态色；浅色 / 深色一律固定色板（D2）。
+  MoPalette _palette(bool dark) {
+    final SystemPaletteSet? sys = _systemPalette;
+    if (_mode == ThemeMode.system && sys != null) {
+      return dark ? sys.dark : sys.light;
+    }
+    return dark ? MoPalette.dark : MoPalette.light;
+  }
 
-  /// 是否夜间模式。
-  bool get dark => _dark;
+  ThemeData get lightTheme => MoTheme.build(_palette(false), dark: false);
 
-  /// 当前 [ThemeData]。
-  ThemeData get themeData =>
-      MoTheme.build(MoPalette.of(_themeId, dark: _dark), dark: _dark);
+  ThemeData get darkTheme => MoTheme.build(_palette(true), dark: true);
 
-  /// 切换主题方案。
-  void setTheme(MoThemeId id) {
-    if (id == _themeId) return;
-    _themeId = id;
+  void setMode(ThemeMode value) {
+    if (value == _mode) return;
+    _mode = value;
     notifyListeners();
   }
 
-  /// 切换明暗。
-  void setDark(bool value) {
-    if (value == _dark) return;
-    _dark = value;
+  /// 原生侧报告系统明暗变化（桌面端使用）。
+  void setSystemDark(bool? value) {
+    if (value == _systemDark) return;
+    _systemDark = value;
     notifyListeners();
   }
-
-  /// 明暗翻转。
-  void toggleDark() => setDark(!_dark);
 }

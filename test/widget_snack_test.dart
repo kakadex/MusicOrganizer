@@ -8,7 +8,7 @@ import 'package:musicorganizer/app/ui_kit.dart';
 void main() {
   Future<void> pumpHost(WidgetTester tester, {String? action}) {
     return tester.pumpWidget(MaterialApp(
-      theme: MoTheme.build(MoPalette.of(MoThemeId.minimal, dark: false), dark: false),
+      theme: MoTheme.build(MoPalette.light, dark: false),
       home: Scaffold(
         body: Stack(
           children: <Widget>[

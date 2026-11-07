@@ -55,6 +55,23 @@ class Win32Window {
   // Return a RECT representing the bounds of the current client area.
   RECT GetClientArea();
 
+  // ---- 标题栏深浅（0.3.17 外观三态）----
+  //
+  // 0.3.16 回退成系统原生标题栏后，标题栏颜色由 DWM 的
+  // DWMWA_USE_IMMERSIVE_DARK_MODE 决定，而默认只读系统设置。用户在 Windows 上
+  // 选「深色」、系统却是浅色时，标题栏会是白的、内容区是黑的。这三个接口让
+  // 应用能盖过系统设置。
+  static bool IsSystemDark();
+
+  /// 让标题栏固定成 dark / light（应用显式选择浅色或深色时）。
+  static void SetTitleBarDark(HWND window, bool dark);
+
+  /// 恢复「跟随系统」：清掉应用覆盖，按系统设置重设一次。
+  static void ClearTitleBarOverride(HWND window);
+
+  /// 按当前状态（有覆盖用覆盖，否则按系统）重设标题栏。
+  static void UpdateTheme(HWND const window);
+
  protected:
   // Processes and route salient window messages for mouse handling,
   // size change and DPI. Delegates handling of these to member overloads that
@@ -86,9 +103,6 @@ class Win32Window {
 
   // Retrieves a class instance pointer for |window|
   static Win32Window* GetThisFromHandle(HWND const window) noexcept;
-
-  // Update the window frame's theme to match the system theme.
-  static void UpdateTheme(HWND const window);
 
   bool quit_on_close_ = false;
 
