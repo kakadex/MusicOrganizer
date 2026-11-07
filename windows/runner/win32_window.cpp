@@ -3,6 +3,8 @@
 #include <dwmapi.h>
 #include <flutter_windows.h>
 
+#include <functional>
+
 #include "resource.h"
 
 namespace {
@@ -89,6 +91,17 @@ constexpr const wchar_t kGetPreferredBrightnessRegValue[] = L"AppsUseLightTheme"
 // The number of Win32Window objects that currently exist.
 static int g_active_window_count = 0;
 
+// 自绘标题栏（0.4.0 第三期）：无边框窗口样式。
+//
+// WS_POPUP 去掉系统标题栏与边框（省一行空间），但**保留 WS_THICKFRAME**——
+// 没有它就不能拖窗口边缘缩放。WS_CLIPCHILDREN 避免 Flutter 子窗口重绘闪烁。
+static const DWORD kWindowStyle = WS_POPUP | WS_THICKFRAME | WS_MINIMIZEBOX |
+                                  WS_MAXIMIZEBOX | WS_SYSMENU | WS_CLIPCHILDREN;
+
+// 最大化状态变化回调（自绘标题栏需要知道什么时候换「还原」图标）。
+// 由 FlutterWindow 注册，把状态推给 Dart。
+static std::function<void(bool)> g_maximized_callback;
+
 // 最小窗口尺寸（物理像素，含边框）。WM_GETMINMAXINFO 里用（0.3.9 第二期）。
 static LONG g_min_track_width = 0;
 static LONG g_min_track_height = 0;
@@ -99,6 +112,40 @@ using EnableNonClientDpiScaling = BOOL __stdcall(HWND hwnd);
 // scale factor
 int Scale(int source, double scale_factor) {
   return static_cast<int>(source * scale_factor);
+}
+
+// 自绘标题栏（0.4.0 第三期）：无边框窗口的边缘缩放命中判定。
+//
+// 返回 HTLEFT / HTTOPLEFT / ... / HTCLIENT。**父窗口和 Flutter 子窗口
+// 都要用这同一套判定**——鼠标在客户区里命中的是子窗口 FLUTTERVIEW，
+// 只在父窗口判是拦不住的（实测拖右下角纹丝不动）。
+LRESULT HitTestBorder(HWND hwnd, LPARAM lparam) {
+  const LRESULT base = DefWindowProc(hwnd, WM_NCHITTEST, 0, lparam);
+  if (base != HTCLIENT) return base;
+
+  POINT pt = {static_cast<LONG>(static_cast<short>(LOWORD(lparam))),
+              static_cast<LONG>(static_cast<short>(HIWORD(lparam)))};
+  RECT rc;
+  GetWindowRect(hwnd, &rc);
+
+  const UINT dpi = FlutterDesktopGetDpiForMonitor(
+      MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST));
+  const int border = static_cast<int>(8 * dpi / 96.0);
+
+  const bool left = pt.x < rc.left + border;
+  const bool right = pt.x >= rc.right - border;
+  const bool top = pt.y < rc.top + border;
+  const bool bottom = pt.y >= rc.bottom - border;
+
+  if (top && left) return HTTOPLEFT;
+  if (top && right) return HTTOPRIGHT;
+  if (bottom && left) return HTBOTTOMLEFT;
+  if (bottom && right) return HTBOTTOMRIGHT;
+  if (left) return HTLEFT;
+  if (right) return HTRIGHT;
+  if (top) return HTTOP;
+  if (bottom) return HTBOTTOM;
+  return HTCLIENT;
 }
 
 // Dynamically loads the |EnableNonClientDpiScaling| from the User32 module.
@@ -118,6 +165,20 @@ void EnableFullDpiSupportIfAvailable(HWND hwnd) {
 }
 
 }  // namespace
+
+// 边缘缩放命中判定（自绘标题栏，0.4.0 第三期）。
+// 必须放在匿名 namespace 外面：FlutterWindow::MessageHandler 也要调它
+// （鼠标在客户区命中的是 FLUTTERVIEW 子窗口，只判父窗口拦不住）。
+LRESULT HitTestWindowBorder(HWND hwnd, LPARAM lparam) {
+  return HitTestBorder(hwnd, lparam);
+}
+
+// 最大化状态变化回调注册（自绘标题栏，0.4.0 第三期）。
+// 必须放在匿名 namespace **外面**，否则外部编译单元（flutter_window.cpp）
+// 链接不到——曾因此报 LNK2019 无法解析的外部符号。
+void SetMaximizedCallback(std::function<void(bool)> cb) {
+  g_maximized_callback = std::move(cb);
+}
 
 // Manages the Win32Window's window class registration.
 class WindowClassRegistrar {
@@ -199,7 +260,7 @@ bool Win32Window::Create(const std::wstring& title,
   double scale_factor = dpi / 96.0;
 
   HWND window = CreateWindow(
-      window_class, title.c_str(), WS_OVERLAPPEDWINDOW,
+      window_class, title.c_str(), kWindowStyle,
       Scale(origin.x, scale_factor), Scale(origin.y, scale_factor),
       Scale(size.width, scale_factor), Scale(size.height, scale_factor),
       nullptr, nullptr, GetModuleHandle(nullptr), this);
@@ -218,7 +279,7 @@ bool Win32Window::Create(const std::wstring& title,
     const double sf = dpi2 / 96.0;
     RECT frame = {0, 0, Scale(kMinClientWidth, sf),
                   Scale(kMinClientHeight, sf)};
-    AdjustWindowRectEx(&frame, WS_OVERLAPPEDWINDOW, FALSE, 0);
+    AdjustWindowRectEx(&frame, kWindowStyle, FALSE, 0);
     SetWindowPos(window, nullptr, 0, 0, 0, 0,
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
     // WM_GETMINMAXINFO 里读这两个值，这里用静态存储传过去
@@ -303,8 +364,23 @@ Win32Window::MessageHandler(HWND hwnd,
         MoveWindow(child_content_, rect.left, rect.top, rect.right - rect.left,
                    rect.bottom - rect.top, TRUE);
       }
+      // 自绘标题栏（0.4.0 第三期）：最大化状态变了要通知 Dart 换按钮图标。
+      // SIZE_MAXIMIZED / SIZE_RESTORED 都会走到这里。
+      if (g_maximized_callback) {
+        g_maximized_callback(IsZoomed(hwnd) != 0);
+      }
       return 0;
     }
+
+    // 自绘标题栏（0.4.0 第三期）：无边框窗口的**边缘缩放**。
+    // 判定逻辑抽到 HitTestBorder，子窗口那边也用同一套。
+    case WM_NCHITTEST:
+      return HitTestBorder(hwnd, lparam);
+
+    case WM_NCCALCSIZE:
+      // 无边框：客户区铺满整个窗口，不留任何非客户区。
+      if (wparam == TRUE) return 0;
+      break;
 
     case WM_ACTIVATE:
       if (child_content_ != nullptr) {

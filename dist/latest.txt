@@ -1,11 +1,11 @@
-version=0.3.10
-tag=v0.3.10
+version=0.3.11
+tag=v0.3.11
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.10/MusicOrganizer-0.3.10-android-arm64-v8a.apk
-size=20036988
-sha256=09109e4a3a4a1918d5bfb47a46cc5f6a9f6643ea991b3b1d34c0f7dc988e2b73
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.10/MusicOrganizer-0.3.10-windows-x64.zip
-zip_size=12981345
-zip_sha256=aa9ae6732b3de1c1636958f4249375dd5caceaa0bfc6f25ecf7cba23d749e879
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.3.10
-summary=修复字体设置不保存 + 缩放比例失调
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.11/MusicOrganizer-0.3.11-android-arm64-v8a.apk
+size=20036992
+sha256=a399cbebce0763f52ebcf68859bba5d6103b46f152db6071172f6ff542afd4a2
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.11/MusicOrganizer-0.3.11-windows-x64.zip
+zip_size=12992393
+zip_sha256=9c588e80a07e40c460ece2f3f448a56964cc68720f8947147af53914db1b13a2
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.3.11
+summary=桌面第三期：自绘标题栏（无系统白条，拖动/最大化/边缘缩放齐全）

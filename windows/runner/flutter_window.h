@@ -34,6 +34,9 @@ class FlutterWindow : public Win32Window {
   // Forwards dropped file/folder paths to Dart (channel name matches the
   // Dart side).
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> drop_channel_;
+
+  // Window controls for the custom title bar (0.4.0 phase 3).
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> window_channel_;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

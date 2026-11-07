@@ -10,6 +10,8 @@ import '../platform/drop_channel.dart';
 import '../platform/external_open.dart';
 import '../platform/mini_player.dart';
 import '../platform/play_bar.dart';
+import '../platform/custom_title_bar.dart';
+import '../platform/window_controls.dart';
 import '../platform/task_service.dart';
 import '../core/tx/journal_history.dart';
 import '../feature/history/undo_flow.dart';
@@ -184,11 +186,26 @@ class _MoShellState extends State<MoShell> {
   }
 
   Widget _scaffold() {
+    // 自绘标题栏（0.4.0 第三期，仅 Windows）：窗口已去掉系统边框，
+    // 这里补一条应用内标题栏（拖动 / 最小化 / 最大化 / 关闭）。
+    // 手机端 windowControlsSupported 为 false，不构造，界面与原来完全一致。
+    final bool customTitleBar = windowControlsSupported;
     return Scaffold(
       body: SafeArea(
         bottom: false,
         child: Column(
           children: <Widget>[
+            if (customTitleBar)
+              CustomTitleBar(
+                title: '音乐整理',
+                subtitle: _titleSubtitle(),
+                leading: IconButton(
+                  tooltip: '设置',
+                  onPressed: _openSettings,
+                  icon: Icon(Icons.settings_outlined,
+                      size: 18, color: MoKit.sub(context)),
+                ),
+              ),
             if (_bootError.isNotEmpty)
               Container(
                 width: double.infinity,
@@ -208,5 +225,15 @@ class _MoShellState extends State<MoShell> {
         ),
       ),
     );
+  }
+
+  /// 标题栏副标题：曲库数量（让标题栏承载一点有用信息，而不是白占一行）。
+  String? _titleSubtitle() {
+    try {
+      final int n = Repo.instance.files.length;
+      return n > 0 ? '$n 首' : null;
+    } catch (_) {
+      return null;
+    }
   }
 }
