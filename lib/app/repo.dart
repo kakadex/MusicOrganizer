@@ -227,6 +227,8 @@ class Repo extends ChangeNotifier {
       'net_timeout',
       'theme_id',
       'theme_dark',
+      // 字体缩放（0.4.1）：漏了这个键，用户设 150% 重启后又回到 100%。
+      'font_scale',
       'sort_key',
       'sort_desc',
       'filter',

@@ -509,6 +509,12 @@ class SongRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 字体缩放（0.4.1）：CoverBox 等「非文字」元素不会跟着 textScaler 放大，
+    // 150% 时会出现「大字配小封面」的比例失调（用户反馈「部分字体显示不协调」）。
+    // 这里按当前缩放倍率同步放大封面与间距，让整行比例保持一致。
+    final double ts = (MediaQuery.maybeOf(context)?.textScaler.scale(100) ?? 100) / 100;
+    final double coverBase = compact ? 32 : 46;
+    final double gapBase = compact ? 9 : 12;
     return InkWell(
       onTap: onTap,
       onLongPress: onLongPress,
@@ -534,8 +540,8 @@ class SongRow extends StatelessWidget {
                   color: selected ? MoKit.primary(context) : MoKit.faint(context),
                 ),
               ),
-            CoverBox(bytes: cover, size: compact ? 32 : 46),
-            SizedBox(width: compact ? 9 : 12),
+            CoverBox(bytes: cover, size: coverBase * ts),
+            SizedBox(width: gapBase * ts),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
