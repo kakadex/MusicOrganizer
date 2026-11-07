@@ -1,16 +1,16 @@
-MusicOrganizer v0.3.12 分发包（本地直发，非官方发布页）
+MusicOrganizer v0.3.13 分发包（本地直发，非官方发布页）
 ====================================================
 
 构建时间：2026-11-07
-版本：0.3.12（build 228，版本戳 0.3.12-VT7PLE）
+版本：0.3.13（build 229，版本戳 0.3.13-VT7PLE）
 说明：本目录用于直接发给他人使用，官方发布以 Gitee / GitHub Releases 为准。
 
 文件
 ----
-MusicOrganizer-0.3.12-windows-x64.zip          Windows 桌面版（解压后运行 musicorganizer.exe）
-MusicOrganizer-0.3.12-android-arm64-v8a.apk    安卓 64 位（绝大多数现代手机）
-MusicOrganizer-0.3.12-android-x86_64.apk       安卓 x86_64（少数 Intel 平板 / 模拟器）
-MusicOrganizer-0.3.12-android-armeabi-v7a.apk  安卓 32 位（老旧设备）
+MusicOrganizer-0.3.13-windows-x64.zip          Windows 桌面版（解压后运行 musicorganizer.exe）
+MusicOrganizer-0.3.13-android-arm64-v8a.apk    安卓 64 位（绝大多数现代手机）
+MusicOrganizer-0.3.13-android-x86_64.apk       安卓 x86_64（少数 Intel 平板 / 模拟器）
+MusicOrganizer-0.3.13-android-armeabi-v7a.apk  安卓 32 位（老旧设备）
 SHA256SUMS.txt                                 以上文件的 SHA-256 校验和
 
 安装 / 使用
@@ -26,7 +26,7 @@ Android：允许「未知来源」后安装对应 ABI 的 APK。
 
 本版变化
 --------
-修复：桌面端两个设置合并为一个；窗口边缘可拖拽缩放
+修复：桌面端拖动窗口边界/四角缩放时的残影与平铺重影
 
 校验（可选）
 ----------

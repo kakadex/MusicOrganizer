@@ -2,6 +2,7 @@
 
 #include <dwmapi.h>
 #include <flutter_windows.h>
+#include <uxtheme.h>  // MARGINS，用于 DwmExtendFrameIntoClientArea
 
 #include <functional>
 
@@ -297,6 +298,16 @@ bool Win32Window::Create(const std::wstring& title,
 
   UpdateTheme(window);
 
+  // 0.3.13 修复「拖动缩放时幽灵边框 / 内容平铺重影」：
+  // 无边框窗口（WS_POPUP|WS_THICKFRAME）必须显式告诉 DWM 整窗都是客户区，
+  // 否则拖拽缩放时 DWM 仍会保留并重绘那块并不存在的非客户区边框，
+  // 与 Flutter 渲染表面尺寸对不上，旧画面被拉伸/平铺成竖条重影。
+  // 把 MARGINS 全置 -1 = 整窗作为客户端绘制区。
+  {
+    MARGINS margins = {-1, -1, -1, -1};
+    DwmExtendFrameIntoClientArea(window, &margins);
+  }
+
   // 0.3.9 第二期：恢复上次的窗口位置 / 大小，并设置最小尺寸（客户区）。
   LoadWindowPlacement(window);
   {
@@ -403,9 +414,28 @@ Win32Window::MessageHandler(HWND hwnd,
     case WM_NCHITTEST:
       return HitTestBorder(hwnd, lparam);
 
+    // 无边框可缩放窗口的「边框残影」三件套（0.3.13 修复拖动边界残影）：
+    // 拖动边缘缩放时，Windows 仍会试图绘制/重绘那块不存在的非客户区边框，
+    // 在屏幕上留下拖影。下面三处一起屏蔽它。
+    case WM_NCPAINT:
+      // 不绘制非客户区——无边框窗口本就没有非客户区，禁止系统残留边框绘制。
+      return 0;
+
+    case WM_NCACTIVATE:
+      // 把 lparam 传 -1：告诉系统不要因激活/失焦而重绘非客户区边框，
+      // 避免拖动 / 焦点切换时在边缘留下激活边框残影。
+      return DefWindowProc(hwnd, message, wparam, -1);
+
     case WM_NCCALCSIZE:
       // 无边框：客户区铺满整个窗口，不留任何非客户区。
-      if (wparam == TRUE) return 0;
+      // wparam==TRUE 时 lparam 是 NCCALCSIZE_PARAMS*：
+      // 把目标客户区 rgrc[0] 直接设为整个新窗口 rgrc[1]，
+      // 抵消 WS_THICKFRAME 残留的 1px 玻璃边距，避免边缘残影。
+      if (wparam == TRUE) {
+        auto* params = reinterpret_cast<NCCALCSIZE_PARAMS*>(lparam);
+        params->rgrc[0] = params->rgrc[1];
+        return 0;
+      }
       break;
 
     case WM_ACTIVATE:

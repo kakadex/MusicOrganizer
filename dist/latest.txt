@@ -1,11 +1,11 @@
-version=0.3.12
-tag=v0.3.12
+version=0.3.13
+tag=v0.3.13
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.12/MusicOrganizer-0.3.12-android-arm64-v8a.apk
-size=20036988
-sha256=b39ac932ba83e5f0d2bc11b8fe99525943c041057d922ce12c9bc6b7213c9e88
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.12/MusicOrganizer-0.3.12-windows-x64.zip
-zip_size=12992295
-zip_sha256=b59c750b62535134faf7d03c8917319d6327b4c5c8e5d7bbbba13442e91c8cce
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.3.12
-summary=修复：桌面端两个设置合并为一个；窗口边缘可拖拽缩放
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.13/MusicOrganizer-0.3.13-android-arm64-v8a.apk
+size=20036992
+sha256=bb09fc3fb44c7b4a8d3dacd09e977cb0ef5b179b39b6a2e4537a3d1ed3001347
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.13/MusicOrganizer-0.3.13-windows-x64.zip
+zip_size=12992427
+zip_sha256=327e34c2404b44761bbf784d6616bbc943f930555b835c2ef6f065ddc304ff2e
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.3.13
+summary=修复：桌面端拖动窗口边界/四角缩放时的残影与平铺重影
