@@ -1,16 +1,16 @@
-MusicOrganizer v0.3.8 分发包（本地直发，非官方发布页）
+MusicOrganizer v0.3.9 分发包（本地直发，非官方发布页）
 ====================================================
 
 构建时间：2026-11-07
-版本：0.3.8（build 222，版本戳 0.3.8-3LK5RF）
+版本：0.3.9（build 223，版本戳 0.3.9-NTA0XS）
 说明：本目录用于直接发给他人使用，官方发布以 Gitee / GitHub Releases 为准。
 
 文件
 ----
-MusicOrganizer-0.3.8-windows-x64.zip           Windows 桌面版（解压后运行 musicorganizer.exe）
-MusicOrganizer-0.3.8-android-arm64-v8a.apk     安卓 64 位（绝大多数现代手机）
-MusicOrganizer-0.3.8-android-x86_64.apk        安卓 x86_64（少数 Intel 平板 / 模拟器）
-MusicOrganizer-0.3.8-android-armeabi-v7a.apk   安卓 32 位（老旧设备）
+MusicOrganizer-0.3.9-windows-x64.zip           Windows 桌面版（解压后运行 musicorganizer.exe）
+MusicOrganizer-0.3.9-android-arm64-v8a.apk     安卓 64 位（绝大多数现代手机）
+MusicOrganizer-0.3.9-android-x86_64.apk        安卓 x86_64（少数 Intel 平板 / 模拟器）
+MusicOrganizer-0.3.9-android-armeabi-v7a.apk   安卓 32 位（老旧设备）
 SHA256SUMS.txt                                 以上文件的 SHA-256 校验和
 
 安装 / 使用
@@ -26,7 +26,7 @@ Android：允许「未知来源」后安装对应 ABI 的 APK。
 
 本版变化
 --------
-修复 Windows 端检查更新超时（超时放宽 + 重试不被熔断拦住）
+桌面第二期：字体可调 + 行密度 + 窗口记忆 + 最小尺寸 + 宽窗口居中
 
 校验（可选）
 ----------

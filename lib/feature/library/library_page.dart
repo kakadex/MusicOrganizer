@@ -107,9 +107,19 @@ class _LibraryPageState extends State<LibraryPage> {
 
   /// 列表行高（dp）。与 [_row] 外层的固定高度、ListView 的 itemExtent 保持一致。
   ///
-  /// 实测 SongRow 在默认与多选两种模式下渲染高度都是 60.0；固定住之后
-  /// 拖选才能用「局部 Y ÷ 行高」反查行号，滚动时也不必逐项测量。
-  static const double _rowExtent = 60;
+  /// 0.3.9 第二期起按平台分档：手机 60（拇指点得到），桌面 44（鼠标精确、
+  /// 一屏多显示约 40%）。**再乘上用户设的字体倍率**——文字放大了行高不放，
+  /// 大字会被固定行高裁掉（用户在 Windows 上反馈过字太小）。
+  double get _rowExtent {
+    final double scale =
+        MediaQuery.maybeOf(context)?.textScaler.scale(100) ?? 100;
+    return MoKit.rowExtentFor(
+        desktop: Repo.isDesktop, textScale: scale / 100);
+  }
+
+  /// 桌面端紧凑密度开关（行内边距 / 封面 / 字号一起缩）。
+  bool get _compact => Repo.isDesktop;
+
   final Set<String> _selected = <String>{};
   bool _busy = false;
 
@@ -480,8 +490,7 @@ class _LibraryPageState extends State<LibraryPage> {
     final int first = _firstVisibleIndex();
     final int perScreen = (_rowExtent <= 0)
         ? 20
-        : (MediaQuery.maybeOf(context)?.size.height ?? 800) ~/ _rowExtent;
-    final int from = (first - perScreen).clamp(0, _shown.length);
+        : (MediaQuery.maybeOf(context)?.size.height ?? 800) ~/ _rowExtent;    final int from = (first - perScreen).clamp(0, _shown.length);
     final int to = (first + perScreen * 2).clamp(0, _shown.length);
     final List<Uint8List> picks = <Uint8List>[];
     for (int i = from; i < to; i++) {
@@ -917,7 +926,10 @@ class _LibraryPageState extends State<LibraryPage> {
 
   Widget _build(BuildContext context) {
     final Repo repo = Repo.instance;
-    return PopScope(
+    // 桌面端最外层横向裁剪（0.3.9）：限宽居中后，如果某处子组件按内容宽度
+    // 布局，会被画到限宽框外面、在窗口两侧露出半截文字（真机截图确认）。
+    // 这里在页面根部裁一刀，任何越界绘制都不会漏到外面；手机端不加。
+    final Widget inner = PopScope(
       // 多选时，返回键 / 左右边缘侧滑（系统返回手势）先退出多选，不要直接退出应用。
       // 主界面就是根路由，不拦的话一滑就回到桌面。
       canPop: !_selectMode,
@@ -970,6 +982,7 @@ class _LibraryPageState extends State<LibraryPage> {
         ],
       ),
     );
+    return Repo.isDesktop ? ClipRect(child: inner) : inner;
   }
 
   Widget _icon(IconData icon, String tip, VoidCallback? onTap, {Key? key}) {
@@ -1140,8 +1153,22 @@ class _LibraryPageState extends State<LibraryPage> {
     );
     // 桌面端不包 RefreshIndicator：鼠标滚轮在列表顶部的「过度滚动下拉」
     // 是手机手势语义，桌面用 F5 重扫（快捷键已挂）。手机端保持原行为。
-    if (Repo.isDesktop) return content;
-    return RefreshIndicator(onRefresh: _scan, child: content);
+    if (!Repo.isDesktop) {
+      return RefreshIndicator(onRefresh: _scan, child: content);
+    }
+    // 桌面宽窗口（0.3.9 第二期）：**只给列表区**限宽 1000dp 居中。
+    //
+    // 注意：限宽用 Align + SizedBox 而不是裸 Center——裸 Center 会让子项按
+    // 内容自然宽度布局，Column 里的标题 / 搜索栏会溢出到两侧。
+    return Align(
+      alignment: Alignment.topCenter,
+      child: SizedBox(
+        width: (MediaQuery.maybeOf(context)?.size.width ?? 0) > 1000
+            ? 1000
+            : null,
+        child: ClipRect(child: content),
+      ),
+    );
   }
 
   Widget _row(Entry e) {
@@ -1157,6 +1184,7 @@ class _LibraryPageState extends State<LibraryPage> {
         selected: selected,
         selectMode: _selectMode,
         paused: _scrolling,
+        compact: _compact,
         onDesktopTap: (bool ctrl, bool shift) =>
             _onRowTapDesktop(e, rowIndex, ctrl: ctrl, shift: shift),
         onPhoneTap: () {
@@ -1643,6 +1671,7 @@ class _CoverRow extends StatefulWidget {
     this.onSecondaryTapUp,
     this.onDoubleTap,
     this.paused = false,
+    this.compact = false,
   });
 
   final Entry entry;
@@ -1661,6 +1690,8 @@ class _CoverRow extends StatefulWidget {
   final VoidCallback? onDoubleTap;
   /// 列表正在滚动：先不读封面，等停下再补。
   final bool paused;
+  /// 紧凑密度（桌面端 0.3.9）：透传给 SongRow。
+  final bool compact;
 
   @override
   State<_CoverRow> createState() => _CoverRowState();
@@ -1792,9 +1823,12 @@ class _CoverRowState extends State<_CoverRow> {
       onLongPress: widget.onLongPress,
       onSecondaryTapUp: widget.onSecondaryTapUp,
       onDoubleTap: widget.onDoubleTap,
+      compact: widget.compact,
       trailing: e.metaLoaded
           ? Text(e.hasLyrics ? '词' : '',
-              style: TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context)))
+              style: TextStyle(
+                  fontSize: widget.compact ? 10 : MoKit.fsCaption,
+                  color: MoKit.sub(context)))
           : null,
     );
   }

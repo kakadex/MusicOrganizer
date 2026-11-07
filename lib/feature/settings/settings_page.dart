@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../app/repo.dart';
 import '../../app/repo_changes.dart';
+import '../../app/theme/font_scale.dart';
 import '../../app/theme/palette.dart';
 import '../../app/ui_kit.dart';
 import '../../core/log/log.dart';
@@ -588,6 +589,38 @@ class _SettingsPageState extends State<SettingsPage> {
                     _repo.setSetting('theme_dark', v);
                   },
                 ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            // 字体大小（0.3.9）：Windows 高分屏上默认字号偏小，用户要能自己调。
+            // 全局生效（含手机端），列表行高也会跟着放大，字不会被裁。
+            Row(
+              children: <Widget>[
+                Text('字体大小',
+                    style: TextStyle(
+                        fontSize: MoKit.fsBody, color: MoKit.text(context))),
+                const SizedBox(width: 4),
+                Text(FontScale.label(FontScale.instance.scale),
+                    style: TextStyle(
+                        fontSize: MoKit.fsCaption,
+                        color: MoKit.sub(context))),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: <Widget>[
+                for (final double v in FontScale.steps)
+                  MoChip(
+                    label: FontScale.label(v),
+                    selected:
+                        (FontScale.instance.scale - v).abs() < 0.01,
+                    onTap: () {
+                      FontScale.instance.set(v);
+                      _repo.setSetting('font_scale', v);
+                    },
+                  ),
               ],
             ),
           ],

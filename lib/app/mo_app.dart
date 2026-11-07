@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../feature/crash/crash_screen.dart';
 import 'shell.dart';
+import 'theme/font_scale.dart';
 import 'theme/theme_controller.dart';
 
 /// 应用根组件（Phase 0 骨架）：主题源 + 路由表。
@@ -14,13 +15,25 @@ class MoApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: themeController,
+      listenable: Listenable.merge(<Listenable>[themeController, FontScale.instance]),
       builder: (BuildContext context, Widget? child) {
         return MaterialApp(
           title: 'MusicOrganizer',
           debugShowCheckedModeBanner: false,
           navigatorKey: CrashScreen.navigatorKey,
           theme: themeController.themeData,
+          // 字体缩放（0.3.9）：包在 home 外面，全应用文字统一按倍率放大。
+          // 用 textScaler 而不是改每个字号常量——前者一处生效、能响应式刷新，
+          // 后者要改几十处且容易漏。
+          builder: (BuildContext ctx, Widget? content) {
+            final MediaQueryData mq = MediaQuery.of(ctx);
+            return MediaQuery(
+              data: mq.copyWith(
+                textScaler: TextScaler.linear(FontScale.instance.scale),
+              ),
+              child: content ?? const SizedBox.shrink(),
+            );
+          },
           home: const MoShell(),
           // 路由兜底：外部「用本应用打开」音频时，系统会把文件 URI 当路由名
           // 推给 Flutter（didPushRouteInformation）。没设 onGenerateRoute 时

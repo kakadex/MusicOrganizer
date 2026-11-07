@@ -1,11 +1,11 @@
-version=0.3.8
-tag=v0.3.8
+version=0.3.9
+tag=v0.3.9
 # 优先国内直链（Gitee Release 下载）
-apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.8/MusicOrganizer-0.3.8-android-arm64-v8a.apk
+apk=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.9/MusicOrganizer-0.3.9-android-arm64-v8a.apk
 size=20036992
-sha256=c93fc289215a11d441c1d0e3437a984a9e6f3d575f35d85ed8ec9ab424f19bd9
-zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.8/MusicOrganizer-0.3.8-windows-x64.zip
-zip_size=12977443
-zip_sha256=0aa39d4384548daa42eb9b02368428b7c7e0c59d81134789b8987c6d96447c1d
-page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.3.8
-summary=修复 Windows 端检查更新超时（超时放宽 + 重试不被熔断拦住）
+sha256=61de2e33fdcb7a21e67cbbc1624e2e8c02479c30e9264775c21e5aca3a3b5ed9
+zip=https://gitee.com/kakadex/MusicOrganizer/releases/download/v0.3.9/MusicOrganizer-0.3.9-windows-x64.zip
+zip_size=12984435
+zip_sha256=6f0acb1b422458352c974f9d7904afac93e2f23a47dc1c909924ff3414b9f7cd
+page=https://gitee.com/kakadex/MusicOrganizer/releases/v0.3.9
+summary=桌面第二期：字体可调 + 行密度 + 窗口记忆 + 最小尺寸 + 宽窗口居中

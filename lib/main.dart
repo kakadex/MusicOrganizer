@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import 'app/mo_app.dart';
 import 'app/repo.dart';
+import 'app/theme/font_scale.dart';
 import 'app/theme/palette.dart';
 import 'app/theme/theme_controller.dart';
 import 'core/log/log.dart';
@@ -76,6 +77,12 @@ Future<void> main(List<String> args) async {
       dark: dark,
     );
     repo.themeController = controller;
+
+    // 字体缩放（0.3.9）：从设置读回；没存过就用平台默认值
+    // （桌面 115%——Windows 上 13px 正文偏小；手机 100%）。
+    final double? savedScale = repo.settings.get<double>('font_scale');
+    FontScale.instance.set(savedScale ??
+        (Repo.isDesktop ? FontScale.desktopDefaultScale : FontScale.defaultScale));
 
     runApp(MoApp(themeController: controller));
   } catch (e, st) {

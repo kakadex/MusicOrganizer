@@ -21,6 +21,25 @@ abstract final class MoKit {
   static const double pagePad = 16;
   static const double rowHeight = 64;
 
+  // ---- 桌面密度（0.3.9 第二期）----
+  //
+  // 手机行高 60dp（拇指点得到、看得到），桌面行高 44dp（鼠标精确、一屏多显示
+  // 约 40%）。所有依赖行高的地方都从 [rowExtent] 取，不要写死数字。
+  static const double phoneRowExtent = 60;
+  static const double desktopRowExtent = 44;
+
+  /// 当前平台的行高。
+  static double rowExtentFor({required bool desktop, double textScale = 1.0}) =>
+      (desktop ? desktopRowExtent : phoneRowExtent) * textScale;
+
+  /// 曲目封面的显示边长（桌面缩到 34，手机保持 46）。
+  static double coverSizeFor({required bool desktop}) => desktop ? 34 : 46;
+
+  /// 曲目行内边距（桌面更紧凑）。
+  static EdgeInsets rowPaddingFor({required bool desktop}) => desktop
+      ? const EdgeInsets.symmetric(horizontal: 10, vertical: 4)
+      : const EdgeInsets.symmetric(horizontal: 8, vertical: 7);
+
   // ---- 字阶 ----
   static const double fsCaption = 11;
   static const double fsBody = 13;
@@ -459,6 +478,7 @@ class SongRow extends StatelessWidget {
     this.terms = const <String>[],
     this.onSecondaryTapUp,
     this.onDoubleTap,
+    this.compact = false,
   });
 
   final String title;
@@ -483,6 +503,10 @@ class SongRow extends StatelessWidget {
   /// 双击（Windows 桌面）：直接播放。手机端双击无语义，不传即无此行为。
   final VoidCallback? onDoubleTap;
 
+  /// 紧凑模式（桌面端，0.3.9 第二期）：行内边距更小、封面更小、字号更紧，
+  /// 一屏多显示约 40%。手机端 false（保持原观感）。
+  final bool compact;
+
   @override
   Widget build(BuildContext context) {
     return InkWell(
@@ -492,7 +516,9 @@ class SongRow extends StatelessWidget {
       onSecondaryTapUp: onSecondaryTapUp,
       borderRadius: BorderRadius.circular(MoKit.radiusRow),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+        padding: compact
+            ? const EdgeInsets.symmetric(horizontal: 10, vertical: 3)
+            : const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
         decoration: BoxDecoration(
           color: selected ? MoKit.soft(context) : null,
           borderRadius: BorderRadius.circular(MoKit.radiusRow),
@@ -504,31 +530,37 @@ class SongRow extends StatelessWidget {
                 padding: const EdgeInsets.only(right: 6),
                 child: Icon(
                   selected ? Icons.check_circle : Icons.radio_button_unchecked,
-                  size: 20,
+                  size: compact ? 16 : 20,
                   color: selected ? MoKit.primary(context) : MoKit.faint(context),
                 ),
               ),
-            CoverBox(bytes: cover),
-            const SizedBox(width: 12),
+            CoverBox(bytes: cover, size: compact ? 32 : 46),
+            SizedBox(width: compact ? 9 : 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
                   highlightText(
                     title,
                     terms,
                     TextStyle(
+                      // 桌面紧凑模式不再缩字号（0.3.9 用户反馈「字太小」）：
+                      // 密度靠行高和内边距赚，字保持原大小；要更大用设置里的
+                      // 「字体大小」全局放大。
                       fontSize: MoKit.fsTitle,
                       fontWeight: FontWeight.w500,
                       color: highlight ? MoKit.sub(context) : MoKit.text(context),
                     ),
                     highlightColor: MoKit.primary(context),
                   ),
-                  const SizedBox(height: 2),
+                  SizedBox(height: compact ? 1 : 2),
                   highlightText(
                     subtitle,
                     terms,
-                    TextStyle(fontSize: MoKit.fsCaption, color: MoKit.sub(context)),
+                    TextStyle(
+                        fontSize: MoKit.fsCaption,
+                        color: MoKit.sub(context)),
                     highlightColor: MoKit.primary(context),
                   ),
                 ],

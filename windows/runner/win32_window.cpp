@@ -18,6 +18,66 @@ namespace {
 
 constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
 
+/// 窗口位置 / 大小记忆的注册表位置（0.3.9 第二期）。
+///
+/// 纯系统 API（RegSetValueEx / GetWindowPlacement），不引第三方窗口库：
+/// `window_manager` 那类包能做的「记住窗口」它都能做，少一个依赖少一类问题。
+constexpr const wchar_t kWindowRectRegKey[] = L"Software\\MusicOrganizer\\Window";
+constexpr const wchar_t kWindowRectRegValue[] = L"Placement";
+
+/// 窗口最小客户区尺寸（逻辑像素）：再小布局就挤坏了。
+constexpr int kMinClientWidth = 720;
+constexpr int kMinClientHeight = 480;
+
+/// 读上次的窗口摆放；成功返回 true。
+bool LoadWindowPlacement(HWND hwnd) {
+  DWORD size = 0;
+  if (RegGetValueW(HKEY_CURRENT_USER, kWindowRectRegKey, kWindowRectRegValue,
+                   RRF_RT_REG_BINARY, nullptr, nullptr, &size) != ERROR_SUCCESS ||
+      size != sizeof(WINDOWPLACEMENT)) {
+    return false;
+  }
+  WINDOWPLACEMENT wp = {};
+  wp.length = sizeof(WINDOWPLACEMENT);
+  if (RegGetValueW(HKEY_CURRENT_USER, kWindowRectRegKey, kWindowRectRegValue,
+                   RRF_RT_REG_BINARY, nullptr, &wp, &size) != ERROR_SUCCESS) {
+    return false;
+  }
+  wp.length = sizeof(WINDOWPLACEMENT);
+  // 只恢复位置/大小，不恢复最大化状态（用户可能换过显示器，恢复最大化
+  // 容易落在看不见的地方）；越界的坐标也丢弃。
+  wp.flags = 0;
+  wp.showCmd = SW_SHOWNORMAL;
+  if (wp.rcNormalPosition.right - wp.rcNormalPosition.left < kMinClientWidth ||
+      wp.rcNormalPosition.bottom - wp.rcNormalPosition.top < kMinClientHeight) {
+    return false;
+  }
+  // 位置必须落在某个显示器上，否则丢弃（比如拔掉了外接屏）
+  HMONITOR mon =
+      MonitorFromRect(&wp.rcNormalPosition, MONITOR_DEFAULTTONULL);
+  if (mon == nullptr) return false;
+  return SetWindowPlacement(hwnd, &wp) != 0;
+}
+
+/// 保存当前窗口摆放（关闭时调用）。
+void SaveWindowPlacement(HWND hwnd) {
+  if (hwnd == nullptr) return;
+  WINDOWPLACEMENT wp = {};
+  wp.length = sizeof(WINDOWPLACEMENT);
+  if (!GetWindowPlacement(hwnd, &wp)) return;
+  // 最大化 / 最小化时记录的是还原后的位置，这才是用户想要的
+  wp.flags = 0;
+  // RegSetValueExW 不会自动创建父键，必须先建
+  HKEY key = nullptr;
+  if (RegCreateKeyExW(HKEY_CURRENT_USER, kWindowRectRegKey, 0, nullptr, 0,
+                      KEY_WRITE, nullptr, &key, nullptr) != ERROR_SUCCESS) {
+    return;
+  }
+  RegSetValueExW(key, kWindowRectRegValue, 0, REG_BINARY,
+                 reinterpret_cast<const BYTE*>(&wp), sizeof(WINDOWPLACEMENT));
+  RegCloseKey(key);
+}
+
 /// Registry key for app theme preference.
 ///
 /// A value of 0 indicates apps should use dark mode. A non-zero or missing
@@ -28,6 +88,10 @@ constexpr const wchar_t kGetPreferredBrightnessRegValue[] = L"AppsUseLightTheme"
 
 // The number of Win32Window objects that currently exist.
 static int g_active_window_count = 0;
+
+// 最小窗口尺寸（物理像素，含边框）。WM_GETMINMAXINFO 里用（0.3.9 第二期）。
+static LONG g_min_track_width = 0;
+static LONG g_min_track_height = 0;
 
 using EnableNonClientDpiScaling = BOOL __stdcall(HWND hwnd);
 
@@ -146,6 +210,22 @@ bool Win32Window::Create(const std::wstring& title,
 
   UpdateTheme(window);
 
+  // 0.3.9 第二期：恢复上次的窗口位置 / 大小，并设置最小尺寸（客户区）。
+  LoadWindowPlacement(window);
+  {
+    const UINT dpi2 = FlutterDesktopGetDpiForMonitor(
+        MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST));
+    const double sf = dpi2 / 96.0;
+    RECT frame = {0, 0, Scale(kMinClientWidth, sf),
+                  Scale(kMinClientHeight, sf)};
+    AdjustWindowRectEx(&frame, WS_OVERLAPPEDWINDOW, FALSE, 0);
+    SetWindowPos(window, nullptr, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+    // WM_GETMINMAXINFO 里读这两个值，这里用静态存储传过去
+    g_min_track_width = frame.right - frame.left;
+    g_min_track_height = frame.bottom - frame.top;
+  }
+
   return OnCreate();
 }
 
@@ -179,6 +259,25 @@ Win32Window::MessageHandler(HWND hwnd,
                             WPARAM const wparam,
                             LPARAM const lparam) noexcept {
   switch (message) {
+    // 0.3.9 第二期：限制最小窗口尺寸，避免拖太小把布局挤坏
+    case WM_GETMINMAXINFO: {
+      auto info = reinterpret_cast<MINMAXINFO*>(lparam);
+      if (g_min_track_width > 0) {
+        info->ptMinTrackSize.x = g_min_track_width;
+      }
+      if (g_min_track_height > 0) {
+        info->ptMinTrackSize.y = g_min_track_height;
+      }
+      return 0;
+    }
+
+    // 0.3.9 第二期：关闭时保存窗口位置 / 大小。
+    // 必须在 WM_DESTROY **之前**存（那时 HWND 还有效）；存完交回
+    // DefWindowProc 走正常销毁流程。
+    case WM_CLOSE:
+      SaveWindowPlacement(hwnd);
+      return DefWindowProc(hwnd, message, wparam, lparam);
+
     case WM_DESTROY:
       window_handle_ = nullptr;
       Destroy();
