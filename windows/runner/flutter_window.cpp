@@ -147,20 +147,9 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   }
 
   switch (message) {
-    // 自绘标题栏（0.4.0 第三期）：**边缘缩放必须在这里判**。
-    //
-    // 鼠标在客户区时落在 Flutter 的视图子窗口（FLUTTERVIEW）上，
-    // WM_NCHITTEST 发给了它；父窗口 HitTestBorder 根本收不到（实测
-    // 拖右下角窗口纹丝不动，WindowFromPoint 查出来是 FLUTTERVIEW）。
-    // 这里把子窗口的命中改写成边框常量，系统就会执行缩放。
-    case WM_NCHITTEST: {
-      HWND root = GetAncestor(hwnd, GA_ROOT);
-      if (root != nullptr && root != hwnd) {
-        return HitTestWindowBorder(root, lparam);
-      }
-      break;
-    }
-
+    // 自绘标题栏（0.4.0 第三期）的边缘缩放：WM_NCHITTEST 已经由
+    // Win32Window::SetChildContent 在 FLUTTERVIEW 子窗口上子类化处理
+    // （鼠标在客户区命中的是子窗口，顶层窗口过程收不到），这里不必再判。
     case WM_FONTCHANGE:
       flutter_controller_->engine()->ReloadSystemFonts();
       break;

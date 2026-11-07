@@ -103,9 +103,10 @@ class Win32Window {
 // 由 FlutterWindow 注册，WndProc 在窗口尺寸变化时回调。
 void SetMaximizedCallback(std::function<void(bool)> cb);
 
-// 边缘缩放命中判定（自绘标题栏，0.4.0 第三期）。
-// 父窗口与 Flutter 子窗口都要用：鼠标在客户区命中的是 FLUTTERVIEW，
-// 只在父窗口判会导致「拖边框纹丝不动」。
-LRESULT HitTestWindowBorder(HWND hwnd, LPARAM lparam);
+// 子类化 Flutter 视图子窗口（FLUTTERVIEW），把它的 WM_NCHITTEST 改走
+// HitTestBorder：无边框窗口整个客户区被 FLUTTERVIEW 铺满，鼠标在
+// 边缘时命中消息只发给这个子窗口，顶层窗口过程收不到，所以必须在子窗口
+// 这一层也判边框，否则「拖边框纹丝不动、也无缩放光标」。
+void SubclassFlutterView(HWND child);
 
 #endif  // RUNNER_WIN32_WINDOW_H_

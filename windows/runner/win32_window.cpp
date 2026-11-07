@@ -166,11 +166,37 @@ void EnableFullDpiSupportIfAvailable(HWND hwnd) {
 
 }  // namespace
 
-// 边缘缩放命中判定（自绘标题栏，0.4.0 第三期）。
-// 必须放在匿名 namespace 外面：FlutterWindow::MessageHandler 也要调它
-// （鼠标在客户区命中的是 FLUTTERVIEW 子窗口，只判父窗口拦不住）。
-LRESULT HitTestWindowBorder(HWND hwnd, LPARAM lparam) {
-  return HitTestBorder(hwnd, lparam);
+// 子类化 Flutter 视图子窗口（FLUTTERVIEW）所需的上下文。
+// 用全局单例（而非 GWLP_USERDATA），避免覆盖 Flutter 自己对 USERDATA 的使用。
+struct FlutterViewSubclass {
+  WNDPROC original = nullptr;  // 原 Flutter WndProc，其它消息交还它
+};
+static FlutterViewSubclass g_flutter_view_subclass;
+
+// 子窗口自己的窗口过程：只在 WM_NCHITTEST 抢边框判定，其余一律交还 Flutter。
+LRESULT CALLBACK FlutterViewProc(HWND hwnd, UINT message, WPARAM wparam,
+                                 LPARAM lparam) {
+  if (g_flutter_view_subclass.original == nullptr) {
+    return DefWindowProc(hwnd, message, wparam, lparam);
+  }
+  if (message == WM_NCHITTEST) {
+    // 边缘 8px 命中为边框方向，系统据此执行缩放并切换缩放光标；
+    // 命中内部时交还 Flutter 自己的过程（其内部处理鼠标事件）。
+    const LRESULT ht = HitTestBorder(hwnd, lparam);
+    if (ht != HTCLIENT) return ht;
+  }
+  return CallWindowProc(g_flutter_view_subclass.original, hwnd, message, wparam,
+                        lparam);
+}
+
+// 子类化 Flutter 视图子窗口：把它的 WM_NCHITTEST 改走 HitTestBorder。
+// 无边框窗口整个客户区被 FLUTTERVIEW 铺满，鼠标在边缘时命中消息只发给这个
+// 子窗口、顶层窗口过程收不到，所以必须在这里也判边框，否则「拖边框纹丝不动、
+// 也无缩放光标」。
+void SubclassFlutterView(HWND child) {
+  if (child == nullptr || g_flutter_view_subclass.original != nullptr) return;
+  g_flutter_view_subclass.original = reinterpret_cast<WNDPROC>(SetWindowLongPtr(
+      child, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&FlutterViewProc)));
 }
 
 // 最大化状态变化回调注册（自绘标题栏，0.4.0 第三期）。
@@ -420,6 +446,10 @@ void Win32Window::SetChildContent(HWND content) {
 
   MoveWindow(content, frame.left, frame.top, frame.right - frame.left,
              frame.bottom - frame.top, true);
+
+  // 子类化 Flutter 视图子窗口：让边缘缩放（WM_NCHITTEST）也在子窗口生效，
+  // 否则无边框窗口拖边框纹丝不动、也无缩放光标。
+  SubclassFlutterView(content);
 
   SetFocus(child_content_);
 }

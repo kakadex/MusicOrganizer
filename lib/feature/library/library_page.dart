@@ -965,12 +965,16 @@ class _LibraryPageState extends State<LibraryPage> {
                     style: TextStyle(
                         fontSize: MoKit.fsCaption, color: MoKit.sub(context))),
             actions: <Widget>[
-              _icon(Icons.settings_outlined, '设置', () {
-                Navigator.of(context).push<void>(
-                  MaterialPageRoute<void>(
-                      builder: (BuildContext _) => const SettingsPage()),
-                );
-              }),
+              // 桌面端（Windows）设置入口已收进自绘标题栏左上角的齿轮，
+              // 这里不再重复显示，避免「看到两个设置」；手机端没有标题栏，
+              // 仍保留这里右上角的齿轮。
+              if (!Repo.isDesktop)
+                _icon(Icons.settings_outlined, '设置', () {
+                  Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                        builder: (BuildContext _) => const SettingsPage()),
+                  );
+                }),
               // 重新扫描只保留下拉刷新：右上角再放一个按钮是重复的，
               // 两者做的事完全一样。
             ],
