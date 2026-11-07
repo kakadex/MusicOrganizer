@@ -3,8 +3,6 @@
 #include <dwmapi.h>
 #include <flutter_windows.h>
 
-#include <functional>
-
 #include "resource.h"
 
 namespace {
@@ -16,15 +14,6 @@ namespace {
 /// See: https://docs.microsoft.com/windows/win32/api/dwmapi/ne-dwmapi-dwmwindowattribute
 #ifndef DWMWA_USE_IMMERSIVE_DARK_MODE
 #define DWMWA_USE_IMMERSIVE_DARK_MODE 20
-#endif
-
-/// 关闭窗口过渡动画（老版本 Windows SDK 可能没有这个常量）。
-///
-/// 拖动缩放 Windows 会把上一帧做一次过渡动画；Flutter 是即时渲染、帧率跟得上，
-/// 这段过渡动画反而会把旧画面留在新尺寸上（用户看到的"残影"）。
-/// 关掉它只影响动画，**不动客户区尺寸**，和后文 WM_NCCALCSIZE 是两回事。
-#ifndef DWMWA_TRANSITIONS_FORCEDISABLED
-#define DWMWA_TRANSITIONS_FORCEDISABLED 3
 #endif
 
 constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
@@ -100,17 +89,6 @@ constexpr const wchar_t kGetPreferredBrightnessRegValue[] = L"AppsUseLightTheme"
 // The number of Win32Window objects that currently exist.
 static int g_active_window_count = 0;
 
-// 自绘标题栏（0.4.0 第三期）：无边框窗口样式。
-//
-// WS_POPUP 去掉系统标题栏与边框（省一行空间），但**保留 WS_THICKFRAME**——
-// 没有它就不能拖窗口边缘缩放。WS_CLIPCHILDREN 避免 Flutter 子窗口重绘闪烁。
-static const DWORD kWindowStyle = WS_POPUP | WS_THICKFRAME | WS_MINIMIZEBOX |
-                                  WS_MAXIMIZEBOX | WS_SYSMENU | WS_CLIPCHILDREN;
-
-// 最大化状态变化回调（自绘标题栏需要知道什么时候换「还原」图标）。
-// 由 FlutterWindow 注册，把状态推给 Dart。
-static std::function<void(bool)> g_maximized_callback;
-
 // 最小窗口尺寸（物理像素，含边框）。WM_GETMINMAXINFO 里用（0.3.9 第二期）。
 static LONG g_min_track_width = 0;
 static LONG g_min_track_height = 0;
@@ -121,55 +99,6 @@ using EnableNonClientDpiScaling = BOOL __stdcall(HWND hwnd);
 // scale factor
 int Scale(int source, double scale_factor) {
   return static_cast<int>(source * scale_factor);
-}
-
-// 自绘标题栏（0.4.0 第三期）：无边框窗口的边缘缩放命中判定。
-//
-// 返回 HTLEFT / HTTOPLEFT / ... / HTCLIENT。**父窗口和 Flutter 子窗口
-// 都要用这同一套判定**——鼠标在客户区里命中的是子窗口 FLUTTERVIEW，
-// 只在父窗口判是拦不住的（实测拖右下角纹丝不动）。
-//
-// 【0.3.15 结构修复】基准矩形一律取**顶层窗口**（GetAncestor GA_ROOT），
-// 不再用传入 hwnd 自己的矩形。原因：这个函数会被 FLUTTERVIEW 子窗口调用，
-// 而子窗口矩形只有在「窗口尺寸 == 客户区尺寸」时才等于窗口矩形。0.3.14 就是
-// 因为两者脱节（窗口 1260x840、子窗口 1000x700），在子窗口上算右/下边缘时
-// 鼠标点落在子窗口矩形**外面**，DefWindowProc 返回 HTNOWHERE(0)，函数把这个
-// 0 原样返回 → 右侧和底部边缘既没有缩放光标也拖不动。
-// 改成以顶层窗口矩形为基准后，即使将来又出现尺寸偏差，四边四角也照样命中。
-LRESULT HitTestBorder(HWND hwnd, LPARAM lparam) {
-  POINT pt = {static_cast<LONG>(static_cast<short>(LOWORD(lparam))),
-              static_cast<LONG>(static_cast<short>(HIWORD(lparam)))};
-
-  HWND root = GetAncestor(hwnd, GA_ROOT);
-  if (root == nullptr) root = hwnd;
-
-  RECT rc;
-  GetWindowRect(root, &rc);
-
-  // 点不在窗口矩形内：不属于边缘缩放，交回系统原判定。
-  if (pt.x < rc.left || pt.x >= rc.right || pt.y < rc.top ||
-      pt.y >= rc.bottom) {
-    return DefWindowProc(hwnd, WM_NCHITTEST, 0, lparam);
-  }
-
-  const UINT dpi = FlutterDesktopGetDpiForMonitor(
-      MonitorFromWindow(root, MONITOR_DEFAULTTONEAREST));
-  const int border = static_cast<int>(8 * dpi / 96.0);
-
-  const bool left = pt.x < rc.left + border;
-  const bool right = pt.x >= rc.right - border;
-  const bool top = pt.y < rc.top + border;
-  const bool bottom = pt.y >= rc.bottom - border;
-
-  if (top && left) return HTTOPLEFT;
-  if (top && right) return HTTOPRIGHT;
-  if (bottom && left) return HTBOTTOMLEFT;
-  if (bottom && right) return HTBOTTOMRIGHT;
-  if (left) return HTLEFT;
-  if (right) return HTRIGHT;
-  if (top) return HTTOP;
-  if (bottom) return HTBOTTOM;
-  return HTCLIENT;
 }
 
 // Dynamically loads the |EnableNonClientDpiScaling| from the User32 module.
@@ -189,46 +118,6 @@ void EnableFullDpiSupportIfAvailable(HWND hwnd) {
 }
 
 }  // namespace
-
-// 子类化 Flutter 视图子窗口（FLUTTERVIEW）所需的上下文。
-// 用全局单例（而非 GWLP_USERDATA），避免覆盖 Flutter 自己对 USERDATA 的使用。
-struct FlutterViewSubclass {
-  WNDPROC original = nullptr;  // 原 Flutter WndProc，其它消息交还它
-};
-static FlutterViewSubclass g_flutter_view_subclass;
-
-// 子窗口自己的窗口过程：只在 WM_NCHITTEST 抢边框判定，其余一律交还 Flutter。
-LRESULT CALLBACK FlutterViewProc(HWND hwnd, UINT message, WPARAM wparam,
-                                 LPARAM lparam) {
-  if (g_flutter_view_subclass.original == nullptr) {
-    return DefWindowProc(hwnd, message, wparam, lparam);
-  }
-  if (message == WM_NCHITTEST) {
-    // 边缘 8px 命中为边框方向，系统据此执行缩放并切换缩放光标；
-    // 命中内部时交还 Flutter 自己的过程（其内部处理鼠标事件）。
-    const LRESULT ht = HitTestBorder(hwnd, lparam);
-    if (ht != HTCLIENT) return ht;
-  }
-  return CallWindowProc(g_flutter_view_subclass.original, hwnd, message, wparam,
-                        lparam);
-}
-
-// 子类化 Flutter 视图子窗口：把它的 WM_NCHITTEST 改走 HitTestBorder。
-// 无边框窗口整个客户区被 FLUTTERVIEW 铺满，鼠标在边缘时命中消息只发给这个
-// 子窗口、顶层窗口过程收不到，所以必须在这里也判边框，否则「拖边框纹丝不动、
-// 也无缩放光标」。
-void SubclassFlutterView(HWND child) {
-  if (child == nullptr || g_flutter_view_subclass.original != nullptr) return;
-  g_flutter_view_subclass.original = reinterpret_cast<WNDPROC>(SetWindowLongPtr(
-      child, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&FlutterViewProc)));
-}
-
-// 最大化状态变化回调注册（自绘标题栏，0.4.0 第三期）。
-// 必须放在匿名 namespace **外面**，否则外部编译单元（flutter_window.cpp）
-// 链接不到——曾因此报 LNK2019 无法解析的外部符号。
-void SetMaximizedCallback(std::function<void(bool)> cb) {
-  g_maximized_callback = std::move(cb);
-}
 
 // Manages the Win32Window's window class registration.
 class WindowClassRegistrar {
@@ -310,7 +199,7 @@ bool Win32Window::Create(const std::wstring& title,
   double scale_factor = dpi / 96.0;
 
   HWND window = CreateWindow(
-      window_class, title.c_str(), kWindowStyle,
+      window_class, title.c_str(), WS_OVERLAPPEDWINDOW,
       Scale(origin.x, scale_factor), Scale(origin.y, scale_factor),
       Scale(size.width, scale_factor), Scale(size.height, scale_factor),
       nullptr, nullptr, GetModuleHandle(nullptr), this);
@@ -321,30 +210,6 @@ bool Win32Window::Create(const std::wstring& title,
 
   UpdateTheme(window);
 
-  // 0.3.15 修复「拖动缩放残影」的对口手段：关掉 DWM 窗口过渡动画。
-  //
-  // 拖边缩放时 Windows 默认会拿上一帧做一次"补间动画"，Flutter 是即时渲染，
-  // 这段补间会把旧画面按新尺寸拉伸一下再换——这就是残影的最后一层来源。
-  // 关掉动画只影响过渡效果，**不参与客户区尺寸计算**，因此不会重蹈 0.3.13
-  // 改 WM_NCCALCSIZE 导致窗口/画面尺寸脱节的覆辙（本机可量化验证：窗口尺寸
-  // 必须恒等于客户区尺寸）。
-  {
-    BOOL disable = TRUE;
-    DwmSetWindowAttribute(window, DWMWA_TRANSITIONS_FORCEDISABLED, &disable,
-                          sizeof(disable));
-  }
-
-  // 0.3.15 修复「拖动缩放残影 + 右侧/底部拖不动」：
-  // **把 0.3.13 加的 DwmExtendFrameIntoClientArea 整段删掉。**
-  // 它是让 DWM 把玻璃效果延伸到客户区的开关，不是消残影的手段；配合下面的
-  // WM_NCCALCSIZE 改写后，系统拿到的客户区尺寸变成了「上一次的窗口尺寸」，
-  // 窗口和画面永久差一整轮。本机实测（0.3.12 基线 vs 0.3.14）：
-  //   0.3.12：ask 900x620 -> win 900x620 client 900x620  一致
-  //   0.3.14：ask 900x620 -> win 900x620 client 734x600  不一致
-  // 窗口边框已经移到新位置、画面还留在旧尺寸，中间露出的旧画面被拉伸平铺，
-  // 就是用户看到的「竖条重影」；画面比窗口小，右/下边缘的命中判定还会落到
-  // 客户区外（HTNOWHERE），于是「下方拖不动」。删掉即恢复一致。
-
   // 0.3.9 第二期：恢复上次的窗口位置 / 大小，并设置最小尺寸（客户区）。
   LoadWindowPlacement(window);
   {
@@ -353,7 +218,7 @@ bool Win32Window::Create(const std::wstring& title,
     const double sf = dpi2 / 96.0;
     RECT frame = {0, 0, Scale(kMinClientWidth, sf),
                   Scale(kMinClientHeight, sf)};
-    AdjustWindowRectEx(&frame, kWindowStyle, FALSE, 0);
+    AdjustWindowRectEx(&frame, WS_OVERLAPPEDWINDOW, FALSE, 0);
     SetWindowPos(window, nullptr, 0, 0, 0, 0,
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
     // WM_GETMINMAXINFO 里读这两个值，这里用静态存储传过去
@@ -438,42 +303,8 @@ Win32Window::MessageHandler(HWND hwnd,
         MoveWindow(child_content_, rect.left, rect.top, rect.right - rect.left,
                    rect.bottom - rect.top, TRUE);
       }
-      // 自绘标题栏（0.4.0 第三期）：最大化状态变了要通知 Dart 换按钮图标。
-      // SIZE_MAXIMIZED / SIZE_RESTORED 都会走到这里。
-      if (g_maximized_callback) {
-        g_maximized_callback(IsZoomed(hwnd) != 0);
-      }
       return 0;
     }
-
-    // 自绘标题栏（0.4.0 第三期）：无边框窗口的**边缘缩放**。
-    // 判定逻辑抽到 HitTestBorder，子窗口那边也用同一套。
-    case WM_NCHITTEST:
-      return HitTestBorder(hwnd, lparam);
-
-    // 无边框可缩放窗口的非客户区抑制（0.3.13 引入，0.3.15 保留）：
-    // 只影响「画不画非客户区」，**不参与客户区尺寸计算**，因此不会造成
-    // 窗口与画面尺寸脱节。真正要命的是下面 WM_NCCALCSIZE 改写 rgrc。
-    case WM_NCPAINT:
-      // 不绘制非客户区——无边框窗口本就没有非客户区。
-      return 0;
-
-    case WM_NCACTIVATE:
-      // 把 lparam 传 -1：激活/失焦时不重绘那块不存在的边框。
-      return DefWindowProc(hwnd, message, wparam, -1);
-
-    case WM_NCCALCSIZE:
-      // 无边框：客户区铺满整个窗口，不留任何非客户区。
-      //
-      // 【0.3.15 回退】这里**绝对不能再改写 rgrc[0]**。
-      // 0.3.13 曾写成 `params->rgrc[0] = params->rgrc[1];`，导致系统把
-      // 「上一次的窗口尺寸」当成新客户区尺寸，窗口与画面永久差一整轮
-      // （本机实测 0.3.14：窗口 900x620 时客户区仍是 734x600），拖动缩放
-      // 时旧画面被拉伸平铺成竖条残影，右/下边缘还因此拖不动。
-      // wparam==TRUE 时直接 return 0：rgrc[0] 保持系统传入的「整个窗口矩形」，
-      // 客户区就等于窗口，本机 A/B 实测 0.3.12/0.3.11 均 100% 同步。
-      if (wparam == TRUE) return 0;
-      break;
 
     case WM_ACTIVATE:
       if (child_content_ != nullptr) {
@@ -513,10 +344,6 @@ void Win32Window::SetChildContent(HWND content) {
 
   MoveWindow(content, frame.left, frame.top, frame.right - frame.left,
              frame.bottom - frame.top, true);
-
-  // 子类化 Flutter 视图子窗口：让边缘缩放（WM_NCHITTEST）也在子窗口生效，
-  // 否则无边框窗口拖边框纹丝不动、也无缩放光标。
-  SubclassFlutterView(content);
 
   SetFocus(child_content_);
 }

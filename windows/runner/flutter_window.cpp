@@ -42,49 +42,6 @@ bool FlutterWindow::OnCreate() {
   // Accept files and folders dragged onto this window (enables WM_DROPFILES).
   DragAcceptFiles(GetHandle(), TRUE);
 
-  // Window controls for the custom title bar (0.4.0 phase 3).
-  //
-  // 自绘标题栏没有系统边框，拖动/最小化/最大化/关闭都得走这里。拖动用
-  // `WM_NCLBUTTONDOWN + HTCAPTION` 交给系统处理——自己算鼠标位移在贴边
-  // 吸附、跨屏 DPI 变化时会出错。
-  window_channel_ = std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
-      flutter_controller_->engine()->messenger(),
-      "com.dsh.musicorganizer/window",
-      &flutter::StandardMethodCodec::GetInstance());
-  window_channel_->SetMethodCallHandler(
-      [this](const flutter::MethodCall<flutter::EncodableValue>& call,
-             std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
-        HWND hwnd = GetHandle();
-        const std::string& method = call.method_name();
-        if (method == "startDrag") {
-          ReleaseCapture();
-          SendMessage(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0);
-          result->Success();
-        } else if (method == "minimize") {
-          ShowWindow(hwnd, SW_MINIMIZE);
-          result->Success();
-        } else if (method == "toggleMaximize") {
-          ShowWindow(hwnd, IsZoomed(hwnd) ? SW_RESTORE : SW_MAXIMIZE);
-          result->Success();
-        } else if (method == "close") {
-          PostMessage(hwnd, WM_CLOSE, 0, 0);
-          result->Success();
-        } else if (method == "isMaximized") {
-          result->Success(flutter::EncodableValue(IsZoomed(hwnd) != 0));
-        } else {
-          result->NotImplemented();
-        }
-      });
-
-  // 最大化状态变化 → 推给 Dart（换「还原/最大化」图标）。
-  SetMaximizedCallback([this](bool maximized) {
-    if (window_channel_) {
-      window_channel_->InvokeMethod(
-          "maximizedChanged",
-          std::make_unique<flutter::EncodableValue>(maximized));
-    }
-  });
-
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();
   });
@@ -147,9 +104,6 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   }
 
   switch (message) {
-    // 自绘标题栏（0.4.0 第三期）的边缘缩放：WM_NCHITTEST 已经由
-    // Win32Window::SetChildContent 在 FLUTTERVIEW 子窗口上子类化处理
-    // （鼠标在客户区命中的是子窗口，顶层窗口过程收不到），这里不必再判。
     case WM_FONTCHANGE:
       flutter_controller_->engine()->ReloadSystemFonts();
       break;
